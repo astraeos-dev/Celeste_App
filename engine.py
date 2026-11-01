@@ -28,6 +28,22 @@ _HORIZON_CORRECTION_SUN = 0.833  # degrees
 _REFRACTION_A = 10.3
 _REFRACTION_B = 5.11
 
+# Lunations (Meeus, chap. 49): mean new moon k = 0 (2000 January 6) and
+# mean synodic month. A true phase is never more than ~15 h from its mean one.
+_MEAN_NEW_MOON_JDE = 2451550.09766
+_SYNODIC_MONTH     = 29.530588861                  # days
+_ELONGATION_RATE   = 360.0 / _SYNODIC_MONTH        # mean Moon − Sun motion, °/day
+
+# Solar eclipse geometry (Besselian elements); lengths in Earth equatorial radii
+_EARTH_RADIUS_KM = 6378.14
+_AU_KM           = 149597870.7
+_SUN_RADIUS      = _AU_KM * math.sin(math.radians(959.63 / 3600.0)) / _EARTH_RADIUS_KM
+_MOON_RADIUS_PENUMBRA = 0.2725076                  # Moon radius for the penumbral cone
+_MOON_RADIUS_UMBRA    = 0.2722810                  # … and for the umbral cone
+_CENTRAL_LIMIT   = 0.9972     # |γ| under which the shadow axis meets the flattened Earth (Meeus, chap. 54)
+_GAMMA_ACCURACY  = 0.02       # accuracy of γ from the truncated series (vs NASA: ~0.005 typical, 0.018 worst seen)
+_SIDEREAL_RATE   = 2.0 * math.pi * 1.00273790935 / 24.0   # Earth rotation, radians per hour
+
 # Mean orbital elements at J2000.0 (Meeus, App. II)
 # Format: [L0 (°), L1 (°/century), a (AU), e0, e1, i (°), Ω (°), ω̃ (°)]
 _ORBITAL_ELEMENTS = {
@@ -727,31 +743,142 @@ class MeeusEngine:
         return math.degrees(math.asin(1737.4 / dist_km))
 
     @staticmethod
-    def _eclipse_magnitude(u, gamma):
+    def _equatorial_xyz(lon_deg, lat_deg, r, eps):
+        """Rectangular equatorial coordinates of a point given in ecliptic coordinates (eps in rad)."""
+        lon, lat = math.radians(lon_deg), math.radians(lat_deg)
+        x = r * math.cos(lat) * math.cos(lon)
+        y = r * math.cos(lat) * math.sin(lon)
+        z = r * math.sin(lat)
+        return x, y*math.cos(eps) - z*math.sin(eps), y*math.sin(eps) + z*math.cos(eps)
+
+    @classmethod
+    def _shadow_axis(cls, jd):
         """
-        Solar eclipse magnitude (Meeus, chap. 54).
+        Besselian elements of the Moon's shadow at jd, from sun_position_hp()
+        and moon_position_elp2000().
+
+        The fundamental plane goes through the Earth's centre, perpendicular to
+        the shadow axis (the Sun–Moon line); x points east, y north, and lengths
+        are in Earth equatorial radii.
+
+        Returns:
+            tuple: (x, y, a, d, l1, l2, tan_f1, tan_f2)
+                x, y           : point where the shadow axis crosses the plane
+                a, d           : right ascension and declination of the axis (rad)
+                l1, l2         : radii of the penumbra and of the umbra in the plane
+                                 (l2 < 0: the umbra goes beyond it; l2 > 0: antumbra)
+                tan_f1, tan_f2 : slopes of the penumbral and umbral cones
+        """
+        t = (jd - 2451545.0) / 36525.0
+        sun_lon, sun_au = cls.sun_position_hp(t)
+        moon_lon, moon_lat, moon_km, _ = cls.moon_position_elp2000(t)
+        eps  = math.radians(23.4392911 - (46.815*t)/3600.0)   # as in ecliptic_to_equatorial()
+        sun  = cls._equatorial_xyz(sun_lon, 0.0, sun_au * _AU_KM / _EARTH_RADIUS_KM, eps)
+        moon = cls._equatorial_xyz(moon_lon, moon_lat, moon_km / _EARTH_RADIUS_KM, eps)
+
+        gx, gy, gz = (s - m for s, m in zip(sun, moon))
+        g    = math.sqrt(gx*gx + gy*gy + gz*gz)                # Sun–Moon distance
+        a, d = math.atan2(gy, gx), math.asin(gz / g)
+        sin_a, cos_a, sin_d, cos_d = math.sin(a), math.cos(a), math.sin(d), math.cos(d)
+
+        mx, my, mz = moon
+        x = -mx*sin_a + my*cos_a
+        y = -mx*sin_d*cos_a - my*sin_d*sin_a + mz*cos_d
+        z =  mx*cos_d*cos_a + my*cos_d*sin_a + mz*sin_d
+
+        sin_f1 = (_SUN_RADIUS + _MOON_RADIUS_PENUMBRA) / g
+        sin_f2 = (_SUN_RADIUS - _MOON_RADIUS_UMBRA) / g
+        tan_f1 = sin_f1 / math.sqrt(1.0 - sin_f1*sin_f1)
+        tan_f2 = sin_f2 / math.sqrt(1.0 - sin_f2*sin_f2)
+        l1 = (z + _MOON_RADIUS_PENUMBRA / sin_f1) * tan_f1
+        l2 = (z - _MOON_RADIUS_UMBRA / sin_f2) * tan_f2
+        return x, y, a, d, l1, l2, tan_f1, tan_f2
+
+    @classmethod
+    def _solar_eclipse(cls, jd_nm):
+        """
+        Circumstances of the solar eclipse of the new moon jd_nm, if any.
+
+        The shadow axis is followed in the fundamental plane (_shadow_axis) to
+        greatest eclipse, its closest approach to the Earth's centre, at the
+        distance γ. Meeus's rules (chap. 54) are then applied to the radii of
+        the shadow cones:
+          • |γ| ≥ 0.9972 + l1 : the penumbra misses the Earth, no eclipse;
+          • |γ| < 0.9972      : central eclipse — annular if the antumbra reaches
+                                the central line at greatest eclipse, total if
+                                the umbra goes beyond the fundamental plane,
+                                hybrid in between (total mid-path, annular at
+                                its ends);
+          • otherwise         : partial, or total / annular when the umbra or
+                                antumbra still grazes a polar region.
+
+        Magnitude: Moon/Sun apparent diameter ratio on the central line at
+        greatest eclipse (central eclipses), otherwise fraction of the Sun's
+        diameter covered where the Earth is closest to the axis (Meeus 54).
+        The central phase lasts 2·|L2| / v on the central line, L2 being the
+        shadow radius there and v the speed of the shadow over the ground,
+        the Earth's rotation included: at most ~7.5 min for a total eclipse,
+        ~12.5 min for an annular one.
 
         Args:
-            u (float): Central shadow radius (Earth equatorial radii).
-            gamma (float): Minimum centre-to-centre distance (same unit).
+            jd_nm (float): Julian Day of the new moon.
 
         Returns:
-            float: Magnitude (≥1 = total/annular, <1 = partial).
-        """
-        return (1.0128 - u - abs(gamma)) / 0.5450 + 0.0400 * math.cos(math.radians(u * 60))
+            dict | None: None without eclipse, else keys
+                jd           : greatest eclipse (Julian Day)
+                gamma        : signed γ, Earth radii (> 0: axis north of the centre)
+                sub_type     : 'total' | 'annular' | 'hybrid' | 'partial'
+                magnitude    : see above
+                duration_min : central phase on the central line, None if not central
+                certainty    : 'possible' when |γ| lies within _GAMMA_ACCURACY of
+                               the no-eclipse limit, else 'certain'
 
-    @staticmethod
-    def _totality_duration(u, gamma):
+        Reference: Meeus, chap. 54; Explanatory Supplement to the Astronomical
+        Almanac (1992), chap. 8 (Besselian elements).
         """
-        Estimated duration of the central phase of a solar eclipse (Meeus, chap. 54).
+        step = 1.0 / 24.0                                   # one hour, in days
+        jd   = jd_nm
+        for _ in range(5):
+            x, y, a, d, l1, l2, tan_f1, tan_f2 = cls._shadow_axis(jd)
+            x_m, y_m, a_m, d_m = cls._shadow_axis(jd - step)[:4]
+            x_p, y_p, a_p, d_p = cls._shadow_axis(jd + step)[:4]
+            vx, vy = (x_p - x_m) / 2.0, (y_p - y_m) / 2.0   # Earth radii per hour
+            tau = -(x*vx + y*vy) / (vx*vx + vy*vy)          # hours to the closest approach
+            if abs(tau) < 1e-3:                             # 3.6 s
+                break
+            jd += tau / 24.0
+        gamma = (y*vx - x*vy) / math.hypot(vx, vy)
 
-        Returns:
-            float | None: Duration in minutes, None if no central phase.
-        """
-        discriminant = 1.0128 - u - (gamma * gamma)
-        if discriminant <= 0:
+        limit = _CENTRAL_LIMIT + l1
+        if abs(gamma) >= limit:
             return None
-        return round(2.0 * 60.0 * math.sqrt(discriminant) / 0.5660, 1)
+        certainty = 'certain' if abs(gamma) < limit - _GAMMA_ACCURACY else 'possible'
+
+        if abs(gamma) < _CENTRAL_LIMIT:
+            zeta = math.sqrt(1.0 - gamma*gamma)             # central line point, above the plane
+            L1   = l1 - zeta*tan_f1                         # shadow radii at that point
+            L2   = l2 - zeta*tan_f2
+            if L2 > 0:     sub_type = 'annular'
+            elif l2 < 0:   sub_type = 'total'
+            else:          sub_type = 'hybrid'
+            magnitude = (L1 - L2) / (L1 + L2)
+            # Velocity of that point in the plane as the Earth turns (Besselian ξ', η')
+            da       = (a_p - a_m + math.pi) % (2.0*math.pi) - math.pi
+            mu_rate  = _SIDEREAL_RATE - da / 2.0            # hour angle of the axis, rad/h
+            xi_rate  = mu_rate * (zeta*math.cos(d) - y*math.sin(d))
+            eta_rate = mu_rate * x * math.sin(d) - zeta * (d_p - d_m) / 2.0
+            ground_speed = math.hypot(vx - xi_rate, vy - eta_rate)
+            duration = round(120.0 * abs(L2) / ground_speed, 1)
+        else:
+            if abs(gamma) < _CENTRAL_LIMIT + abs(l2):
+                sub_type = 'total' if l2 < 0 else 'annular'
+            else:
+                sub_type = 'partial'
+            magnitude = (limit - abs(gamma)) / (l1 + l2)
+            duration  = None
+
+        return {'jd': jd, 'gamma': gamma, 'sub_type': sub_type, 'magnitude': magnitude,
+                'duration_min': duration, 'certainty': certainty}
 
     # ──────────────────────────────────────────────────────────────────
     # COORDINATE CONVERSIONS
@@ -953,147 +1080,178 @@ class MeeusEngine:
         results.sort(key=lambda r: r['date'])
         return results
 
-    @classmethod
-    def _find_syzygy(cls, dte_approx, target_phase=0):
-        """Refines syzygy date using short series (~1 min precision)."""
-        best_dt, best_diff = dte_approx, 999.0
-        for h in range(-48, 49):
-            dt    = dte_approx + timedelta(hours=h)
-            t     = cls.julian_century_j2000(dt)
-            s_l,_ = cls.sun_position(t)
-            m_l,_,_ = cls.moon_position(t)
-            diff  = min(abs(cls.mod360(m_l-s_l)-target_phase),
-                        360-abs(cls.mod360(m_l-s_l)-target_phase))
-            if diff < best_diff: best_diff, best_dt = diff, dt
+    @staticmethod
+    def _mean_phase_jde(k):
+        """
+        Mean lunar phase of lunation k (Meeus, chap. 49, eq. 49.1): integer k
+        for a new moon, k + 0.25 / 0.5 / 0.75 for the next first quarter, full
+        moon and last quarter; k = 0 is the new moon of 2000 January 6.
+        """
+        T = k / 1236.85
+        return (_MEAN_NEW_MOON_JDE + _SYNODIC_MONTH * k
+                + 0.00015437*T**2 - 0.000000150*T**3 + 0.00000000073*T**4)
 
-        center, best_diff = best_dt, 999.0
-        for mn in range(-60, 61):
-            dt    = center + timedelta(minutes=mn)
-            t     = cls.julian_century_j2000(dt)
-            s_l,_ = cls.sun_position(t)
-            m_l,_,_ = cls.moon_position(t)
-            diff  = min(abs(cls.mod360(m_l-s_l)-target_phase),
-                        360-abs(cls.mod360(m_l-s_l)-target_phase))
-            if diff < best_diff: best_diff, best_dt = diff, dt
-        return best_dt
+    @classmethod
+    def _syzygy_jd(cls, k, hp=True):
+        """
+        Julian Day of the true phase k (see _mean_phase_jde): the instant the
+        Moon − Sun longitude difference reaches 360° × (k mod 1).
+
+        Secant iterations from the mean phase, which the true phase never
+        misses by more than ~15 h: whatever date a search starts from, each
+        lunation converges on its own new or full moon (~4 evaluations).
+
+        Args:
+            k (float): Lunation number (integer: new moon, + 0.5: full moon).
+            hp (bool): VSOP87 + ELP2000 if True, else the short series.
+        """
+        target = (k % 1.0) * 360.0
+        sun, moon = ((cls.sun_position_hp, cls.moon_position_elp2000) if hp
+                     else (cls.sun_position, cls.moon_position))
+
+        def offset(jd):                                     # degrees, in [-180, 180[
+            t = (jd - 2451545.0) / 36525.0
+            return (moon(t)[0] - sun(t)[0] - target + 180.0) % 360.0 - 180.0
+
+        jd0 = cls._mean_phase_jde(k)
+        f0  = offset(jd0)
+        jd1 = jd0 - f0 / _ELONGATION_RATE
+        for _ in range(10):
+            f1 = offset(jd1)
+            if f1 == f0:
+                break
+            jd0, f0, jd1 = jd1, f1, jd1 - f1 * (jd1 - jd0) / (f1 - f0)
+            if abs(jd1 - jd0) < 1e-6:                       # 0.1 s
+                break
+        return jd1
+
+    @classmethod
+    def _syzygies_from(cls, jd_start, phase, count):
+        """
+        Julian Days of `count` successive true new moons (phase=0) or full
+        moons (phase=0.5), VSOP87 + ELP2000, from the first one at or after
+        jd_start.
+        """
+        if count <= 0:
+            return []
+        # Lunation of the last mean phase at or before jd_start; its true
+        # phase can still fall after jd_start (they differ by up to ~15 h).
+        k  = math.floor((jd_start - _MEAN_NEW_MOON_JDE) / _SYNODIC_MONTH - phase) + phase
+        jd = cls._syzygy_jd(k)
+        while jd < jd_start:
+            k += 1
+            jd = cls._syzygy_jd(k)
+        return [jd] + [cls._syzygy_jd(k + i) for i in range(1, count)]
+
+    @classmethod
+    def _jd_to_datetime(cls, jd, ref):
+        """Datetime of jd, to the second, built on ref so that its tzinfo is kept."""
+        ref = ref.replace(microsecond=0)
+        return ref + timedelta(seconds=round((jd - cls.julian_day(ref)) * 86400.0))
+
+    @classmethod
+    def _find_syzygy(cls, dte_approx, target_phase=0, hp=False):
+        """
+        True new moon (target_phase=0) or full moon (180) of the lunation whose
+        mean phase is nearest to dte_approx (90 and 270 give the quarters).
+        Short series by default, VSOP87 + ELP2000 with hp=True (~1 min).
+        """
+        phase = (target_phase % 360.0) / 360.0
+        k = round((cls.julian_day(dte_approx) - _MEAN_NEW_MOON_JDE) / _SYNODIC_MONTH - phase) + phase
+        return cls._jd_to_datetime(cls._syzygy_jd(k, hp), dte_approx)
 
     @classmethod
     def _find_syzygy_hp(cls, dte_approx, target_phase=0):
-        """Refines syzygy date using VSOP87 + ELP2000 (~1 min precision)."""
-        best_dt, best_diff = dte_approx, 999.0
-        for h in range(-48, 49):
-            dt       = dte_approx + timedelta(hours=h)
-            t        = cls.julian_century_j2000(dt)
-            s_l,_    = cls.sun_position_hp(t)
-            m_l,_,_,_ = cls.moon_position_elp2000(t)
-            diff     = min(abs(cls.mod360(m_l-s_l)-target_phase),
-                           360-abs(cls.mod360(m_l-s_l)-target_phase))
-            if diff < best_diff: best_diff, best_dt = diff, dt
-
-        center, best_diff = best_dt, 999.0
-        for mn in range(-60, 61):
-            dt       = center + timedelta(minutes=mn)
-            t        = cls.julian_century_j2000(dt)
-            s_l,_    = cls.sun_position_hp(t)
-            m_l,_,_,_ = cls.moon_position_elp2000(t)
-            diff     = min(abs(cls.mod360(m_l-s_l)-target_phase),
-                           360-abs(cls.mod360(m_l-s_l)-target_phase))
-            if diff < best_diff: best_diff, best_dt = diff, dt
-        return best_dt
+        """Same as _find_syzygy(), with VSOP87 + ELP2000."""
+        return cls._find_syzygy(dte_approx, target_phase, hp=True)
 
     @classmethod
     def find_eclipses(cls, dte_start, num_months=12):
         """
         Searches for solar and lunar eclipses using VSOP87 + ELP2000.
 
-        For solar eclipses, computes:
+        Scans the num_months true new moons and num_months true full moons
+        that follow dte_start, starting with the first ones at or after it
+        (_syzygies_from), whatever the start date.
+
+        A new moon closer than 1.58° to the ecliptic gives a solar eclipse if
+        the Moon's penumbra reaches the Earth (_solar_eclipse), which also
+        gives, at greatest eclipse:
           • sub_type        : 'total' | 'annular' | 'hybrid' | 'partial'
-          • diameter_ratio  : Moon/Sun apparent diameter ratio
-          • magnitude       : eclipse magnitude (Meeus, chap. 54)
-          • duration_min    : central phase duration in minutes (if applicable)
+          • magnitude       : Moon/Sun diameter ratio on the central line
+                              (central eclipses), fraction of the Sun's
+                              diameter covered otherwise
+          • duration_min    : central phase on the central line, in minutes
+                              (None for a partial eclipse)
+        and diameter_ratio is the geocentric Moon/Sun apparent diameter ratio
+        at new moon. A full moon closer than 1.58° to the ecliptic gives a
+        lunar eclipse, rated by the Moon's latitude.
 
         Args:
-            dte_start (datetime): Start date.
-            num_months (int): Synodic months to scan (default 12).
+            dte_start (datetime): Start date (UT).
+            num_months (int): Lunations to scan (default 12).
 
         Returns:
-            list[dict]: Sorted by date. Solar eclipse dicts contain:
-                date, type='solar', certainty, moon_latitude, details,
-                sub_type, diameter_ratio, magnitude, duration_min.
+            list[dict]: Sorted by date (instant of new or full moon, UT). Solar
+                eclipse dicts contain: date, type='solar', certainty,
+                moon_latitude, details, sub_type, diameter_ratio, magnitude,
+                duration_min.
             Lunar eclipse dicts contain:
                 date, type='lunar', certainty, moon_latitude, details.
 
-        Reference: Meeus, chap. 54.
+        Reference: Meeus, chap. 49 and 54.
         """
-        synodic_month = 29.530588
-        results       = []
+        jd_start = cls.julian_day(dte_start)
+        results  = []
 
         _EMOJI = {'total': '🌑', 'annular': '⭕', 'hybrid': '🔄', 'partial': '🌘'}
 
-        for i in range(num_months):
-            # ── New Moon ───────────────────────────────────────────────
-            dte_nm  = dte_start + timedelta(days=i * synodic_month)
-            nm      = cls._find_syzygy_hp(dte_nm, target_phase=0)
-            t_nm    = cls.julian_century_j2000(nm)
-
+        # ── New moons: solar eclipses ──────────────────────────────────
+        for jd_nm in cls._syzygies_from(jd_start, 0.0, num_months):
+            t_nm = (jd_nm - 2451545.0) / 36525.0
             _, b_nm, dist_moon_nm, _ = cls.moon_position_elp2000(t_nm)
-            _, r_sun_nm              = cls.sun_position_hp(t_nm)
+            if abs(b_nm) >= 1.58:
+                continue
+            eclipse = cls._solar_eclipse(jd_nm)
+            if eclipse is None:                     # the penumbra misses the Earth
+                continue
 
-            if abs(b_nm) < 1.58:
-                certainty = 'certain' if abs(b_nm) < 0.90 else 'possible'
+            _, r_sun_nm = cls.sun_position_hp(t_nm)
+            ratio     = cls._moon_semi_diameter(dist_moon_nm) / cls._sun_semi_diameter(r_sun_nm)
+            sub_type  = eclipse['sub_type']
+            certainty = eclipse['certainty']
+            mag       = eclipse['magnitude']
+            duration  = eclipse['duration_min']
 
-                dd_sun   = cls._sun_semi_diameter(r_sun_nm)
-                dd_moon  = cls._moon_semi_diameter(dist_moon_nm)
-                ratio    = dd_moon / dd_sun
+            parts = [f"Solar eclipse {sub_type} ({certainty})"]
+            parts.append(f"Diameter ratio: {ratio:.4f}")
+            parts.append(f"Magnitude: {mag:.3f}")
+            if duration is not None:
+                parts.append(f"Central phase: ~{duration} min")
+            parts.append(f"Moon lat: {b_nm:+.2f}°")
 
-                gamma = math.sin(math.radians(b_nm)) / math.sin(math.radians(1.57))
-                u     = 0.0059 + 0.0046 * (1.0 - ratio)
+            results.append({
+                'date':           cls._jd_to_datetime(jd_nm, dte_start),
+                'type':           'solar',
+                'certainty':      certainty,
+                'moon_latitude':  b_nm,
+                'sub_type':       sub_type,
+                'diameter_ratio': ratio,
+                'magnitude':      mag,
+                'duration_min':   duration,
+                'details':        f"{_EMOJI.get(sub_type,'🌘')}  " + "  |  ".join(parts),
+            })
 
-                if abs(gamma) < 0.9972:
-                    if ratio > 1.0:      sub_type = "total"
-                    elif ratio < 0.9972: sub_type = "annular"
-                    else:                sub_type = "hybrid"
-                    duration = cls._totality_duration(u, gamma)
-                else:
-                    sub_type = "partial"
-                    duration = None
-
-                try:    mag = cls._eclipse_magnitude(u, gamma)
-                except: mag = None
-
-                parts = [f"Solar eclipse {sub_type} ({certainty})"]
-                parts.append(f"Diameter ratio: {ratio:.4f}")
-                if mag is not None:
-                    parts.append(f"Magnitude: {mag:.3f}")
-                if duration is not None:
-                    parts.append(f"Central phase: ~{duration} min")
-                parts.append(f"Moon lat: {b_nm:+.2f}°")
-
-                results.append({
-                    'date':           nm,
-                    'type':           'solar',
-                    'certainty':      certainty,
-                    'moon_latitude':  b_nm,
-                    'sub_type':       sub_type,
-                    'diameter_ratio': ratio,
-                    'magnitude':      mag,
-                    'duration_min':   duration,
-                    'details':        f"{_EMOJI.get(sub_type,'🌘')}  " + "  |  ".join(parts),
-                })
-
-            # ── Full Moon ──────────────────────────────────────────────
-            dte_fm  = dte_nm + timedelta(days=synodic_month/2)
-            fm      = cls._find_syzygy_hp(dte_fm, target_phase=180)
-            t_fm    = cls.julian_century_j2000(fm)
-
-            _, b_fm, _, _ = cls.moon_position_elp2000(t_fm)
+        # ── Full moons: lunar eclipses ─────────────────────────────────
+        for jd_fm in cls._syzygies_from(jd_start, 0.5, num_months):
+            _, b_fm, _, _ = cls.moon_position_elp2000((jd_fm - 2451545.0) / 36525.0)
 
             if abs(b_fm) < 1.58:
                 if abs(b_fm) < 0.90:   certainty = 'certain'
                 elif abs(b_fm) < 1.09: certainty = 'penumbral'
                 else:                   certainty = 'possible'
                 results.append({
-                    'date':          fm,
+                    'date':          cls._jd_to_datetime(jd_fm, dte_start),
                     'type':          'lunar',
                     'certainty':     certainty,
                     'moon_latitude': b_fm,

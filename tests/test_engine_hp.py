@@ -14,7 +14,7 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from datetime import datetime
+from datetime import date, datetime, timedelta, timezone
 from engine import MeeusEngine
 
 
@@ -185,32 +185,82 @@ class TestApparentDiameters:
 
 
 # ===========================================================================
-# 4. Eclipse magnitude and duration
+# 4. Solar eclipse circumstances (shadow geometry)
 # ===========================================================================
 
-class TestMagnitudeAndDuration:
+# NASA, Five Millennium Canon of Solar Eclipses (Espenak & Meeus), at
+# greatest eclipse: date, type, γ, magnitude, central phase duration (s)
+NASA_CENTRAL = [
+    ((2009, 7, 22),  'total',    0.0698, 1.0799, 399),
+    ((2010, 1, 15),  'annular',  0.4002, 0.9190, 668),
+    ((2017, 8, 21),  'total',    0.4367, 1.0306, 160),
+    ((2021, 12, 4),  'total',   -0.9526, 1.0367, 114),
+    ((2023, 4, 20),  'hybrid',  -0.3952, 1.0132,  76),
+    ((2024, 4, 8),   'total',    0.3431, 1.0566, 268),
+    ((2024, 10, 2),  'annular', -0.3509, 0.9326, 445),
+    ((2027, 2, 6),   'annular', -0.2951, 0.9281, 471),
+    ((2027, 8, 2),   'total',    0.1421, 1.0790, 383),
+]
+NASA_PARTIAL = [            # date, γ, magnitude
+    ((2022, 4, 30), -1.1901, 0.6396),
+    ((2025, 3, 29),  1.0405, 0.9376),
+]
 
-    def test_magnitude_central_eclipse(self):
-        """Central eclipse (gamma=0) should have magnitude > 1."""
-        assert MeeusEngine._eclipse_magnitude(0.005, 0.0) > 1.0
 
-    def test_magnitude_partial_eclipse(self):
-        """Large gamma → partial eclipse → magnitude < 1."""
-        assert MeeusEngine._eclipse_magnitude(0.005, 0.95) < 1.0
+def _solar_eclipse_near(year, month, day):
+    """_solar_eclipse() for the true new moon nearest to the given date."""
+    nm = MeeusEngine._find_syzygy_hp(datetime(year, month, day), target_phase=0)
+    return MeeusEngine._solar_eclipse(MeeusEngine.julian_day(nm))
 
-    def test_duration_positive_for_central(self):
-        """Central eclipse should have positive duration."""
-        d = MeeusEngine._totality_duration(0.005, 0.0)
-        assert d is not None and d > 0
 
-    def test_duration_none_if_no_central_phase(self):
-        """Large discriminant → None."""
-        assert MeeusEngine._totality_duration(0.5, 0.95) is None
+class TestSolarEclipseCircumstances:
+    """_solar_eclipse() against published values."""
 
-    def test_duration_plausible_range(self):
-        """Typical eclipse duration should be in [1, 480] minutes."""
-        d = MeeusEngine._totality_duration(0.005, 0.1)
-        assert d is not None and 1 <= d <= 480
+    @pytest.mark.parametrize("ymd, sub_type, gamma, mag, seconds", NASA_CENTRAL)
+    def test_central_eclipse(self, ymd, sub_type, gamma, mag, seconds):
+        ec = _solar_eclipse_near(*ymd)
+        assert ec is not None, "eclipse not found"
+        assert ec['sub_type'] == sub_type
+        assert ec['certainty'] == 'certain'
+        assert approx(ec['gamma'], gamma, 0.02), f"γ = {ec['gamma']:+.4f} (NASA {gamma:+.4f})"
+        assert approx(ec['magnitude'], mag, 0.002), f"magnitude {ec['magnitude']:.4f} (NASA {mag})"
+        # 5 %, or the 0.1 min rounding for the shortest ones
+        assert approx(ec['duration_min'] * 60, seconds, max(0.05 * seconds, 6)), \
+            f"central phase {ec['duration_min']} min (NASA {seconds} s)"
+
+    @pytest.mark.parametrize("ymd, gamma, mag", NASA_PARTIAL)
+    def test_partial_eclipse(self, ymd, gamma, mag):
+        ec = _solar_eclipse_near(*ymd)
+        assert ec is not None, "eclipse not found"
+        assert ec['sub_type'] == 'partial'
+        assert ec['duration_min'] is None
+        assert approx(ec['gamma'], gamma, 0.02), f"γ = {ec['gamma']:+.4f} (NASA {gamma:+.4f})"
+        assert approx(ec['magnitude'], mag, 0.03), f"magnitude {ec['magnitude']:.4f} (NASA {mag})"
+
+    def test_greatest_eclipse_time(self):
+        """2027-08-02: greatest eclipse at 10:07:50 TD (the engine ignores ΔT ≈ 70 s)."""
+        ec = _solar_eclipse_near(2027, 8, 2)
+        nasa = MeeusEngine.julian_day(datetime(2027, 8, 2, 10, 7, 50))
+        assert abs(ec['jd'] - nasa) * 1440 < 5, "greatest eclipse more than 5 min off"
+
+    def test_no_eclipse_far_from_node(self):
+        """New moon of 2026-11-09: Moon ~4.9° south of the ecliptic."""
+        assert _solar_eclipse_near(2026, 11, 9) is None
+
+    def test_central_phase_within_physical_limits(self):
+        """
+        Every central eclipse of 2001–2030 lasts less than 15 min: at most
+        ~7.5 min when total, ~12.5 min when annular. The formula used before
+        (a lunar-eclipse formula) gave 170–200 min.
+        """
+        res = MeeusEngine.find_eclipses(datetime(2001, 1, 1), num_months=371)
+        central = [r for r in res if r['type'] == 'solar' and r['duration_min'] is not None]
+        assert len(central) >= 40, f"only {len(central)} central eclipses in 30 years"
+        for r in central:
+            d, st = r['duration_min'], r['sub_type']
+            assert 0 < d < 15, f"{r['date']:%Y-%m-%d} {st}: {d} min"
+            limit = 7.6 if st == 'total' else 12.6
+            assert d < limit, f"{r['date']:%Y-%m-%d} {st}: {d} min"
 
 
 # ===========================================================================
@@ -292,9 +342,137 @@ class TestFindEclipsesHP:
         """HP syzygy finder must find phase very close to 0°."""
         dte = datetime(2024, 4, 8)  # close to April 2024 new moon
         nl  = MeeusEngine._find_syzygy_hp(dte, target_phase=0)
-        t_  = MeeusEngine.julian_century_j2000(nl)
-        s_l, _     = MeeusEngine.sun_position_hp(t_)
-        m_l,_,_,_  = MeeusEngine.moon_position_elp2000(t_)
-        phase = MeeusEngine.mod360(m_l - s_l)
-        diff  = min(abs(phase), 360 - abs(phase))
-        assert diff < 5.0, f"HP syzygy phase not near 0: {diff:.2f}°"
+        assert _phase_offset(nl, 0) < 0.01, f"HP syzygy phase not near 0: {_phase_offset(nl, 0):.4f}°"
+
+
+def _phase_offset(dte, target):
+    """|Moon − Sun longitude − target| at dte (VSOP87 + ELP2000), degrees."""
+    t = MeeusEngine.julian_century_j2000(dte)
+    s_l, _ = MeeusEngine.sun_position_hp(t)
+    m_l, _, _, _ = MeeusEngine.moon_position_elp2000(t)
+    return abs((m_l - s_l - target + 180.0) % 360.0 - 180.0)
+
+
+# ===========================================================================
+# 6. New and full moons, whatever the date a search starts from
+# ===========================================================================
+
+class TestSyzygies:
+    """
+    The syzygy finders used to scan only ±48 h around their first guess:
+    from a date far from a new moon they returned the edge of that window.
+    """
+
+    START = datetime(2026, 11, 1, 21, 0)   # 7.4 days before the next new moon
+
+    @pytest.mark.parametrize("finder", ["_find_syzygy", "_find_syzygy_hp"])
+    def test_new_moon_far_from_the_guess(self, finder):
+        """New moon of 2026-11-09 07:02 UT (both series)."""
+        nm = getattr(MeeusEngine, finder)(self.START, target_phase=0)
+        assert abs(nm - datetime(2026, 11, 9, 7, 2)) < timedelta(minutes=5), nm
+
+    @pytest.mark.parametrize("finder", ["_find_syzygy", "_find_syzygy_hp"])
+    def test_full_moon_far_from_the_guess(self, finder):
+        """Nearest full moon: 2026-10-26 04:12 UT, 6.7 days earlier (both series)."""
+        fm = getattr(MeeusEngine, finder)(self.START, target_phase=180)
+        assert abs(fm - datetime(2026, 10, 26, 4, 12)) < timedelta(minutes=5), fm
+
+    def test_first_syzygies_at_or_after_start(self):
+        """_syzygies_from() starts with the first new / full moon at or after the start."""
+        jd_start = MeeusEngine.julian_day(self.START)
+        new_moons  = MeeusEngine._syzygies_from(jd_start, 0.0, 13)
+        full_moons = MeeusEngine._syzygies_from(jd_start, 0.5, 13)
+        assert MeeusEngine._jd_to_datetime(new_moons[0], self.START).date() == date(2026, 11, 9)
+        assert MeeusEngine._jd_to_datetime(full_moons[0], self.START).date() == date(2026, 11, 24)
+        for jds in (new_moons, full_moons):
+            gaps = [b - a for a, b in zip(jds, jds[1:])]
+            assert all(29.2 < g < 29.9 for g in gaps), gaps   # one lunation apart
+
+    def test_start_between_mean_and_true_new_moon(self):
+        """
+        The mean new moon of February 2027 falls at 08:16, the true one at
+        ~15:58: a search starting in between keeps that eclipse, one starting
+        after it does not.
+        """
+        before = MeeusEngine.find_eclipses(datetime(2027, 2, 6, 15, 0), num_months=1)
+        after  = MeeusEngine.find_eclipses(datetime(2027, 2, 6, 17, 0), num_months=1)
+        assert [r['date'].date() for r in before if r['type'] == 'solar'] == [date(2027, 2, 6)]
+        assert not [r for r in after if r['type'] == 'solar']
+
+
+# ===========================================================================
+# 7. Regression: 12-month search from 2026-11-01
+# ===========================================================================
+
+NOV_2026 = datetime(2026, 11, 1, 21, 0)
+
+
+@pytest.fixture(scope="module")
+def eclipses():
+    """find_eclipses() over 12 lunations from 2026-11-01 21:00 UT."""
+    return MeeusEngine.find_eclipses(NOV_2026, num_months=12)
+
+
+class TestEclipseSearchFromNovember2026:
+    """
+    find_eclipses() guessed the i-th new moon at dte_start + i × 29.53 days.
+    From 2026-11-01 21:00 UT it reported an annular eclipse on 2026-11-03,
+    eclipses on 2027-04-15 and 2027-04-30 that do not exist, missed those
+    of February and August 2027, and gave central phases of 170–200 min.
+    """
+
+    START = NOV_2026
+
+    @staticmethod
+    def _solar_near(eclipses, when):
+        """Solar eclipses within a few hours of `when`."""
+        return [r for r in eclipses
+                if r['type'] == 'solar' and abs(r['date'] - when) < timedelta(hours=3)]
+
+    def test_annular_eclipse_of_6_february_2027(self, eclipses):
+        """New moon 2027-02-06 15:56 UT, annular eclipse (magnitude 0.928)."""
+        found = self._solar_near(eclipses, datetime(2027, 2, 6, 15, 56))
+        assert len(found) == 1, [r['details'] for r in eclipses]
+        assert found[0]['sub_type'] == 'annular'
+        assert approx(found[0]['magnitude'], 0.928, 0.005)
+
+    def test_total_eclipse_of_2_august_2027(self, eclipses):
+        """New moon 2027-08-02 10:05 UT, total eclipse (magnitude 1.079)."""
+        found = self._solar_near(eclipses, datetime(2027, 8, 2, 10, 5))
+        assert len(found) == 1, [r['details'] for r in eclipses]
+        assert found[0]['sub_type'] == 'total'
+        assert approx(found[0]['magnitude'], 1.079, 0.005)
+
+    def test_no_solar_eclipse_in_november_2026(self, eclipses):
+        assert not [r for r in eclipses
+                    if r['type'] == 'solar' and (r['date'].year, r['date'].month) == (2026, 11)]
+
+    def test_exactly_the_eclipses_of_the_period(self, eclipses):
+        """2 solar and 3 (penumbral) lunar eclipses from November 2026 to October 2027."""
+        solar = [r['date'].date() for r in eclipses if r['type'] == 'solar']
+        lunar = [r['date'].date() for r in eclipses if r['type'] == 'lunar']
+        assert solar == [date(2027, 2, 6), date(2027, 8, 2)]
+        assert lunar == [date(2027, 2, 20), date(2027, 7, 18), date(2027, 8, 17)]
+
+    def test_dates_are_true_syzygies(self, eclipses):
+        """Each date is a new moon (solar) or full moon (lunar), not a window edge."""
+        for r in eclipses:
+            target = 0 if r['type'] == 'solar' else 180
+            assert _phase_offset(r['date'], target) < 0.01, r['details']
+
+    def test_nothing_before_start(self, eclipses):
+        assert all(r['date'] >= self.START for r in eclipses)
+
+    def test_central_durations_below_15_min(self, eclipses):
+        durations = {r['date'].date(): r['duration_min'] for r in eclipses
+                     if r['type'] == 'solar'}
+        assert all(d is not None and 0 < d < 15 for d in durations.values()), durations
+        # NASA: 7 min 51 s and 6 min 23 s
+        assert approx(durations[date(2027, 2, 6)], 7.85, 0.3)
+        assert approx(durations[date(2027, 8, 2)], 6.38, 0.3)
+
+    def test_timezone_kept(self, eclipses):
+        """An aware start date gives aware dates, at the same instants."""
+        aware = MeeusEngine.find_eclipses(self.START.replace(tzinfo=timezone.utc), num_months=12)
+        assert [r['date'] for r in aware] == [r['date'].replace(tzinfo=timezone.utc)
+                                              for r in eclipses]

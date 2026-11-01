@@ -133,12 +133,14 @@ class TestMoonPositionELP2000:
     def test_meeus_example_47a(self):
         """
         Meeus p.342 — April 12, 1992:
-        longitude ~133.162°, latitude ~-3.229°.
+        longitude 133.162655°, latitude -3.229126°.
         """
         t = MeeusEngine.julian_century_j2000(datetime(1992, 4, 12))
         lon, lat, dist, par = MeeusEngine.moon_position_elp2000(t)
-        assert approx(lon, 133.162, 2.0), f"lon={lon:.3f}° (ref 133.162°)"
-        assert approx(lat, -3.229,  0.15), f"lat={lat:.3f}° (ref -3.229°)"
+        # Within 0.01° (36"): a wrong sign on the 1.27° evection term shifts
+        # the longitude by up to 2.5°, and the eclipse times by hours.
+        assert approx(lon, 133.162655, 0.01), f"lon={lon:.4f}° (ref 133.162655°)"
+        assert approx(lat, -3.229126, 0.01), f"lat={lat:.4f}° (ref -3.229126°)"
         assert 356000 <= dist <= 407000
 
     def test_distance_example_47a(self):

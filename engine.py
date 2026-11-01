@@ -43,7 +43,7 @@ _ORBITAL_ELEMENTS = {
 
 _MOON_LONGITUDE_TERMS = (
     ( 0,  0,  1,  0,  6288774),
-    ( 2,  0, -1,  0, -1274027),
+    ( 2,  0, -1,  0,  1274027),   # evection: positive in Meeus Table 47.A
     ( 2,  0,  0,  0,   658314),
     ( 0,  0,  2,  0,   213618),
     ( 0,  1,  0,  0,  -185116),

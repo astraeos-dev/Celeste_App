@@ -28,7 +28,7 @@ _SETTINGS_FILE = os.path.join(
 _DEFAULTS = {
     # Apparence
     "theme":          "mocha",      # mocha | frape | latte
-    "lang":           "en",         # code ISO 639-1
+    "lang":           "auto",       # auto (langue du système) | fr | en | es | de
     "time_format":    "24h",        # 24h | 12h
 
     # Lieu par défaut

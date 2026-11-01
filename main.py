@@ -3,80 +3,65 @@ main.py — Point d'entrée de l'application Céleste (PyQt6)
 ==========================================================
 Usage :
     python main.py
-    python main.py --lang fr
-    python main.py --theme mocha
+    python main.py --lang fr        (auto, fr, en, es, de)
+    python main.py --theme latte    (mocha, frape, latte)
+
+Sans option, la langue et le thème viennent de settings.json ; la langue
+« auto » (par défaut) suit celle du système, ou l'anglais si elle n'est pas
+traduite. Les deux se changent ensuite dans l'onglet Paramètres, sans
+redémarrer.
 """
 
+import argparse
 import sys
-import os
+
+from PyQt6.QtCore import QLocale, QTimer
 from PyQt6.QtWidgets import QApplication
 
 import settings as prefs
 from config import Config
-from i18n import switch_lang
+from i18n import resolve_lang, switch_lang
 
-if __name__ == "__main__":
+
+def parse_args(argv):
+    """Options de Céleste ; les options propres à Qt sont laissées à Qt."""
+    parser = argparse.ArgumentParser(
+        prog="main.py", description="Céleste — observatoire astronomique")
+    parser.add_argument("--lang", help="langue de l'interface : auto, fr, en, es, de")
+    parser.add_argument("--theme", help="thème : mocha, frape, latte")
+    args, _qt_args = parser.parse_known_args(argv)
+    return args
+
+
+def main(argv=None):
+    argv = list(sys.argv if argv is None else argv)
+    args = parse_args(argv[1:])
     prefs.load()
 
-    # ── Thème & langue ─────────────────────────────────────────────────────
-    theme = prefs.get("theme") or "mocha"
-    lang  = prefs.get("lang")  or Config.DEFAULT_LANG
+    if sys.platform == "win32":
+        # Icône de Céleste (et non de Python) dans la barre des tâches
+        try:
+            import ctypes
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("astraeos.celeste")
+        except (AttributeError, OSError):
+            pass
 
-    for arg in sys.argv[1:]:
-        if arg.startswith("--lang="):
-            lang = arg.split("=", 1)[1]
-        elif arg == "--lang" and sys.argv.index(arg) + 1 < len(sys.argv):
-            lang = sys.argv[sys.argv.index(arg) + 1]
-        elif arg.startswith("--theme="):
-            theme = arg.split("=", 1)[1]
+    app = QApplication(argv)
+    app.setApplicationName("Céleste")
+    Config.apply_theme(args.theme or prefs.get("theme"))
+    switch_lang(resolve_lang(args.lang or prefs.get("lang"), QLocale.system().name()))
 
-    Config.apply_theme(theme)
-    switch_lang(lang)
-
-    # ── Application Qt ─────────────────────────────────────────────────────
-    os.environ.setdefault("QT_AUTO_SCREEN_SCALE_FACTOR", "1")
-    app = QApplication(sys.argv)
-    # AA_UseHighDpiPixmaps supprime en PyQt6 (HiDPI actif par defaut)
-
-    # Thème Material Design via qt-material
-    try:
-        from qt_material import apply_stylesheet
-        # Mapping palette → thème qt-material
-        _mat = {
-            "mocha":  "dark_blue.xml",
-            "frape":  "dark_purple.xml",
-            "latte":  "light_blue.xml",
-        }
-        qt_theme = _mat.get(theme.replace("\u00e9", "e"), "dark_blue.xml")
-        apply_stylesheet(app, theme=qt_theme, extra={
-            "density_scale": "0",
-            "font_size": "13px",
-        })
-    except ImportError:
-        # qt-material pas installé : fallback Fusion dark
-        app.setStyle("Fusion")
-        from PyQt6.QtGui import QPalette, QColor
-        palette = QPalette()
-        palette.setColor(QPalette.ColorRole.Window,          QColor(Config.BG_MAIN))
-        palette.setColor(QPalette.ColorRole.WindowText,      QColor(Config.FG_WHITE))
-        palette.setColor(QPalette.ColorRole.Base,            QColor(Config.BG_PANEL))
-        palette.setColor(QPalette.ColorRole.AlternateBase,   QColor(Config.BG_MAIN))
-        palette.setColor(QPalette.ColorRole.ToolTipBase,     QColor(Config.BG_PANEL))
-        palette.setColor(QPalette.ColorRole.ToolTipText,     QColor(Config.FG_WHITE))
-        palette.setColor(QPalette.ColorRole.Text,            QColor(Config.FG_WHITE))
-        palette.setColor(QPalette.ColorRole.Button,          QColor(Config.BG_PANEL))
-        palette.setColor(QPalette.ColorRole.ButtonText,      QColor(Config.FG_WHITE))
-        palette.setColor(QPalette.ColorRole.Highlight,       QColor(Config.BTN_COLOR))
-        palette.setColor(QPalette.ColorRole.HighlightedText, QColor(Config.BG_MAIN))
-        app.setPalette(palette)
-
-    from gui import AstroApp
+    from gui import AstroApp, init_style
+    init_style(app)
     window = AstroApp()
     window.show()
 
-    # Géolocalisation auto si activée
+    # Géolocalisation au démarrage si elle est activée dans les paramètres
     if prefs.get("auto_geoloc"):
-        from PyQt6.QtCore import QTimer
         QTimer.singleShot(800, window.geolocate)
 
-    sys.exit(app.exec())
+    return app.exec()
+
+
+if __name__ == "__main__":
+    sys.exit(main())

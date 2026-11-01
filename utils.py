@@ -58,6 +58,32 @@ class Formatters:
             d += 1
         return f"{sign}{d}° {m:02d}' {int(s):02d}\""
 
+    # Eight phase sectors of 45°, centred on the principal phases:
+    # (translation key in the "phases" section of the locales, emoji, English name)
+    PHASES = (
+        ("new_moon",        "🌑", "New Moon"),
+        ("waxing_crescent", "🌒", "Waxing Crescent"),
+        ("first_quarter",   "🌓", "First Quarter"),
+        ("waxing_gibbous",  "🌔", "Waxing Gibbous"),
+        ("full_moon",       "🌕", "Full Moon"),
+        ("waning_gibbous",  "🌖", "Waning Gibbous"),
+        ("last_quarter",    "🌗", "Last Quarter"),
+        ("waning_crescent", "🌘", "Waning Crescent"),
+    )
+
+    @staticmethod
+    def phase_index(phase_angle):
+        """
+        Index in ``PHASES`` of the sector containing *phase_angle*.
+
+        Args:
+            phase_angle (float): Moon longitude − Sun longitude, in degrees (any range).
+
+        Returns:
+            int: 0 (new moon) to 7 (waning crescent).
+        """
+        return int(((phase_angle % 360) + 22.5) // 45) % 8
+
     @staticmethod
     def lunar_phase(illumination, phase_angle):
         """
@@ -74,22 +100,5 @@ class Formatters:
         Returns:
             str: Formatted string, ex. "73.2% 🌔 Waxing Gibbous".
         """
-        norm = phase_angle % 360
-        if norm < 22.5:
-            return f"{illumination:.1f}% 🌑 New Moon"
-        elif norm < 67.5:
-            return f"{illumination:.1f}% 🌒 Waxing Crescent"
-        elif norm < 112.5:
-            return f"{illumination:.1f}% 🌓 First Quarter"
-        elif norm < 157.5:
-            return f"{illumination:.1f}% 🌔 Waxing Gibbous"
-        elif norm < 202.5:
-            return f"{illumination:.1f}% 🌕 Full Moon"
-        elif norm < 247.5:
-            return f"{illumination:.1f}% 🌖 Waning Gibbous"
-        elif norm < 292.5:
-            return f"{illumination:.1f}% 🌗 Last Quarter"
-        elif norm < 337.5:
-            return f"{illumination:.1f}% 🌘 Waning Crescent"
-        else:
-            return f"{illumination:.1f}% 🌑 New Moon"
+        _, emoji, name = Formatters.PHASES[Formatters.phase_index(phase_angle)]
+        return f"{illumination:.1f}% {emoji} {name}"

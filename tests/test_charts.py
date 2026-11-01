@@ -1,0 +1,249 @@
+"""
+tests/test_charts.py — Unit Tests for the Céleste charts
+=========================================================
+Phases of the day behind the trajectory chart, sky map geometry and
+contents, orrery positions, and a smoke test of the three drawings on the
+Agg backend (no display, no Qt).
+
+Run with: pytest tests/
+"""
+
+import math
+import os
+import sys
+from datetime import datetime
+
+import pytest
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+matplotlib = pytest.importorskip("matplotlib")
+matplotlib.use("Agg")
+from matplotlib.figure import Figure  # noqa: E402
+
+import charts  # noqa: E402
+from config import Config  # noqa: E402
+from engine import MeeusEngine  # noqa: E402
+
+# Cherbourg, 1 November 2026, 21:30 UT (night, Moon below the horizon)
+DTE = datetime(2026, 11, 1, 21, 30, 0)
+LAT, LON = 49.6333, -1.6167
+
+
+@pytest.fixture(scope="module")
+def day():
+    return charts.sample_day(DTE, LAT, LON)
+
+
+def _bodies(dte=DTE):
+    jd = MeeusEngine.julian_day(dte)
+    t = MeeusEngine.julian_century_j2000(dte)
+    s_l, r = MeeusEngine.sun_position(t)
+    s_ra, s_dec = MeeusEngine.ecliptic_to_equatorial(s_l, 0, t)
+    s_alt, s_az = MeeusEngine.equatorial_to_horizontal(jd, LAT, LON, s_ra, s_dec)
+    m_l, m_b, m_p = MeeusEngine.moon_position(t)
+    m_ra, m_dec = MeeusEngine.ecliptic_to_equatorial(m_l, m_b, t)
+    m_alt, m_az = MeeusEngine.equatorial_to_horizontal(jd, LAT, LON, m_ra, m_dec)
+    sun = {"name": "Sun", "ra": s_ra, "dec": s_dec, "alt": s_alt, "az": s_az, "dist": r}
+    moon = {"name": "Moon", "ra": m_ra, "dec": m_dec, "alt": m_alt, "az": m_az,
+            "illum": 50.0, "phase": 270.0, "dist": 380000.0}
+    planets = []
+    for name in ("Venus", "Mars", "Jupiter", "Saturn"):
+        ra, dec, dist = MeeusEngine.planet_position(t, name)
+        alt, az = MeeusEngine.equatorial_to_horizontal(jd, LAT, LON, ra, dec)
+        planets.append({"name": name, "ra": ra, "dec": dec, "dist": dist,
+                        "alt": alt, "az": az, "elong": 0.0, "east": True})
+    return jd, sun, moon, planets
+
+
+# ──────────────────────────────────────────────────────────────────────
+# 1. Phases of the day
+# ──────────────────────────────────────────────────────────────────────
+
+class TestDayPhase:
+    def test_thresholds(self):
+        """Same convention as find_events: altitude + 0.833° vs 0/−6/−12/−18°."""
+        assert charts.day_phase(10) == "day"
+        assert charts.day_phase(-0.8) == "day"
+        assert charts.day_phase(-1.0) == "civil"
+        assert charts.day_phase(-6.5) == "civil"
+        assert charts.day_phase(-7.0) == "nautical"
+        assert charts.day_phase(-13.0) == "astronomical"
+        assert charts.day_phase(-19.0) == "night"
+
+
+class TestTwilightSegments:
+    def test_empty(self):
+        assert charts.twilight_segments([], []) == []
+
+    def test_constant_altitude_is_one_segment(self):
+        """Polar day or night: a single segment over the whole day."""
+        hours = [h / 4 for h in range(97)]
+        assert charts.twilight_segments(hours, [30.0] * 97) == [(0.0, 24.0, "day")]
+        assert charts.twilight_segments(hours, [-40.0] * 97) == [(0.0, 24.0, "night")]
+
+    def test_segments_are_contiguous(self, day):
+        hours, sun_alts, _ = day
+        segs = charts.twilight_segments(hours, sun_alts)
+        assert segs[0][0] == hours[0] and segs[-1][1] == hours[-1]
+        for (_, end, _), (start, _, _) in zip(segs, segs[1:]):
+            assert end == start
+        assert all(end > start for start, end, _ in segs)
+        assert all(phase in charts.DAY_PHASES for _, _, phase in segs)
+
+    def test_winter_day_sequence(self, day):
+        """Cherbourg in November: night → twilights → day → twilights → night."""
+        hours, sun_alts, _ = day
+        phases = [p for _, _, p in charts.twilight_segments(hours, sun_alts)]
+        assert phases == ["night", "astronomical", "nautical", "civil", "day",
+                          "civil", "nautical", "astronomical", "night"]
+
+    def test_boundaries_match_daily_events(self, day):
+        """Band edges fall within 2 minutes of the times of the Ephemeris tab."""
+        hours, sun_alts, _ = day
+        segs = charts.twilight_segments(hours, sun_alts)
+        events = MeeusEngine.find_events(DTE, LAT, LON, "sun")
+
+        def hour(dt):
+            return dt.hour + dt.minute / 60 + dt.second / 3600
+
+        starts = {p: s for s, _, p in segs[:5]}          # morning
+        ends = {p: e for _, e, p in segs[4:]}            # evening
+        assert abs(starts["day"] - hour(events["rise"])) < 2 / 60
+        assert abs(ends["day"] - hour(events["set"])) < 2 / 60
+        assert abs(starts["civil"] - hour(events["dawn_civ"])) < 2 / 60
+        assert abs(ends["civil"] - hour(events["dusk_civ"])) < 2 / 60
+
+    def test_phase_colors_follow_theme(self):
+        Config.apply_theme("latte")
+        assert charts.phase_color("day") == Config.TW_DAY
+        Config.apply_theme("mocha")
+        assert charts.phase_color("night") == Config.TW_NIGHT
+
+
+# ──────────────────────────────────────────────────────────────────────
+# 2. Sky map
+# ──────────────────────────────────────────────────────────────────────
+
+class TestSkyGeometry:
+    def test_zenith_at_centre(self):
+        x, y = charts.sky_xy(90, 123)
+        assert abs(x) < 1e-12 and abs(y) < 1e-12
+
+    def test_cardinal_points_on_horizon(self):
+        """North up, east on the right, horizon on the unit circle."""
+        assert all(abs(a - b) < 1e-12 for a, b in zip(charts.sky_xy(0, 0), (0, 1)))
+        assert all(abs(a - b) < 1e-12 for a, b in zip(charts.sky_xy(0, 90), (1, 0)))
+        assert all(abs(a - b) < 1e-12 for a, b in zip(charts.sky_xy(0, 180), (0, -1)))
+
+    def test_below_horizon_outside_circle(self):
+        assert math.hypot(*charts.sky_xy(-10, 45)) > 1
+
+    def test_star_size_decreases_with_magnitude(self):
+        sizes = [charts.star_marker_size(m) for m in (-1.5, 0, 1, 2, 3, 6)]
+        assert sizes == sorted(sizes, reverse=True)
+        assert charts.star_marker_size(10) == charts.star_marker_size(20) > 0
+
+
+class TestSkyScene:
+    def test_stars_above_horizon_and_bright_enough(self):
+        jd, sun, moon, planets = _bodies()
+        scene = charts.sky_scene(jd, LAT, LON, 2.0, sun, moon, planets)
+        assert scene["stars"]
+        assert all(s["alt"] > 0 and s["mag"] <= 2.0 for s in scene["stars"])
+        assert all(math.hypot(s["x"], s["y"]) < 1 for s in scene["stars"])
+
+    def test_magnitude_limit_filters_stars(self):
+        jd, sun, moon, planets = _bodies()
+        bright = charts.sky_scene(jd, LAT, LON, 1.0, sun, moon, planets)
+        faint = charts.sky_scene(jd, LAT, LON, 6.0, sun, moon, planets)
+        assert len(bright["stars"]) < len(faint["stars"])
+
+    def test_constellation_lines_and_bodies(self):
+        jd, sun, moon, planets = _bodies()
+        scene = charts.sky_scene(jd, LAT, LON, 6.0, sun, moon, planets)
+        assert scene["lines"]
+        assert scene["sun"]["kind"] == "sun" and scene["moon"]["kind"] == "moon"
+        assert len(scene["planets"]) == 4
+
+    def test_visible_objects_exclude_bodies_below_horizon(self):
+        jd, sun, moon, planets = _bodies()
+        scene = charts.sky_scene(jd, LAT, LON, 6.0, sun, moon, planets)
+        objs = charts.visible_objects(scene)
+        assert all(o["alt"] > 0 for o in objs)
+        assert scene["sun"] not in objs          # the Sun is down at 21:30 UT
+
+    def test_hit_test(self):
+        objs = [{"x": 0.0, "y": 0.0, "name": "a"}, {"x": 0.5, "y": 0.5, "name": "b"}]
+        assert charts.hit_test(objs, 0.01, 0.01)["name"] == "a"
+        assert charts.hit_test(objs, 0.48, 0.49)["name"] == "b"
+        assert charts.hit_test(objs, 0.25, 0.25) is None
+
+
+# ──────────────────────────────────────────────────────────────────────
+# 3. Orrery
+# ──────────────────────────────────────────────────────────────────────
+
+class TestOrreryScene:
+    def test_orbits_close_and_contain_the_planet(self):
+        scene = charts.orrery_scene(MeeusEngine.julian_century_j2000(DTE), samples=90)
+        for name, body in scene["planets"].items():
+            orbit = body["orbit"]
+            assert len(orbit) == 91
+            first, last = orbit[0], orbit[-1]
+            assert math.hypot(first[0] - last[0], first[1] - last[1]) < 0.05, name
+            assert math.hypot(first[0] - body["x"], first[1] - body["y"]) < 1e-9, name
+
+    def test_earth_one_au_from_the_sun(self):
+        scene = charts.orrery_scene(MeeusEngine.julian_century_j2000(DTE), samples=12)
+        earth = scene["earth"]
+        assert 0.98 < math.hypot(earth["x"], earth["y"]) < 1.02
+
+
+# ──────────────────────────────────────────────────────────────────────
+# 4. Drawings (smoke tests on Agg)
+# ──────────────────────────────────────────────────────────────────────
+
+LABELS_TRAJ = {"title": "T", "xlabel": "UT", "ylabel": "Alt", "local_axis": "Local",
+               "sun": "Sun", "moon": "Moon", "day": "Day", "civil": "Civil",
+               "nautical": "Nautical", "astronomical": "Astro", "night": "Night"}
+PLANET_LABELS = {"Venus": "Venus", "Mars": "Mars", "Jupiter": "Jupiter", "Saturn": "Saturn"}
+
+
+@pytest.mark.parametrize("theme", ["mocha", "frape", "latte"])
+def test_draw_all_charts(theme, day):
+    Config.apply_theme(theme)
+    try:
+        hours, sun_alts, moon_alts = day
+        fig = Figure(figsize=(8, 5))
+        ax, tip = charts.draw_trajectory(fig, hours, sun_alts, moon_alts, 21.5,
+                                         -45.0, -8.0, LABELS_TRAJ, utc_offset=1)
+        assert len(ax.lines) >= 2 and not tip.get_visible()
+        fig.canvas.draw()
+
+        jd, sun, moon, planets = _bodies()
+        scene = charts.sky_scene(jd, LAT, LON, 6.0, sun, moon, planets)
+        fig = Figure(figsize=(6, 6))
+        ax, tip = charts.draw_sky_map(fig, scene, {
+            "title": "Sky", "sun": "Sun", "moon": "Moon", "horizon": "Horizon",
+            "cardinals": ["N", "NE", "E", "SE", "S", "SW", "W", "NW"],
+            "planets": PLANET_LABELS})
+        assert not tip.get_visible()
+        fig.canvas.draw()
+
+        fig = Figure(figsize=(8, 4))
+        charts.draw_orrery(fig, charts.orrery_scene(0.27, samples=30), {
+            "inner": "Inner", "outer": "Outer", "au": "AU", "sun": "Sun",
+            "earth": "Earth", "vernal": "vernal point", "planets": PLANET_LABELS})
+        assert len(fig.axes) == 2
+        fig.canvas.draw()
+    finally:
+        Config.apply_theme("mocha")
+
+
+def test_configure_fonts_picks_an_installed_family():
+    from matplotlib import font_manager
+    installed = {f.name for f in font_manager.fontManager.ttflist}
+    chosen = charts.configure_fonts(("No Such Font", "DejaVu Sans"))
+    assert chosen in installed
+    assert matplotlib.rcParams["font.family"][0] == chosen

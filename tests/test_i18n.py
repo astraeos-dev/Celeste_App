@@ -14,7 +14,8 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from i18n import t, switch_lang, get_lang, available_langs, lang_name, _load_json
+from i18n import (t, tf, switch_lang, get_lang, available_langs, lang_name,
+                  resolve_lang, _load_json)
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -174,8 +175,61 @@ class TestTranslationCoherence:
             "Placeholders incohérents :\n" + "\n".join(mismatches))
 
 
+    @pytest.mark.parametrize("code", ["es", "de"])
+    def test_other_locales_match_fr(self, code):
+        """ES et DE ont exactement les clés de FR : rien ne retombe en français."""
+        fr_keys = _all_keys("fr")
+        keys = _all_keys(code)
+        assert not fr_keys - keys, f"Clés manquantes dans {code}.json : {fr_keys - keys}"
+        assert not keys - fr_keys, f"Clés en trop dans {code}.json : {keys - fr_keys}"
+
+    @pytest.mark.parametrize("code", ["en", "es", "de"])
+    def test_placeholders_consistent_all_locales(self, code):
+        """Les placeholders {xxx} sont les mêmes dans toutes les langues."""
+        import re
+        pattern = re.compile(r'\{(\w+)\}')
+        fr_data = _load_json("fr")
+        data = _load_json(code)
+        mismatches = [k for k in fr_data if k in data and
+                      set(pattern.findall(fr_data[k])) != set(pattern.findall(data[k]))]
+        assert not mismatches, f"Placeholders incohérents dans {code}.json : {mismatches}"
+
+
 # ──────────────────────────────────────────────────────────────────────
-# 5. Format des fichiers JSON
+# 5. Langue automatique et formatage
+# ──────────────────────────────────────────────────────────────────────
+
+class TestResolveLang:
+    def test_explicit_code_is_kept(self):
+        assert resolve_lang("de", "fr_FR") == "de"
+
+    def test_auto_follows_system_language(self):
+        assert resolve_lang("auto", "fr_FR") == "fr"
+        assert resolve_lang("auto", "es-ES") == "es"
+        assert resolve_lang("", "de_DE.UTF-8") == "de"
+
+    def test_auto_falls_back_to_english(self):
+        assert resolve_lang("auto", "ja_JP") == "en"
+        assert resolve_lang("auto", None) == "en"
+
+
+class TestTf:
+    def setup_method(self):
+        switch_lang("fr")
+
+    def test_fills_placeholders(self):
+        assert tf("status.stars_many", n=12) == "12 étoiles visibles"
+
+    def test_placeholder_named_key(self):
+        """Un champ peut s'appeler « key » comme le paramètre de tf()."""
+        assert "F5" in tf("side.calculate_tip", key="F5")
+
+    def test_missing_value_returns_raw_text(self):
+        assert tf("status.stars_many") == t("status.stars_many")
+
+
+# ──────────────────────────────────────────────────────────────────────
+# 6. Format des fichiers JSON
 # ──────────────────────────────────────────────────────────────────────
 
 class TestJsonFormat:

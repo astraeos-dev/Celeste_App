@@ -1,148 +1,446 @@
 """
-gui.py — Interface graphique Céleste (PyQt6 + Material Design)
-===============================================================
-v3.2-dev — Refonte complète PyQt6 :
-  ★ QMainWindow + QTabWidget (6 onglets)
-  ★ Sidebar QWidget avec layout vertical
-  ★ Thème Material Design via qt-material
-  ★ Format 12h/24h immédiat
-  ★ Magnitude limite étoiles
-  ★ Onglet ⚙️ Paramètres complet
+gui.py — Interface graphique de Céleste (PyQt6)
+================================================
+v3.2 — Interface mise à jour :
+  ★ Textes traduits (fr, en, es, de) ; langue et thème appliqués sans redémarrage
+  ★ Barre latérale : date TU avec calendrier, lieu, fuseau, favoris, actions
+  ★ Éphémérides en cartes : durée du jour, phase, âge et distance de la Lune
+  ★ Trajectoires sur fond coloré selon les crépuscules, heure locale en haut
+  ★ Carte du ciel : étoiles à l'échelle de leur magnitude, info-bulles, fiches
+  ★ Planètes : tableau (élongation comprise) et système solaire en deux vues
+  ★ Raccourcis : F5 calculer, Ctrl+L temps réel, Ctrl+E export PDF
 
 Architecture :
-  - Sidebar gauche  : date, lieu, timezone, favoris, boutons
-  - Zone principale : QTabWidget (Éphémérides / Trajectoires /
-                      Carte / Planètes / Événements / Paramètres)
-  - Barre de statut : coordonnées, étoiles visibles, heure UT
+  - Barre latérale  : date, lieu, fuseau, favoris, boutons
+  - Zone principale : QTabWidget (Éphémérides / Trajectoires / Carte du ciel /
+                      Planètes / Événements / Paramètres)
+  - Barre d'état    : lieu, astres visibles, heure TU et heure locale
+
+Les calculs viennent de engine.py, les graphiques sont dessinés par charts.py.
 """
 
-import os
-import sys
 import json
 import math
+import os
 import urllib.request
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
-from PyQt6.QtWidgets import (
-    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
-    QLabel, QPushButton, QLineEdit, QComboBox, QTabWidget,
-    QFrame, QScrollArea, QSlider, QCheckBox, QMessageBox,
-    QInputDialog, QFileDialog, QSizePolicy, QStatusBar,
-    QSplitter, QGroupBox, QSpacerItem,
+from PyQt6.QtCore import (
+    QDate, QDateTime, QLocale, QRegularExpression, Qt, QTime, QTimer,
+    QTimeZone, QUrl,
 )
-from PyQt6.QtCore import Qt, QTimer, pyqtSlot
-from PyQt6.QtGui import QFont, QIcon
+from PyQt6.QtGui import (
+    QBrush, QColor, QDesktopServices, QFont, QFontDatabase, QIcon, QKeySequence,
+    QPainter, QPainterPath, QPalette, QPixmap, QRegularExpressionValidator,
+    QShortcut,
+)
+from PyQt6.QtWidgets import (
+    QAbstractItemView, QApplication, QCheckBox, QComboBox, QDateTimeEdit,
+    QDialog, QDialogButtonBox, QFileDialog, QFrame, QGridLayout, QHBoxLayout,
+    QHeaderView, QInputDialog, QLabel, QLineEdit, QMainWindow, QMessageBox,
+    QProgressBar, QPushButton, QScrollArea, QSizePolicy, QSlider, QStatusBar,
+    QTabWidget, QTableWidget, QTableWidgetItem, QToolButton, QVBoxLayout,
+    QWidget,
+)
 
 import matplotlib
 matplotlib.use("QtAgg")
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg  # noqa: E402
+from matplotlib.figure import Figure  # noqa: E402
 
-from config import Config
-from utils import Formatters
-from engine import MeeusEngine
-from constellations import STARS_EXTRA, CONSTELLATIONS, STAR_CONSTELLATION
-import settings as prefs
+import charts  # noqa: E402
+import settings as prefs  # noqa: E402
+from config import THEME_NAMES, Config  # noqa: E402
+from constellations import STAR_CONSTELLATION  # noqa: E402
+from engine import MeeusEngine  # noqa: E402
+from i18n import (  # noqa: E402
+    available_langs, get_lang, lang_name, resolve_lang, switch_lang, t, tf,
+)
+from utils import Formatters  # noqa: E402
 
 # ── Constantes ────────────────────────────────────────────────────────────────
+
+APP_VERSION = "3.2"
 
 _FAVORITES_FILE = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "favorites.json")
 
-_UTC_OFFSETS = [f"UTC{'+' if i >= 0 else ''}{i}" for i in range(-12, 15)]
+_UTC_OFFSETS = range(-12, 15)
+_PLANETS = ("Venus", "Mars", "Jupiter", "Saturn")
+_PLANET_SYMBOLS = {"Venus": "♀", "Mars": "♂", "Jupiter": "♃", "Saturn": "♄"}
+_QT_DATETIME_FORMAT = "dd/MM/yyyy HH:mm:ss"
 
-_STARS = {
-    "Sirius":      ( 6.7523, -16.7161, -1.46),
-    "Arcturus":    (14.2612,  19.1822, -0.05),
-    "Vega":        (18.6157,  38.7836,  0.03),
-    "Capella":     ( 5.2782,  45.9980,  0.08),
-    "Rigel":       ( 5.2423,  -8.2016,  0.13),
-    "Procyon":     ( 7.6550,   5.2250,  0.34),
-    "Betelgeuse":  ( 5.9194,   7.4070,  0.42),
-    "Altair":      (19.8463,   8.8683,  0.77),
-    "Aldebaran":   ( 4.5988,  16.5093,  0.87),
-    "Spica":       (13.4199, -11.1613,  1.04),
-    "Antares":     (16.4900, -26.4319,  1.06),
-    "Pollux":      ( 7.7553,  28.0262,  1.16),
-    "Fomalhaut":   (22.9608, -29.6223,  1.17),
-    "Deneb":       (20.6905,  45.2803,  1.25),
-    "Regulus":     (10.1395,  11.9672,  1.36),
-    "Adhara":      ( 6.9771, -28.9722,  1.50),
-    "Castor":      ( 7.5766,  31.8883,  1.58),
-    "El Nath":     ( 5.4381,  28.6075,  1.65),
-    "Bellatrix":   ( 5.4186,   6.3497,  1.64),
-    "Alnilam":     ( 5.6036,  -1.2019,  1.70),
-    "Alioth":      (12.9006,  55.9598,  1.76),
-    "Alnitak":     ( 5.6791,  -1.9425,  1.77),
-    "Mirfak":      ( 3.4054,  49.8614,  1.79),
-    "Dubhe":       (11.0623,  61.7508,  1.81),
-    "Alkaid":      (13.7924,  49.3133,  1.85),
-    "Alhena":      ( 6.6285,  16.3992,  1.93),
-    "Alphard":     ( 9.4597,  -8.6584,  1.99),
-    "Hamal":       ( 2.1197,  23.4622,  2.01),
-    "Denebola":    (11.8174,  14.5723,  2.14),
-    "Merak":       (11.0307,  56.3824,  2.37),
-    "Phecda":      (11.8966,  53.6948,  2.44),
-    "Polaris":     ( 2.5303,  89.2641,  1.97),
-}
-_STARS.update(STARS_EXTRA)
+# Degrés décimaux, avec un point ou une virgule (49.6333 ou 49,6333)
+_COORD_REGEX = r"^\s*[+-]?\d{0,3}(?:[.,]\d{0,8})?\s*$"
 
-_PLANET_MAP_STYLE = {
-    "Venus":   {"color": "#D4C060", "marker": "D", "size": 7,  "label": "Venus"},
-    "Mars":    {"color": "#E07050", "marker": "D", "size": 7,  "label": "Mars"},
-    "Jupiter": {"color": "#C8A870", "marker": "D", "size": 9,  "label": "Jupiter"},
-    "Saturn":  {"color": "#C0C060", "marker": "D", "size": 8,  "label": "Saturn"},
-}
+# Polices : la première installée de chaque liste. Aucune police emoji ici :
+# placée dans la liste, elle dessinerait aussi les chiffres et les espaces
+# (Linux, macOS). Qt trouve tout seul une police pour les emoji.
+_UI_FONTS = ("Segoe UI", "Inter", "SF Pro Text", "Helvetica Neue", "Noto Sans",
+             "Ubuntu", "Cantarell", "DejaVu Sans", "Arial")
+_MONO_FONTS = ("Cascadia Mono", "Consolas", "JetBrains Mono", "SF Mono", "Menlo",
+               "DejaVu Sans Mono", "Liberation Mono", "Courier New")
+_fonts = {"ui": None, "mono": None}
 
 
-# ── Helpers UI ────────────────────────────────────────────────────────────────
+# ── Petites fonctions ─────────────────────────────────────────────────────────
 
-def _label(text, bold=False, color=None, size=None):
-    """Crée un QLabel stylé."""
+def _utc_now():
+    """Instant présent en temps universel, sans fuseau ni microsecondes."""
+    return datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0)
+
+
+def _utc_zone():
+    return QTimeZone.utc() if hasattr(QTimeZone, "utc") else QTimeZone(b"UTC")
+
+
+def _pref_float(key, fallback):
+    """Préférence numérique ; *fallback* seulement si elle manque (0.0 est valide)."""
+    value = prefs.get(key)
+    try:
+        return float(value) if value is not None else fallback
+    except (TypeError, ValueError):
+        return fallback
+
+
+def _parse_coord(text, limit):
+    """Degrés décimaux saisis (point ou virgule) ; ValueError hors de ±limit."""
+    value = float(text.strip().replace(",", "."))
+    if math.isnan(value) or not -limit <= value <= limit:
+        raise ValueError(text)
+    return value
+
+
+def _fmt_offset(offset):
+    return f"UTC{'+' if offset >= 0 else '−'}{abs(offset)}"
+
+
+def _fmt_lat(lat):
+    return f"{abs(lat):.4f}° {t('coords.north') if lat >= 0 else t('coords.south')}"
+
+
+def _fmt_lon(lon):
+    return f"{abs(lon):.4f}° {t('coords.east') if lon >= 0 else t('coords.west')}"
+
+
+def _clean_place(name):
+    """Nom de lieu sans l'épingle 📍 que contient la valeur par défaut."""
+    return (name or "").replace("\U0001f4cd", "").strip()
+
+
+def _planet_name(name, symbol=False):
+    text = t(f"planets.{name.lower()}")
+    return f"{_PLANET_SYMBOLS[name]}  {text}" if symbol else text
+
+
+def _plural_key(base, n):
+    """Clé « _one » ou « _many » ; en français, 0 est singulier."""
+    one = n == 1 or (n == 0 and get_lang() == "fr")
+    return f"{base}_{'one' if one else 'many'}"
+
+
+def _fmt_int(value):
+    """Entier avec séparateur de milliers de la langue active."""
+    return QLocale(get_lang()).toString(int(round(value)))
+
+
+def _rgba(color, alpha):
+    """Couleur QSS avec transparence (alpha de 0 à 255)."""
+    c = QColor(color)
+    return f"rgba({c.red()}, {c.green()}, {c.blue()}, {alpha})"
+
+
+def _repolish(widget):
+    widget.style().unpolish(widget)
+    widget.style().polish(widget)
+
+
+def _set_invalid(widget, invalid):
+    if bool(widget.property("invalid")) != invalid:
+        widget.setProperty("invalid", invalid)
+        _repolish(widget)
+
+
+def _label(text="", name=None, role=None, tone=None, strong=False, wrap=False):
+    """QLabel avec nom d'objet et propriétés utilisés par la feuille de style."""
     lbl = QLabel(text)
-    font = lbl.font()
-    if bold:
-        font.setBold(True)
-    if size:
-        font.setPointSize(size)
-    lbl.setFont(font)
-    if color:
-        lbl.setStyleSheet(f"color: {color};")
+    if name:
+        lbl.setObjectName(name)
+    if role:
+        lbl.setProperty("role", role)
+    if tone:
+        lbl.setProperty("tone", tone)
+    if strong:
+        lbl.setProperty("strong", True)
+    if wrap:
+        lbl.setWordWrap(True)
     return lbl
 
 
-def _btn(text, color=None, flat=False):
-    """Crée un QPushButton stylé."""
-    b = QPushButton(text)
-    if color:
-        b.setStyleSheet(
-            f"QPushButton {{ background-color: {color}; border-radius: 4px;"
-            f" padding: 4px 10px; }}"
-            f"QPushButton:hover {{ background-color: {color}cc; }}")
-    if flat:
-        b.setFlat(True)
-    return b
+def _card(name="card"):
+    frame = QFrame()
+    frame.setObjectName(name)
+    return frame
 
 
-def _sep_h():
-    """Séparateur horizontal."""
-    line = QFrame()
-    line.setFrameShape(QFrame.Shape.HLine)
-    line.setFrameShadow(QFrame.Shadow.Sunken)
-    return line
-
-
-def _scroll_widget():
-    """Retourne (QScrollArea, inner_widget, inner_layout)."""
+def _scroll_page():
+    """(QScrollArea, page intérieure, layout vertical de la page)."""
     scroll = QScrollArea()
     scroll.setWidgetResizable(True)
     scroll.setFrameShape(QFrame.Shape.NoFrame)
-    inner = QWidget()
-    layout = QVBoxLayout(inner)
-    layout.setContentsMargins(8, 8, 8, 8)
-    layout.setSpacing(4)
-    scroll.setWidget(inner)
-    return scroll, inner, layout
+    page = QWidget()
+    page.setObjectName("page")
+    layout = QVBoxLayout(page)
+    layout.setContentsMargins(14, 14, 14, 14)
+    layout.setSpacing(12)
+    scroll.setWidget(page)
+    return scroll, page, layout
+
+
+def _set_badge(label, text, color):
+    """Pastille d'état colorée (texte, couleur du thème)."""
+    style = (f"color: {color}; background: {_rgba(color, 34)};"
+             f" border: 1px solid {_rgba(color, 110)}; border-radius: 11px;"
+             f" padding: 2px 10px; font-weight: 600;")
+    if label.text() != text:
+        label.setText(text)
+    if label.styleSheet() != style:
+        label.setStyleSheet(style)
+
+
+# ── Style de l'application ────────────────────────────────────────────────────
+
+def init_style(app):
+    """
+    Police, style Fusion, palette et feuille de style de l'application.
+    À appeler une fois, après la création de QApplication.
+    """
+    installed = set(QFontDatabase.families())
+    ui = next((f for f in _UI_FONTS if f in installed),
+              QFontDatabase.systemFont(QFontDatabase.SystemFont.GeneralFont).family())
+    mono = next((f for f in _MONO_FONTS if f in installed),
+                QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont).family())
+    _fonts.update(ui=ui, mono=mono)
+    font = QFont(ui)
+    font.setPointSizeF(10)
+    app.setFont(font)
+    app.setStyle("Fusion")
+    charts.configure_fonts((ui,) + charts.PREFERRED_FONTS)
+    apply_theme(app)
+
+
+def apply_theme(app):
+    """Palette et feuille de style du thème actif (``Config``)."""
+    app.setPalette(_build_palette())
+    app.setStyleSheet(build_stylesheet())
+
+
+def _build_palette():
+    C, role = Config, QPalette.ColorRole
+    palette = QPalette()
+    for r, color in (
+        (role.Window, C.BG_MAIN), (role.WindowText, C.FG_WHITE),
+        (role.Base, C.BG_CARD), (role.AlternateBase, C.BG_PANEL),
+        (role.ToolTipBase, C.BG_CARD), (role.ToolTipText, C.FG_WHITE),
+        (role.PlaceholderText, C.FG_MUTED), (role.Text, C.FG_WHITE),
+        (role.Button, C.BG_CARD), (role.ButtonText, C.FG_WHITE),
+        (role.BrightText, C.FG_RED), (role.Highlight, C.BTN_COLOR),
+        (role.HighlightedText, C.BG_MAIN), (role.Link, C.BTN_COLOR),
+        (role.Light, C.BG_CARD), (role.Midlight, C.BG_PANEL),
+        (role.Mid, C.GRID_COLOR), (role.Dark, C.BG_MAIN), (role.Shadow, "#000000"),
+    ):
+        palette.setColor(r, QColor(color))
+    for r in (role.Text, role.ButtonText, role.WindowText):
+        palette.setColor(QPalette.ColorGroup.Disabled, r, QColor(C.FG_MUTED))
+    return palette
+
+
+def build_stylesheet():
+    """Feuille de style Qt du thème actif."""
+    C = Config
+    acc, red, grid = C.BTN_COLOR, C.FG_RED, C.GRID_COLOR
+    mono = _fonts["mono"] or "monospace"
+    return f"""
+QMainWindow, QDialog, QWidget#central, QWidget#sidebar {{ background: {C.BG_MAIN}; }}
+QWidget#page {{ background: {C.BG_PANEL}; }}
+QWidget#qt_scrollarea_viewport {{ background: transparent; }}
+QScrollArea {{ background: transparent; border: none; }}
+QLabel {{ background: transparent; }}
+QToolTip {{
+    background: {C.BG_CARD}; color: {C.FG_WHITE}; border: 1px solid {grid};
+    padding: 5px 8px; border-radius: 4px;
+}}
+
+QFrame#card, QFrame#eventCard {{
+    background: {C.BG_CARD}; border: 1px solid {grid}; border-radius: 10px;
+}}
+QLabel#appTitle {{ color: {C.FG_MOON}; font-size: 16pt; font-weight: 700; }}
+QLabel#appSubtitle, QLabel#hint {{ color: {C.FG_MUTED}; }}
+QLabel#section {{ color: {C.FG_MUTED}; font-size: 8pt; font-weight: 700; }}
+QLabel#cardTitle {{ font-size: 12.5pt; font-weight: 700; }}
+QLabel#cardIcon {{ font-size: 17pt; }}
+QLabel#phaseEmoji {{ font-size: 30pt; }}
+QLabel#phaseName {{ color: {C.FG_MOON}; font-size: 12pt; font-weight: 600; }}
+QLabel#eventTitle {{ font-size: 10.5pt; font-weight: 700; }}
+QLabel#emptyState {{ color: {C.FG_MUTED}; font-size: 11pt; padding: 24px 4px; }}
+QLabel[role="key"] {{ color: {C.FG_LABEL}; }}
+QLabel[role="key"][strong="true"] {{ color: {C.FG_WHITE}; font-weight: 600; }}
+QLabel[role="value"] {{ font-family: "{mono}"; color: {C.FG_WHITE}; }}
+QLabel[role="value"][strong="true"] {{ font-weight: 700; }}
+QLabel[tone="sun"] {{ color: {C.FG_SUN}; }}
+QLabel[tone="moon"] {{ color: {C.FG_MOON}; }}
+QLabel[tone="muted"] {{ color: {C.FG_MUTED}; }}
+QLabel[tone="error"] {{ color: {red}; }}
+
+QPushButton, QToolButton {{
+    background: {C.BG_CARD}; border: 1px solid {grid}; border-radius: 7px;
+    padding: 6px 12px;
+}}
+QToolButton {{ padding: 3px; min-width: 26px; min-height: 24px; }}
+QPushButton:hover, QToolButton:hover {{ border-color: {acc}; background: {_rgba(acc, 28)}; }}
+QPushButton:pressed, QToolButton:pressed {{ background: {_rgba(acc, 64)}; }}
+QPushButton:disabled, QToolButton:disabled {{ color: {C.FG_MUTED}; border-color: {_rgba(grid, 120)}; }}
+QPushButton#primary {{
+    background: {acc}; color: {C.BG_MAIN}; border: 1px solid {acc};
+    font-weight: 700; padding: 8px 12px;
+}}
+QPushButton#primary:hover {{ background: {_rgba(acc, 215)}; }}
+QPushButton#primary:pressed {{ background: {_rgba(acc, 170)}; }}
+QPushButton#live:checked {{ background: {_rgba(red, 52)}; border-color: {red}; font-weight: 700; }}
+QPushButton#live:checked:hover {{ background: {_rgba(red, 80)}; }}
+
+QLineEdit, QComboBox, QDateTimeEdit {{
+    background: {C.BG_INPUT}; border: 1px solid {grid}; border-radius: 6px;
+    padding: 4px 8px; min-height: 22px;
+    selection-background-color: {_rgba(acc, 110)}; selection-color: {C.FG_WHITE};
+}}
+QLineEdit:focus, QComboBox:focus, QDateTimeEdit:focus {{ border-color: {acc}; }}
+QLineEdit[invalid="true"] {{ border-color: {red}; background: {_rgba(red, 26)}; }}
+QDateTimeEdit[readOnly="true"] {{ color: {C.FG_LABEL}; }}
+QComboBox QAbstractItemView {{
+    background: {C.BG_CARD}; border: 1px solid {grid};
+    selection-background-color: {_rgba(acc, 70)}; selection-color: {C.FG_WHITE};
+}}
+
+QTabWidget::pane {{
+    border: 1px solid {grid}; border-radius: 8px; background: {C.BG_PANEL}; top: -1px;
+}}
+QTabBar::tab {{
+    background: transparent; color: {C.FG_LABEL}; padding: 8px 14px;
+    margin-right: 2px; border: none; border-bottom: 2px solid transparent;
+}}
+QTabBar::tab:selected {{ color: {C.FG_WHITE}; border-bottom: 2px solid {acc}; }}
+QTabBar::tab:hover:!selected {{ color: {C.FG_WHITE}; }}
+
+QTableWidget {{
+    background: {C.BG_CARD}; border: 1px solid {grid}; border-radius: 8px;
+    gridline-color: {_rgba(grid, 110)};
+}}
+QTableWidget::item {{ padding: 3px 8px; }}
+QHeaderView::section {{
+    background: {C.BG_PANEL}; color: {C.FG_LABEL}; border: none;
+    border-bottom: 1px solid {grid}; padding: 6px 8px; font-weight: 600;
+}}
+QTableCornerButton::section {{ background: {C.BG_PANEL}; border: none; }}
+
+QProgressBar {{
+    background: {C.BG_INPUT}; border: 1px solid {grid}; border-radius: 4px;
+    max-height: 8px;
+}}
+QProgressBar::chunk {{ background: {C.FG_MOON}; border-radius: 3px; }}
+
+QSlider::groove:horizontal {{ background: {grid}; height: 4px; border-radius: 2px; }}
+QSlider::sub-page:horizontal {{ background: {acc}; border-radius: 2px; }}
+QSlider::handle:horizontal {{
+    background: {acc}; width: 14px; height: 14px; margin: -5px 0; border-radius: 7px;
+}}
+
+QScrollBar:vertical {{ background: transparent; width: 10px; margin: 2px; }}
+QScrollBar:horizontal {{ background: transparent; height: 10px; margin: 2px; }}
+QScrollBar::handle:vertical {{ background: {grid}; border-radius: 3px; min-height: 28px; }}
+QScrollBar::handle:horizontal {{ background: {grid}; border-radius: 3px; min-width: 28px; }}
+QScrollBar::add-line, QScrollBar::sub-line {{ width: 0; height: 0; }}
+QScrollBar::add-page, QScrollBar::sub-page {{ background: transparent; }}
+
+QStatusBar {{ background: {C.BG_MAIN}; color: {C.FG_LABEL}; border-top: 1px solid {grid}; }}
+QStatusBar::item {{ border: none; }}
+QStatusBar QLabel {{ color: {C.FG_LABEL}; padding: 0 6px; }}
+QStatusBar QLabel#liveIndicator {{ color: {red}; font-weight: 700; }}
+
+QCheckBox {{ spacing: 8px; }}
+QCalendarWidget QWidget#qt_calendar_navigationbar {{ background: {C.BG_PANEL}; }}
+QCalendarWidget QToolButton {{ background: transparent; border: none; padding: 4px 8px; }}
+QCalendarWidget QAbstractItemView {{
+    background: {C.BG_CARD}; selection-background-color: {acc};
+    selection-color: {C.BG_MAIN};
+}}
+QMenu {{ background: {C.BG_CARD}; border: 1px solid {grid}; }}
+QMenu::item:selected {{ background: {_rgba(acc, 70)}; }}
+"""
+
+
+def app_icon():
+    """Icône de la fenêtre : un croissant de lune sur un ciel de nuit."""
+    pix = QPixmap(64, 64)
+    pix.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pix)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(QColor("#1B1B25"))
+    painter.drawRoundedRect(0, 0, 64, 64, 14, 14)
+    moon, shadow = QPainterPath(), QPainterPath()
+    moon.addEllipse(12, 12, 40, 40)
+    shadow.addEllipse(24, 5, 40, 40)
+    painter.setBrush(QColor("#F9E2AF"))
+    painter.drawPath(moon.subtracted(shadow))
+    painter.setBrush(QColor("#89B4FA"))
+    for x, y, r in ((47, 41, 3), (40, 52, 2), (54, 30, 2)):
+        painter.drawEllipse(x - r, y - r, 2 * r, 2 * r)
+    painter.end()
+    return QIcon(pix)
+
+
+# ── Info-bulles des graphiques ────────────────────────────────────────────────
+
+class _TooltipLayer:
+    """
+    Info-bulle matplotlib redessinée par « blitting » : la survoler ne
+    redessine pas toute la figure, seulement l'info-bulle.
+    """
+
+    def __init__(self, canvas):
+        self.canvas = canvas
+        self.artist = None
+        self._background = None
+        canvas.mpl_connect("draw_event", self._on_draw)
+
+    def attach(self, artist):
+        """Nouvelle info-bulle, après un redessin complet de la figure."""
+        artist.set_animated(True)
+        self.artist = artist
+        self._background = None
+
+    def _on_draw(self, _event):
+        figure = self.canvas.figure
+        self._background = self.canvas.copy_from_bbox(figure.bbox)
+        if self.artist is not None and self.artist.get_visible():
+            figure.draw_artist(self.artist)
+
+    def hide(self):
+        if self.artist is not None and self.artist.get_visible():
+            self.artist.set_visible(False)
+            self.refresh()
+
+    def refresh(self):
+        if self.artist is None:
+            return
+        if self._background is None:
+            self.canvas.draw_idle()
+            return
+        self.canvas.restore_region(self._background)
+        if self.artist.get_visible():
+            self.canvas.figure.draw_artist(self.artist)
+        self.canvas.blit(self.canvas.figure.bbox)
 
 
 # ── Classe principale ─────────────────────────────────────────────────────────
@@ -152,551 +450,703 @@ class AstroApp(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Céleste \u2014 Observatoire Astronomique")
-        self.resize(1350, 820)
-        self.setMinimumSize(1100, 700)
+        self.resize(1360, 840)
+        self.setMinimumSize(1080, 680)
+        self.setWindowIcon(app_icon())
 
         # État
         self.live_mode           = False
-        self._live_timer         = QTimer(self)
-        self._live_timer.timeout.connect(self._live_tick)
-        self.last_cache_key      = ""
+        self.utc_offset          = int(prefs.get("default_utc") or 0)
+        self.location_name       = _clean_place(prefs.get("default_place"))
+        self.favorites           = self._load_favorites()
+        self.sun_data            = {}
+        self.moon_data           = {}
         self.sun_events          = {}
         self.moon_events         = {}
+        self.planets             = []
+        self.visible_stars       = []
+        self.visible_planets_map = []
         self.hours               = []
         self.sun_altitudes       = []
         self.moon_altitudes      = []
-        self.utc_offset          = 0
-        self.favorites           = self._load_favorites()
-        self.visible_stars       = []
-        self.visible_planets_map = []
-        self._sun_data           = {}
-        self._moon_data          = {}
-        self.planet_labels       = {}
-        self._annot              = None
-        self._annot2             = None
+        self.last_cache_key      = ""
+        self._dte = self._lat = self._lon = None
+        self._sky_scene          = None
+        self._sky_objects        = []
+        self._sky_hover          = None
+        self._dirty              = set()
+        self._last_search        = None
+
+        # Minuteries : temps réel et recalcul différé après une saisie
+        self._live_timer = QTimer(self)
+        self._live_timer.timeout.connect(self._live_tick)
+        self._recalc_timer = QTimer(self)
+        self._recalc_timer.setSingleShot(True)
+        self._recalc_timer.timeout.connect(self.calculate)
+
+        # Raccourcis, attachés à la fenêtre : ils survivent aux reconstructions
+        for keys, slot in ((("F5", "Ctrl+Return"), self.calculate),
+                           (("Ctrl+L",), lambda: self.btn_live.toggle()),
+                           (("Ctrl+E",), self.export_pdf)):
+            for key in keys:
+                QShortcut(QKeySequence(key), self).activated.connect(slot)
 
         self._build_ui()
         self.calculate()
 
     # ──────────────────────────────────────────────────────────────────────────
-    # CONSTRUCTION UI
+    # CONSTRUCTION DE L'INTERFACE
     # ──────────────────────────────────────────────────────────────────────────
 
     def _build_ui(self):
+        """Construit (ou reconstruit) toute la fenêtre dans la langue active."""
+        self.setWindowTitle(t("app.title"))
         central = QWidget()
-        self.setCentralWidget(central)
-        root_layout = QHBoxLayout(central)
-        root_layout.setContentsMargins(0, 0, 0, 0)
-        root_layout.setSpacing(0)
+        central.setObjectName("central")
+        root = QHBoxLayout(central)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
+        root.addWidget(self._build_sidebar())
 
-        # ── Sidebar ───────────────────────────────────────────────────────────
-        sidebar = self._build_sidebar()
-        sidebar.setFixedWidth(270)
-        root_layout.addWidget(sidebar)
-
-        # ── Zone principale ───────────────────────────────────────────────────
+        main = QWidget()
+        main_l = QVBoxLayout(main)
+        main_l.setContentsMargins(2, 10, 12, 8)
         self.tabs = QTabWidget()
-        self.tabs.setDocumentMode(True)
-        self.tabs.setTabPosition(QTabWidget.TabPosition.North)
-        root_layout.addWidget(self.tabs, stretch=1)
+        main_l.addWidget(self.tabs)
+        root.addWidget(main, stretch=1)
 
+        self._chart_tabs = {}
         self._build_ephemeris_tab()
         self._build_trajectories_tab()
         self._build_skymap_tab()
         self._build_planets_tab()
         self._build_events_tab()
         self._build_settings_tab()
+        self.tabs.currentChanged.connect(self._on_tab_changed)
 
-        # ── Barre de statut ───────────────────────────────────────────────────
-        sb = QStatusBar()
-        self.setStatusBar(sb)
-        self._lbl_pos    = QLabel("\U0001f4cd \u2014")
-        self._lbl_stars  = QLabel("")
-        self._lbl_time   = QLabel("UT : \u2014")
-        self._lbl_time.setAlignment(Qt.AlignmentFlag.AlignRight)
-        for w in (self._lbl_pos, self._lbl_stars):
-            sb.addWidget(w)
-        sb.addPermanentWidget(self._lbl_time)
-        self._apply_styles()
+        self.setCentralWidget(central)
+        self._build_status_bar()
+        # Sinon le champ de date reçoit le focus avec son jour sélectionné
+        self.btn_calc.setFocus()
 
-    # ──────────────────────────────────────────────────────────────────────────
-    # SIDEBAR
-    # ──────────────────────────────────────────────────────────────────────────
+    # ── Barre latérale ────────────────────────────────────────────────────────
 
     def _build_sidebar(self):
-        sidebar = QWidget()
-        layout = QVBoxLayout(sidebar)
-        layout.setContentsMargins(10, 10, 6, 10)
-        layout.setSpacing(6)
+        side = QWidget()
+        side.setObjectName("sidebar")
+        side.setFixedWidth(300)
+        lay = QVBoxLayout(side)
+        lay.setContentsMargins(14, 14, 10, 12)
+        lay.setSpacing(10)
 
-        # Logo
-        logo = _label("\U0001f319  C\u00c9LESTE", bold=True, color=Config.FG_MOON, size=16)
-        logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(logo)
-        layout.addWidget(_sep_h())
+        # En-tête
+        head = QHBoxLayout()
+        head.setSpacing(10)
+        icon = QLabel()
+        icon.setPixmap(app_icon().pixmap(40, 40))
+        head.addWidget(icon)
+        titles = QVBoxLayout()
+        titles.setSpacing(0)
+        title = _label(t("app.header"), name="appTitle")
+        font = title.font()
+        font.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, 2.0)
+        title.setFont(font)
+        titles.addWidget(title)
+        titles.addWidget(_label(t("app.subtitle"), name="appSubtitle"))
+        head.addLayout(titles, stretch=1)
+        lay.addLayout(head)
 
-        # ── Paramètres ────────────────────────────────────────────────────────
-        grp = QGroupBox("Paramètres")
-        grp_l = QGridLayout(grp)
-        grp_l.setSpacing(6)
+        # Date et heure
+        card = _card()
+        card_l = QVBoxLayout(card)
+        card_l.setContentsMargins(12, 10, 12, 12)
+        card_l.setSpacing(6)
+        card_l.addWidget(_label(t("side.datetime").upper(), name="section"))
+        row = QHBoxLayout()
+        row.setSpacing(6)
+        self.dt_edit = QDateTimeEdit()
+        if hasattr(self.dt_edit, "setTimeZone"):
+            self.dt_edit.setTimeZone(_utc_zone())
+        else:
+            self.dt_edit.setTimeSpec(Qt.TimeSpec.UTC)
+        self.dt_edit.setDisplayFormat(_QT_DATETIME_FORMAT)
+        self.dt_edit.setCalendarPopup(True)
+        self.dt_edit.setToolTip(t("side.datetime_tip"))
+        self._set_datetime(_utc_now())
+        self.dt_edit.dateTimeChanged.connect(lambda _dt: self._schedule_recalc())
+        row.addWidget(self.dt_edit, stretch=1)
+        self.btn_now = QToolButton()
+        self.btn_now.setText("🕒")
+        self.btn_now.setToolTip(t("side.now_tip"))
+        self.btn_now.clicked.connect(self.set_now)
+        row.addWidget(self.btn_now)
+        card_l.addLayout(row)
+        lay.addWidget(card)
 
-        grp_l.addWidget(_label("Date / Heure UT :"), 0, 0)
-        self.entry_date = QLineEdit(datetime.utcnow().strftime("%d/%m/%Y %H:%M:%S"))
-        self.entry_date.returnPressed.connect(self.calculate)
-        grp_l.addWidget(self.entry_date, 0, 1, 1, 2)
+        # Lieu
+        card = _card()
+        grid = QGridLayout(card)
+        grid.setContentsMargins(12, 10, 12, 12)
+        grid.setHorizontalSpacing(8)
+        grid.setVerticalSpacing(7)
+        grid.addWidget(_label(t("side.place").upper(), name="section"), 0, 0, 1, 3)
 
-        grp_l.addWidget(_label("Latitude :"), 1, 0)
-        self.entry_lat = QLineEdit(str(prefs.get("default_lat") or "49.6333"))
-        self.entry_lat.returnPressed.connect(self.calculate)
-        grp_l.addWidget(self.entry_lat, 1, 1, 1, 2)
-
-        grp_l.addWidget(_label("Longitude :"), 2, 0)
-        self.entry_lon = QLineEdit(str(prefs.get("default_lon") or "-1.6167"))
-        self.entry_lon.returnPressed.connect(self.calculate)
-        grp_l.addWidget(self.entry_lon, 2, 1)
-        btn_geo = QPushButton("\U0001f4cd")
-        btn_geo.setFixedWidth(32)
-        btn_geo.setToolTip("Géolocalisation automatique")
+        validator = QRegularExpressionValidator(QRegularExpression(_COORD_REGEX))
+        self.entry_lat = QLineEdit(f"{_pref_float('default_lat', 49.6333):.4f}")
+        self.entry_lon = QLineEdit(f"{_pref_float('default_lon', -1.6167):.4f}")
+        for row_i, (edit, key) in enumerate(((self.entry_lat, "latitude"),
+                                             (self.entry_lon, "longitude")), start=1):
+            edit.setValidator(validator)
+            edit.setToolTip(t(f"side.{key}_tip"))
+            edit.returnPressed.connect(self.calculate)
+            edit.textEdited.connect(self._on_coords_edited)
+            grid.addWidget(_label(t(f"side.{key}"), role="key"), row_i, 0)
+            grid.addWidget(edit, row_i, 1, 1, 1 if key == "longitude" else 2)
+        btn_geo = QToolButton()
+        btn_geo.setText("📍")
+        btn_geo.setToolTip(t("side.geoloc_tip"))
         btn_geo.clicked.connect(self.geolocate)
-        grp_l.addWidget(btn_geo, 2, 2)
+        grid.addWidget(btn_geo, 2, 2)
 
-        grp_l.addWidget(_label("Fuseau :"), 3, 0)
+        grid.addWidget(_label(t("side.timezone"), role="key"), 3, 0)
         self.offset_menu = QComboBox()
-        self.offset_menu.addItems(_UTC_OFFSETS)
-        _utc = prefs.get("default_utc") or 0
-        _utc_str = f"UTC+{_utc}" if _utc >= 0 else f"UTC{_utc}"
-        idx = self.offset_menu.findText(_utc_str)
-        self.offset_menu.setCurrentIndex(idx if idx >= 0 else 12)
-        self.offset_menu.currentTextChanged.connect(self._on_offset_change)
-        grp_l.addWidget(self.offset_menu, 3, 1, 1, 2)
+        for offset in _UTC_OFFSETS:
+            self.offset_menu.addItem(_fmt_offset(offset), offset)
+        self.offset_menu.setCurrentIndex(self.offset_menu.findData(self.utc_offset))
+        self.offset_menu.setToolTip(t("side.timezone_tip"))
+        self.offset_menu.currentIndexChanged.connect(self._on_offset_change)
+        grid.addWidget(self.offset_menu, 3, 1, 1, 2)
 
-        grp_l.setColumnStretch(1, 1)
-        layout.addWidget(grp)
-
-        # Bouton Calculer
-        self.btn_calc = QPushButton("\U0001f52d  CALCULER")
-        self.btn_calc.setMinimumHeight(36)
-        self.btn_calc.clicked.connect(self.calculate)
-        layout.addWidget(self.btn_calc)
-
-        # Bouton Live
-        self.btn_live = QPushButton("\u23f1  LIVE")
-        self.btn_live.setCheckable(True)
-        self.btn_live.clicked.connect(self.toggle_live)
-        layout.addWidget(self.btn_live)
-
-        # Bouton Export PDF
-        btn_pdf = QPushButton("\U0001f4c4  EXPORT PDF")
-        btn_pdf.clicked.connect(self.export_pdf)
-        layout.addWidget(btn_pdf)
-
-        layout.addWidget(_sep_h())
-
-        # ── Favoris ───────────────────────────────────────────────────────────
-        grp_fav = QGroupBox("Lieux favoris")
-        fav_l = QGridLayout(grp_fav)
-        fav_l.setSpacing(4)
-
+        grid.setRowMinimumHeight(4, 4)
+        grid.addWidget(_label(t("side.favorites").upper(), name="section"), 5, 0, 1, 3)
+        fav_row = QHBoxLayout()
+        fav_row.setSpacing(4)
         self.combo_fav = QComboBox()
-        self.combo_fav.setEditable(False)
+        self.combo_fav.setPlaceholderText(t("side.favorites_placeholder"))
+        self.combo_fav.setSizePolicy(QSizePolicy.Policy.Expanding,
+                                     QSizePolicy.Policy.Fixed)
+        self.combo_fav.setMinimumContentsLength(8)
         self._refresh_favorites_combo()
-        fav_l.addWidget(self.combo_fav, 0, 0)
+        self.combo_fav.activated.connect(self._apply_favorite)
+        fav_row.addWidget(self.combo_fav, stretch=1)
+        for text, tip, slot in (("💾", "side.fav_save_tip", self.save_location),
+                                ("🗑", "side.fav_delete_tip", self.delete_location)):
+            btn = QToolButton()
+            btn.setText(text)
+            btn.setToolTip(t(tip))
+            btn.clicked.connect(slot)
+            fav_row.addWidget(btn)
+        grid.addLayout(fav_row, 6, 0, 1, 3)
+        grid.setColumnStretch(1, 1)
+        lay.addWidget(card)
 
-        btn_apply = QPushButton("\u2714")
-        btn_apply.setFixedWidth(30)
-        btn_apply.setToolTip("Appliquer ce lieu")
-        btn_apply.clicked.connect(self._apply_favorite)
-        fav_l.addWidget(btn_apply, 0, 1)
+        # Actions
+        self.btn_calc = QPushButton(f"⚡  {t('side.calculate')}")
+        self.btn_calc.setObjectName("primary")
+        self.btn_calc.setToolTip(tf("side.calculate_tip", key="F5"))
+        self.btn_calc.clicked.connect(self.calculate)
+        lay.addWidget(self.btn_calc)
 
-        btn_save_fav = QPushButton("\U0001f4be")
-        btn_save_fav.setFixedWidth(30)
-        btn_save_fav.setToolTip("Sauvegarder le lieu actuel")
-        btn_save_fav.clicked.connect(self.save_location)
-        fav_l.addWidget(btn_save_fav, 0, 2)
+        self.btn_live = QPushButton()
+        self.btn_live.setObjectName("live")
+        self.btn_live.setCheckable(True)
+        self.btn_live.setToolTip(tf("side.live_tip", key="Ctrl+L"))
+        self.btn_live.toggled.connect(self.toggle_live)
+        lay.addWidget(self.btn_live)
 
-        btn_del_fav = QPushButton("\U0001f5d1")
-        btn_del_fav.setFixedWidth(30)
-        btn_del_fav.setToolTip("Supprimer ce favori")
-        btn_del_fav.clicked.connect(self.delete_location)
-        fav_l.addWidget(btn_del_fav, 0, 3)
+        btn_pdf = QPushButton(f"📄  {t('side.export')}")
+        btn_pdf.setToolTip(tf("side.export_tip", key="Ctrl+E"))
+        btn_pdf.clicked.connect(self.export_pdf)
+        lay.addWidget(btn_pdf)
 
-        fav_l.setColumnStretch(0, 1)
-        layout.addWidget(grp_fav)
+        lay.addStretch()
+        lay.addWidget(_label(f"Céleste v{APP_VERSION}", name="hint"))
+        return side
 
-        layout.addStretch()
-        return sidebar
-
-    # ──────────────────────────────────────────────────────────────────────────
-    # ONGLET 1 — ÉPHÉMÉRIDES
-    # ──────────────────────────────────────────────────────────────────────────
+    # ── Onglet 1 : éphémérides ────────────────────────────────────────────────
 
     def _build_ephemeris_tab(self):
-        tab = QWidget()
-        layout = QHBoxLayout(tab)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(8)
+        scroll, _page, lay = _scroll_page()
+        row = QHBoxLayout()
+        row.setSpacing(12)
 
-        # ── Soleil ────────────────────────────────────────────────────────────
-        sun_box = QGroupBox("☀️  Soleil")
-        sun_l = QVBoxLayout(sun_box)
-        self._lbl_sun_vis = _label("", color=Config.FG_GREEN, bold=True)
-        self._lbl_sun_vis.setAlignment(Qt.AlignmentFlag.AlignRight)
-        sun_l.addWidget(self._lbl_sun_vis)
-        scroll, _, inner_l = _scroll_widget()
-        sun_fields = [
-            ("RA",       "Ascension droite"),
-            ("Dec",      "Déclinaison"),
-            ("Alt",      "Altitude"),
-            ("Az",       "Azimut"),
-            ("EoT",      "Équation du temps"),
-            ("DawnAstro","Aube astro  ▼18°"),
-            ("DawnNaut", "Aube naut.  ▼12°"),
-            ("Dawn",     "Aube civile  ▼6°"),
-            ("Rise",     "Lever"),
-            ("Transit",  "Transit"),
-            ("Set",      "Coucher"),
-            ("Dusk",     "Crép. civil  ▼6°"),
-            ("DuskNaut", "Crép. naut. ▼12°"),
-            ("DuskAstro","Crép. astro ▼18°"),
-        ]
-        self.sun_labels = self._make_data_rows(inner_l, sun_fields, Config.FG_SUN)
-        sun_l.addWidget(scroll)
-        layout.addWidget(sun_box)
+        # Soleil
+        card, body, self._lbl_sun_state = self._body_card("☀️", t("sun.title"))
+        self.sun_labels = {}
+        r = self._section_rows(body, 0, t("sun.section_position"), [
+            ("ra", "sun.ra"), ("dec", "sun.dec"), ("alt", "sun.alt"),
+            ("az", "sun.az"), ("eot", "sun.eot"), ("dist", "sun.dist"),
+        ], self.sun_labels, tone="sun")
+        self._sun_events_title = _label("", name="section")
+        self._section_rows(body, r, self._sun_events_title, [
+            ("dawn_astro", "sun.dawn_astro"), ("dawn_naut", "sun.dawn_naut"),
+            ("dawn_civ", "sun.dawn_civil"), ("rise", "sun.rise", True),
+            ("transit", "sun.transit"), ("set", "sun.set", True),
+            ("dusk_civ", "sun.dusk_civil"), ("dusk_naut", "sun.dusk_naut"),
+            ("dusk_astro", "sun.dusk_astro"), ("day_length", "sun.day_length"),
+        ], self.sun_labels)
+        row.addWidget(card, stretch=1)
 
-        sep = QFrame()
-        sep.setFrameShape(QFrame.Shape.VLine)
-        sep.setFrameShadow(QFrame.Shadow.Sunken)
-        layout.addWidget(sep)
+        # Lune
+        card, body, self._lbl_moon_state = self._body_card("🌙", t("moon.title"))
+        self.moon_labels = {}
+        r = self._section_rows(body, 0, t("moon.section_position"), [
+            ("ra", "moon.ra"), ("dec", "moon.dec"), ("alt", "moon.alt"),
+            ("az", "moon.az"), ("dist", "moon.dist"),
+        ], self.moon_labels, tone="moon")
 
-        # ── Lune ──────────────────────────────────────────────────────────────
-        moon_box = QGroupBox("🌙  Lune")
-        moon_l = QVBoxLayout(moon_box)
-        self._lbl_moon_vis = _label("", color=Config.FG_GREEN, bold=True)
-        self._lbl_moon_vis.setAlignment(Qt.AlignmentFlag.AlignRight)
-        moon_l.addWidget(self._lbl_moon_vis)
-        scroll2, _, inner_l2 = _scroll_widget()
-        moon_fields = [
-            ("RA",      "Ascension droite"),
-            ("Dec",     "Déclinaison"),
-            ("Alt",     "Altitude"),
-            ("Az",      "Azimut"),
-            ("Illum",   "Phase lunaire"),
-            ("Rise",    "Lever"),
-            ("Transit", "Transit"),
-            ("Set",     "Coucher"),
-        ]
-        self.moon_labels = self._make_data_rows(inner_l2, moon_fields, Config.FG_MOON)
-        moon_l.addWidget(scroll2)
-        layout.addWidget(moon_box)
+        body.setRowMinimumHeight(r, 14)
+        body.addWidget(_label(t("moon.section_phase").upper(), name="section"), r + 1, 0, 1, 2)
+        r += 1
+        phase_row = QHBoxLayout()
+        phase_row.setSpacing(12)
+        self._lbl_phase_emoji = _label("🌑", name="phaseEmoji")
+        phase_row.addWidget(self._lbl_phase_emoji)
+        phase_text = QVBoxLayout()
+        phase_text.setSpacing(4)
+        self._lbl_phase_name = _label("—", name="phaseName")
+        phase_text.addWidget(self._lbl_phase_name)
+        self._illum_bar = QProgressBar()
+        self._illum_bar.setRange(0, 1000)
+        self._illum_bar.setTextVisible(False)
+        phase_text.addWidget(self._illum_bar)
+        phase_row.addLayout(phase_text, stretch=1)
+        body.addLayout(phase_row, r + 1, 0, 1, 2)
+        r = self._section_rows(body, r + 2, None, [
+            ("illum", "moon.illum"), ("age", "moon.age"),
+        ], self.moon_labels, tone="moon")
 
-        self.tabs.addTab(tab, "☀️🌙  Éphémérides")
+        self._moon_events_title = _label("", name="section")
+        self._section_rows(body, r, self._moon_events_title, [
+            ("rise", "moon.rise", True), ("transit", "moon.transit"),
+            ("set", "moon.set", True),
+        ], self.moon_labels)
+        row.addWidget(card, stretch=1)
 
-    def _make_data_rows(self, layout, fields, val_color):
-        TIME_KEYS = {"Rise", "Transit", "Set", "Dawn", "Dusk", "Illum",
-                     "DawnNaut", "DuskNaut", "DawnAstro", "DuskAstro"}
-        labels = {}
-        for key, text in fields:
-            row_w = QWidget()
-            row_l = QHBoxLayout(row_w)
-            row_l.setContentsMargins(4, 2, 4, 2)
-            lbl_key = _label(text)
-            lbl_key.setMinimumWidth(170)
-            lbl_val = _label("\u2014",
-                             color=(Config.FG_WHITE if key in TIME_KEYS else val_color),
-                             bold=True)
-            lbl_val.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            row_l.addWidget(lbl_key)
-            row_l.addWidget(lbl_val)
-            layout.addWidget(row_w)
-            labels[key] = lbl_val
-        layout.addStretch()
-        return labels
+        lay.addLayout(row)
+        lay.addStretch()
+        self.tabs.addTab(scroll, t("tabs.ephemeris"))
 
-    # ──────────────────────────────────────────────────────────────────────────
-    # ONGLET 2 — TRAJECTOIRES
-    # ──────────────────────────────────────────────────────────────────────────
+    def _body_card(self, icon, title):
+        """Carte d'un astre : (carte, grille des données, pastille d'état)."""
+        card = _card()
+        outer = QVBoxLayout(card)
+        outer.setContentsMargins(16, 12, 16, 14)
+        outer.setSpacing(10)
+        head = QHBoxLayout()
+        head.addWidget(_label(icon, name="cardIcon"))
+        head.addWidget(_label(title, name="cardTitle"))
+        head.addStretch()
+        badge = QLabel()
+        head.addWidget(badge)
+        outer.addLayout(head)
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(16)
+        grid.setVerticalSpacing(5)
+        grid.setColumnStretch(0, 1)
+        outer.addLayout(grid)
+        outer.addStretch()
+        return card, grid, badge
+
+    @staticmethod
+    def _section_rows(grid, row, title, fields, labels, tone=None):
+        """
+        Ajoute un intertitre (texte, QLabel ou None) puis une ligne
+        « libellé … valeur » par champ ; retourne la ligne suivante.
+        Champ : (clé, clé de traduction[, mise en avant]).
+        """
+        if title is not None:
+            if isinstance(title, str):
+                title = _label(title.upper(), name="section")
+            if row:
+                grid.setRowMinimumHeight(row, 14)
+                row += 1
+            grid.addWidget(title, row, 0, 1, 2)
+            row += 1
+        for key, text_key, *opt in fields:
+            strong = bool(opt and opt[0])
+            grid.addWidget(_label(t(text_key), role="key", strong=strong), row, 0)
+            value = _label("—", role="value", tone=tone, strong=strong)
+            value.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            value.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            grid.addWidget(value, row, 1)
+            labels[key] = value
+            row += 1
+        return row
+
+    # ── Onglets 2 et 3 : graphiques ───────────────────────────────────────────
+
+    def _chart_page(self, name, toolbar=None, hint=None):
+        """Page d'onglet contenant un graphique matplotlib."""
+        page = QWidget()
+        page.setObjectName("page")
+        lay = QVBoxLayout(page)
+        lay.setContentsMargins(8, 8, 8, 8)
+        lay.setSpacing(6)
+        if toolbar is not None:
+            lay.addLayout(toolbar)
+        figure = Figure(facecolor=Config.BG_PANEL)
+        canvas = FigureCanvasQTAgg(figure)
+        canvas.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        lay.addWidget(canvas, stretch=1)
+        if hint:
+            lay.addWidget(_label(hint, name="hint"))
+        self._chart_tabs[page] = name
+        return page, figure, canvas
 
     def _build_trajectories_tab(self):
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
-        layout.setContentsMargins(4, 4, 4, 4)
-        self.fig1 = plt.Figure(facecolor=Config.BG_MAIN)
-        self.ax1  = self.fig1.add_subplot(111, facecolor=Config.BG_PANEL)
-        self.fig1.subplots_adjust(left=0.07, right=0.97, top=0.93, bottom=0.08)
-        self.canvas1 = FigureCanvasQTAgg(self.fig1)
-        self.canvas1.mpl_connect("motion_notify_event", self._on_hover)
-        layout.addWidget(self.canvas1)
-        self.tabs.addTab(tab, "📈  Trajectoires")
-
-    # ──────────────────────────────────────────────────────────────────────────
-    # ONGLET 3 — CARTE DU CIEL
-    # ──────────────────────────────────────────────────────────────────────────
+        page, self.fig_traj, self.canvas_traj = self._chart_page(
+            "traj", hint=t("chart.hint"))
+        self._traj_ax = None
+        self._traj_tip = _TooltipLayer(self.canvas_traj)
+        self.canvas_traj.mpl_connect("motion_notify_event", self._on_traj_hover)
+        self.canvas_traj.mpl_connect("figure_leave_event",
+                                     lambda _e: self._traj_tip.hide())
+        self.tabs.addTab(page, t("tabs.trajectory"))
 
     def _build_skymap_tab(self):
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
-        layout.setContentsMargins(4, 4, 4, 4)
-        self.fig2 = plt.Figure(facecolor=Config.BG_MAIN)
-        self.ax2  = self.fig2.add_subplot(111, projection='polar',
-                                          facecolor=Config.BG_PANEL)
-        self.fig2.subplots_adjust(left=0.05, right=0.95, top=0.92, bottom=0.05)
-        self.canvas2 = FigureCanvasQTAgg(self.fig2)
-        self.canvas2.mpl_connect("motion_notify_event", self._on_hover)
-        self.canvas2.mpl_connect("button_press_event", self._on_click_map)
-        layout.addWidget(self.canvas2)
-        self.tabs.addTab(tab, "🌌  Carte du ciel")
+        bar = QHBoxLayout()
+        bar.setSpacing(10)
+        bar.addWidget(_label(t("skymap.mag_limit"), role="key"))
+        self._mag_slider = QSlider(Qt.Orientation.Horizontal)
+        self._mag_slider.setRange(10, 70)          # magnitude × 10
+        self._mag_slider.setFixedWidth(220)
+        self._mag_slider.setValue(int(round(self._mag_limit() * 10)))
+        self._mag_slider.setToolTip(t("skymap.mag_tip"))
+        self._mag_lbl = _label(f"{self._mag_limit():.1f}", role="value")
+        self._mag_lbl.setMinimumWidth(30)
+        self._mag_slider.valueChanged.connect(self._on_mag_changed)
+        bar.addWidget(self._mag_slider)
+        bar.addWidget(self._mag_lbl)
+        bar.addStretch()
 
-    # ──────────────────────────────────────────────────────────────────────────
-    # ONGLET 4 — PLANÈTES
-    # ──────────────────────────────────────────────────────────────────────────
+        page, self.fig_sky, self.canvas_sky = self._chart_page(
+            "sky", toolbar=bar, hint=t("skymap.hint"))
+        self._sky_ax = None
+        self._sky_tip = _TooltipLayer(self.canvas_sky)
+        self.canvas_sky.mpl_connect("motion_notify_event", self._on_sky_hover)
+        self.canvas_sky.mpl_connect("button_press_event", self._on_sky_click)
+        self.canvas_sky.mpl_connect("figure_leave_event", self._on_sky_leave)
+        self.tabs.addTab(page, t("tabs.skymap"))
+
+    # ── Onglet 4 : planètes ───────────────────────────────────────────────────
 
     def _build_planets_tab(self):
-        tab = QWidget()
-        layout = QHBoxLayout(tab)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(8)
+        page = QWidget()
+        page.setObjectName("page")
+        lay = QVBoxLayout(page)
+        lay.setContentsMargins(12, 12, 12, 8)
+        lay.setSpacing(8)
 
-        # Cartes planètes (gauche)
-        left = QWidget()
-        left.setFixedWidth(300)
-        left_l = QVBoxLayout(left)
-        left_l.setSpacing(6)
-        _PLANETS_CFG = [
-            ("Venus",   "♀  VÉNUS",   "#D4C060"),
-            ("Mars",    "♂  MARS",    "#E07050"),
-            ("Jupiter", "♃  JUPITER", "#C8A870"),
-            ("Saturn",  "♄  SATURNE", "#C0C060"),
-        ]
-        self.planet_labels = {}
-        pl_fields = [
-            ("RA", "Ascension droite"), ("Dec", "Déclinaison"),
-            ("Alt", "Altitude"), ("Az", "Azimut"), ("Dist", "Distance (UA)"),
-        ]
-        for pname, ptitle, pcolor in _PLANETS_CFG:
-            box = QGroupBox(ptitle)
-            box.setStyleSheet(f"QGroupBox {{ color: {pcolor}; font-weight: bold; }}")
-            box_l = QVBoxLayout(box)
-            box_l.setSpacing(2)
-            vis_lbl = _label("", color=Config.FG_GREEN, bold=True)
-            vis_lbl.setAlignment(Qt.AlignmentFlag.AlignRight)
-            box_l.addWidget(vis_lbl)
-            lbls = self._make_data_rows(box_l, pl_fields, pcolor)
-            lbls["_vis"] = vis_lbl
-            self.planet_labels[pname] = lbls
-            left_l.addWidget(box)
-        left_l.addStretch()
+        columns = ["col_planet", "col_ra", "col_dec", "col_alt", "col_az",
+                   "col_dist", "col_elong", "col_state"]
+        table = QTableWidget(len(_PLANETS), len(columns))
+        table.setHorizontalHeaderLabels([t(f"planets.{c}") for c in columns])
+        table.verticalHeader().setVisible(False)
+        table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        table.setShowGrid(False)
+        header = table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(len(columns) - 1, QHeaderView.ResizeMode.ResizeToContents)
+        header.setDefaultAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        table.verticalHeader().setDefaultSectionSize(32)
+        mono = QFont(_fonts["mono"] or "monospace")
+        self._planet_items = {}
+        for r, name in enumerate(_PLANETS):
+            items = {}
+            for c, col in enumerate(columns):
+                item = QTableWidgetItem("—")
+                item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+                if col == "col_planet":
+                    item.setText(_planet_name(name, symbol=True))
+                    item.setForeground(QBrush(QColor(Config.planet_color(name))))
+                    bold = item.font()
+                    bold.setBold(True)
+                    item.setFont(bold)
+                elif col != "col_state":
+                    item.setFont(mono)
+                table.setItem(r, c, item)
+                items[col] = item
+            self._planet_items[name] = items
+        table.setFixedHeight(32 * len(_PLANETS) + table.horizontalHeader().sizeHint().height() + 4)
+        self.planet_table = table
+        lay.addWidget(table)
 
-        scroll_left = QScrollArea()
-        scroll_left.setWidgetResizable(True)
-        scroll_left.setFrameShape(QFrame.Shape.NoFrame)
-        scroll_left.setWidget(left)
-        layout.addWidget(scroll_left)
+        self.fig_orrery = Figure(facecolor=Config.BG_PANEL)
+        self.canvas_orrery = FigureCanvasQTAgg(self.fig_orrery)
+        lay.addWidget(self.canvas_orrery, stretch=1)
+        self._chart_tabs[page] = "orrery"
+        self.tabs.addTab(page, t("tabs.planets"))
 
-        # Orréry (droite)
-        right = QWidget()
-        right_l = QVBoxLayout(right)
-        right_l.setContentsMargins(0, 0, 0, 0)
-        self.fig3 = plt.Figure(facecolor=Config.BG_MAIN)
-        self.ax3  = self.fig3.add_subplot(111, aspect='equal',
-                                          facecolor=Config.BG_PANEL)
-        self.fig3.subplots_adjust(left=0.05, right=0.97, top=0.93, bottom=0.05)
-        self.canvas3 = FigureCanvasQTAgg(self.fig3)
-        right_l.addWidget(self.canvas3)
-        layout.addWidget(right, stretch=1)
-
-        self.tabs.addTab(tab, "🪐  Planètes")
-
-    # ──────────────────────────────────────────────────────────────────────────
-    # ONGLET 5 — ÉVÉNEMENTS
-    # ──────────────────────────────────────────────────────────────────────────
+    # ── Onglet 5 : événements ─────────────────────────────────────────────────
 
     def _build_events_tab(self):
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
-        layout.setContentsMargins(10, 10, 10, 10)
-        layout.setSpacing(8)
+        page = QWidget()
+        page.setObjectName("page")
+        lay = QVBoxLayout(page)
+        lay.setContentsMargins(14, 14, 14, 8)
+        lay.setSpacing(10)
 
-        # Boutons de recherche
-        btn_row = QWidget()
-        btn_row_l = QHBoxLayout(btn_row)
-        btn_row_l.setContentsMargins(0, 0, 0, 0)
-        btn_eclipses = QPushButton("🔭  Rechercher éclipses (12 mois)")
-        btn_eclipses.clicked.connect(self._search_eclipses_gui)
-        btn_conjunctions = QPushButton("🪐  Rechercher conjonctions (12 mois)")
-        btn_conjunctions.clicked.connect(self._search_conjunctions_gui)
-        btn_row_l.addWidget(btn_eclipses)
-        btn_row_l.addWidget(btn_conjunctions)
-        btn_row_l.addStretch()
-        layout.addWidget(btn_row)
+        bar = QHBoxLayout()
+        btn_ecl = QPushButton(f"🌘  {t('events.search_eclipses')}")
+        btn_ecl.clicked.connect(self._search_eclipses_gui)
+        btn_conj = QPushButton(f"🪐  {t('events.search_conjunctions')}")
+        btn_conj.clicked.connect(self._search_conjunctions_gui)
+        bar.addWidget(btn_ecl)
+        bar.addWidget(btn_conj)
+        bar.addStretch()
+        lay.addLayout(bar)
 
-        # Zone de résultats
-        self._evt_scroll, self._evt_inner, self._evt_layout = _scroll_widget()
-        self._evt_layout.addWidget(_label("Cliquez un bouton pour lancer la recherche.",
-                                          color=Config.FG_LABEL))
-        self._evt_layout.addStretch()
-        layout.addWidget(self._evt_scroll)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        inner = QWidget()
+        inner.setObjectName("page")
+        self._evt_layout = QVBoxLayout(inner)
+        self._evt_layout.setContentsMargins(0, 0, 4, 0)
+        self._evt_layout.setSpacing(8)
+        scroll.setWidget(inner)
+        lay.addWidget(scroll, stretch=1)
+        self._show_events_placeholder()
+        self.tabs.addTab(page, t("tabs.events"))
 
-        self.tabs.addTab(tab, "📅  Événements")
-
-    # ──────────────────────────────────────────────────────────────────────────
-    # ONGLET 6 — PARAMÈTRES
-    # ──────────────────────────────────────────────────────────────────────────
+    # ── Onglet 6 : paramètres ─────────────────────────────────────────────────
 
     def _build_settings_tab(self):
-        scroll, inner, layout = _scroll_widget()
-        layout.setSpacing(10)
+        scroll, _page, lay = _scroll_page()
 
-        def _section(title):
-            lbl = _label(title, bold=True, color=Config.FG_MOON, size=11)
-            layout.addWidget(lbl)
-            layout.addWidget(_sep_h())
+        def section(title):
+            card = _card()
+            card.setMaximumWidth(760)
+            grid = QGridLayout(card)
+            grid.setContentsMargins(16, 12, 16, 14)
+            grid.setHorizontalSpacing(14)
+            grid.setVerticalSpacing(8)
+            grid.setColumnMinimumWidth(0, 220)
+            grid.setColumnStretch(1, 1)
+            grid.addWidget(_label(title.upper(), name="section"), 0, 0, 1, 2)
+            lay.addWidget(card)
+            return grid
 
-        def _row(label_text, widget):
-            row = QWidget()
-            row_l = QHBoxLayout(row)
-            row_l.setContentsMargins(4, 0, 4, 0)
-            lbl = _label(label_text)
-            lbl.setFixedWidth(230)
-            row_l.addWidget(lbl)
-            row_l.addWidget(widget, stretch=1)
-            layout.addWidget(row)
-            return row
+        def row(grid, text, widget):
+            r = grid.rowCount()
+            grid.addWidget(_label(text, role="key"), r, 0)
+            if isinstance(widget, QWidget):
+                grid.addWidget(widget, r, 1)
+            else:
+                grid.addLayout(widget, r, 1)
 
-        # ── Apparence ─────────────────────────────────────────────────────────
-        _section("🎨  Apparence")
-
+        # Apparence
+        grid = section(t("settings.appearance"))
         self._theme_combo = QComboBox()
-        self._theme_combo.addItems(["mocha", "frapé", "latte"])
-        _t = prefs.get("theme") or "mocha"
-        _t_disp = {"frape": "frapé"}.get(_t, _t)
-        self._theme_combo.setCurrentText(_t_disp)
-        self._theme_combo.currentTextChanged.connect(self._on_theme_change)
-        _row("Thème (Catppuccin)", self._theme_combo)
-
-        # ── Langue & Format ────────────────────────────────────────────────────
-        _section("🌐  Langue & Format")
-
-        self._lang_combo = QComboBox()
-        self._lang_combo.addItems(["en", "fr", "de", "es"])
-        self._lang_combo.setCurrentText(prefs.get("lang") or "en")
-        self._lang_combo.currentTextChanged.connect(self._on_lang_change)
-        _row("Langue de l'interface", self._lang_combo)
+        for key in THEME_NAMES:
+            self._theme_combo.addItem(t(f"settings.theme_{key}"), key)
+        self._theme_combo.setCurrentIndex(self._theme_combo.findData(Config.THEME))
+        self._theme_combo.currentIndexChanged.connect(self._on_theme_change)
+        row(grid, t("settings.theme"), self._theme_combo)
 
         self._timefmt_combo = QComboBox()
-        self._timefmt_combo.addItems(["24h", "12h"])
-        self._timefmt_combo.setCurrentText(prefs.get("time_format") or "24h")
-        self._timefmt_combo.currentTextChanged.connect(self._on_timefmt_change)
-        _row("Format de l'heure", self._timefmt_combo)
+        for key in ("24h", "12h"):
+            self._timefmt_combo.addItem(t(f"settings.time_{key}"), key)
+        self._timefmt_combo.setCurrentIndex(
+            max(0, self._timefmt_combo.findData(prefs.get("time_format") or "24h")))
+        self._timefmt_combo.currentIndexChanged.connect(self._on_timefmt_change)
+        row(grid, t("settings.time_format"), self._timefmt_combo)
 
-        # ── Lieu & Affichage ────────────────────────────────────────────────────
-        _section("📍  Lieu & Affichage")
+        # Langue
+        grid = section(t("settings.language_section"))
+        self._lang_combo = QComboBox()
+        auto_lang = resolve_lang("auto", QLocale.system().name())
+        self._lang_combo.addItem(
+            f"{t('settings.lang_auto')} ({lang_name(auto_lang)})", "auto")
+        for code in available_langs():
+            self._lang_combo.addItem(lang_name(code), code)
+        self._lang_combo.setCurrentIndex(
+            max(0, self._lang_combo.findData(prefs.get("lang") or "auto")))
+        self._lang_combo.currentIndexChanged.connect(self._on_lang_change)
+        row(grid, t("settings.language"), self._lang_combo)
 
-        self._place_entry = QLineEdit(
-            prefs.get("default_place") or "\U0001f4cd Cherbourg-en-Cotentin")
-        btn_save_place = QPushButton("Sauvegarder")
-        btn_save_place.clicked.connect(self._save_default_place)
-        place_w = QWidget()
-        place_l = QHBoxLayout(place_w)
-        place_l.setContentsMargins(0, 0, 0, 0)
-        place_l.addWidget(self._place_entry)
-        place_l.addWidget(btn_save_place)
-        _row("Nom du lieu par défaut", place_w)
-
-        self._autogeo_cb = QCheckBox("Géolocalisation automatique au démarrage")
+        # Lieu par défaut
+        grid = section(t("settings.default_place_section"))
+        self._place_entry = QLineEdit(_clean_place(prefs.get("default_place")))
+        row(grid, t("settings.default_place_name"), self._place_entry)
+        self._default_coords_lbl = _label("", role="value")
+        row(grid, t("settings.default_place_coords"), self._default_coords_lbl)
+        self._update_default_place_label()
+        btn_use = QPushButton(f"📍  {t('settings.use_current')}")
+        btn_use.setToolTip(t("settings.use_current_tip"))
+        btn_use.clicked.connect(self._save_default_place)
+        buttons = QHBoxLayout()
+        buttons.addWidget(btn_use)
+        buttons.addStretch()
+        row(grid, "", buttons)
+        self._autogeo_cb = QCheckBox(t("settings.auto_geoloc"))
         self._autogeo_cb.setChecked(bool(prefs.get("auto_geoloc")))
-        self._autogeo_cb.toggled.connect(lambda v: prefs.set("auto_geoloc", v))
-        layout.addWidget(self._autogeo_cb)
+        self._autogeo_cb.toggled.connect(lambda v: prefs.set("auto_geoloc", bool(v)))
+        grid.addWidget(self._autogeo_cb, grid.rowCount(), 0, 1, 2)
 
-        # Magnitude limite
-        mag_w = QWidget()
-        mag_l = QHBoxLayout(mag_w)
-        mag_l.setContentsMargins(0, 0, 0, 0)
-        self._mag_slider = QSlider(Qt.Orientation.Horizontal)
-        self._mag_slider.setRange(20, 80)  # x10
-        self._mag_slider.setValue(int((prefs.get("mag_limit") or 6.0) * 10))
-        self._mag_lbl = _label(f"{(prefs.get('mag_limit') or 6.0):.1f}", bold=True)
-        self._mag_lbl.setFixedWidth(36)
-        self._mag_slider.valueChanged.connect(self._on_mag_changed)
-        mag_l.addWidget(self._mag_slider)
-        mag_l.addWidget(self._mag_lbl)
-        _row("Magnitude limite (étoiles)", mag_w)
-
-        # Intervalle Live
-        iv_w = QWidget()
-        iv_l = QHBoxLayout(iv_w)
-        iv_l.setContentsMargins(0, 0, 0, 0)
+        # Temps réel
+        grid = section(t("settings.live_section"))
+        iv = QHBoxLayout()
         self._iv_slider = QSlider(Qt.Orientation.Horizontal)
-        self._iv_slider.setRange(1, 20)   # x500ms
+        self._iv_slider.setRange(1, 20)            # pas de 500 ms
         self._iv_slider.setValue(int((prefs.get("live_interval") or 2000) / 500))
-        self._iv_lbl = _label(f"{prefs.get('live_interval') or 2000} ms", bold=True)
-        self._iv_lbl.setFixedWidth(60)
+        self._iv_lbl = _label("", role="value")
+        self._iv_lbl.setMinimumWidth(70)
         self._iv_slider.valueChanged.connect(self._on_interval_changed)
-        iv_l.addWidget(self._iv_slider)
-        iv_l.addWidget(self._iv_lbl)
-        _row("Intervalle Live", iv_w)
+        iv.addWidget(self._iv_slider, stretch=1)
+        iv.addWidget(self._iv_lbl)
+        self._iv_lbl.setText(tf("units.ms", value=self._iv_slider.value() * 500))
+        row(grid, t("settings.live_interval"), iv)
 
-        # ── Reset ──────────────────────────────────────────────────────────────
-        _section("🔄  Réinitialisation")
-        btn_reset = QPushButton("🔄  Restaurer les paramètres par défaut")
+        # Réinitialisation et à propos
+        grid = section(t("settings.reset_section"))
+        btn_reset = QPushButton(f"🔄  {t('settings.reset_btn')}")
         btn_reset.clicked.connect(self._reset_settings)
-        layout.addWidget(btn_reset)
+        buttons = QHBoxLayout()
+        buttons.addWidget(btn_reset)
+        buttons.addStretch()
+        grid.addLayout(buttons, grid.rowCount(), 0, 1, 2)
+        grid.addWidget(_label(tf("settings.about", version=APP_VERSION),
+                              name="hint", wrap=True), grid.rowCount(), 0, 1, 2)
 
-        info = _label(
-            "ℹ️  Le thème et la langue nécessitent un redémarrage pour s'appliquer.",
-            color=Config.GRID_COLOR)
-        info.setWordWrap(True)
-        layout.addWidget(info)
+        lay.addStretch()
+        self.tabs.addTab(scroll, t("tabs.settings"))
 
-        layout.addStretch()
-        self.tabs.addTab(scroll, "⚙️  Paramètres")
+    # ── Barre d'état ──────────────────────────────────────────────────────────
+
+    def _build_status_bar(self):
+        bar = QStatusBar()
+        self.setStatusBar(bar)
+        self._lbl_pos = QLabel("📍 —")
+        self._lbl_stars = QLabel("")
+        self._lbl_live = _label(t("status.live_on"), name="liveIndicator")
+        self._lbl_live.setVisible(False)
+        self._lbl_time = QLabel("")
+        bar.addWidget(self._lbl_pos)
+        bar.addWidget(self._lbl_stars)
+        bar.addPermanentWidget(self._lbl_live)
+        bar.addPermanentWidget(self._lbl_time)
+        self._apply_live_ui()
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # RECONSTRUCTION (LANGUE / THÈME)
+    # ──────────────────────────────────────────────────────────────────────────
+
+    def _snapshot(self):
+        return {
+            "dte": self._edit_datetime(),
+            "lat": self.entry_lat.text(),
+            "lon": self.entry_lon.text(),
+            "tab": self.tabs.currentIndex(),
+            "fav": self.combo_fav.currentIndex(),
+        }
+
+    def _rebuild(self, keep_place=True):
+        """Reconstruit la fenêtre (nouvelle langue ou nouveau thème) en gardant
+        la date, l'onglet, le mode temps réel et, si *keep_place*, le lieu."""
+        state = self._snapshot()
+        apply_theme(QApplication.instance())
+        self._build_ui()
+        self._set_datetime(state["dte"])
+        if keep_place:
+            self.entry_lat.setText(state["lat"])
+            self.entry_lon.setText(state["lon"])
+            self.combo_fav.setCurrentIndex(state["fav"])
+        self._dirty = set()
+        self.tabs.setCurrentIndex(state["tab"])
+        self.btn_live.blockSignals(True)
+        self.btn_live.setChecked(self.live_mode)
+        self.btn_live.blockSignals(False)
+        self._apply_live_ui()
+        self.last_cache_key = ""
+        self.calculate()
+        if self._last_search == "eclipses":
+            self._search_eclipses_gui()
+        elif self._last_search == "conjunctions":
+            self._search_conjunctions_gui()
 
     # ──────────────────────────────────────────────────────────────────────────
     # HANDLERS PARAMÈTRES
     # ──────────────────────────────────────────────────────────────────────────
 
-    def _on_theme_change(self, value):
-        prefs.set("theme", value.replace("\u00e9", "e"))
-        QMessageBox.information(self, "Thème",
-            f"Thème «{value}» sauvegardé.\nRedémarrez l'application pour l'appliquer.")
+    def _on_theme_change(self, index):
+        key = self._theme_combo.itemData(index)
+        if not key or key == Config.THEME:
+            return
+        prefs.set("theme", key)
+        Config.apply_theme(key)
+        QTimer.singleShot(0, self._rebuild)
 
-    def _on_lang_change(self, value):
-        prefs.set("lang", value)
-        QMessageBox.information(self, "Langue",
-            f"Langue «{value}» sauvegardée.\nRedémarrez l'application pour l'appliquer.")
+    def _on_lang_change(self, index):
+        code = self._lang_combo.itemData(index)
+        if not code:
+            return
+        prefs.set("lang", code)
+        switch_lang(resolve_lang(code, QLocale.system().name()))
+        QTimer.singleShot(0, self._rebuild)
 
-    def _on_timefmt_change(self, value):
-        prefs.set("time_format", value)
+    def _on_timefmt_change(self, index):
+        prefs.set("time_format", self._timefmt_combo.itemData(index))
         self.calculate()
+
+    def _mag_limit(self):
+        return _pref_float("mag_limit", 6.0)
 
     def _on_mag_changed(self, value):
         mag = value / 10.0
         prefs.set("mag_limit", mag)
         self._mag_lbl.setText(f"{mag:.1f}")
-        if self.tabs.currentIndex() == 2:
-            self.calculate()
+        self._schedule_recalc(120)
 
     def _on_interval_changed(self, value):
-        iv = value * 500
-        prefs.set("live_interval", iv)
-        self._iv_lbl.setText(f"{iv} ms")
+        interval = value * 500
+        prefs.set("live_interval", interval)
+        self._iv_lbl.setText(tf("units.ms", value=interval))
         if self.live_mode:
-            self._live_timer.setInterval(iv)
+            self._live_timer.setInterval(interval)
+
+    def _update_default_place_label(self):
+        lat = _pref_float("default_lat", 0.0)
+        lon = _pref_float("default_lon", 0.0)
+        utc = int(prefs.get("default_utc") or 0)
+        self._default_coords_lbl.setText(
+            f"{_fmt_lat(lat)}, {_fmt_lon(lon)} · {_fmt_offset(utc)}")
 
     def _save_default_place(self):
-        name = self._place_entry.text().strip()
-        if name:
-            prefs.set("default_place", name)
-            QMessageBox.information(self, "Paramètres",
-                                    f"Lieu par défaut sauvegardé :\n{name}")
+        """Le lieu saisi devient le lieu de démarrage (nom, coordonnées, fuseau)."""
+        try:
+            _dte, lat, lon = self.current_inputs()
+        except ValueError:
+            self._warn_invalid_coords()
+            return
+        name = (self._place_entry.text().strip() or self.location_name
+                or f"{lat:.4f}, {lon:.4f}")
+        prefs.set("default_place", name)
+        prefs.set("default_lat", round(lat, 4))
+        prefs.set("default_lon", round(lon, 4))
+        prefs.set("default_utc", self.utc_offset)
+        self._place_entry.setText(name)
+        self._update_default_place_label()
+        self.statusBar().showMessage(tf("settings.default_saved", name=name), 6000)
 
     def _reset_settings(self):
-        reply = QMessageBox.question(self, "Réinitialiser",
-            "Restaurer tous les paramètres par défaut ?\nL'application va redémarrer.",
+        answer = QMessageBox.question(
+            self, t("settings.reset_title"), t("settings.reset_confirm"),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        if reply == QMessageBox.StandardButton.Yes:
-            prefs.reset()
-            os.execv(sys.executable, [sys.executable] + sys.argv)
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        prefs.reset()
+        Config.apply_theme(prefs.get("theme"))
+        switch_lang(resolve_lang(prefs.get("lang"), QLocale.system().name()))
+        self.utc_offset = int(prefs.get("default_utc") or 0)
+        self.location_name = _clean_place(prefs.get("default_place"))
+        if self.live_mode:
+            self._live_timer.setInterval(int(prefs.get("live_interval") or 2000))
+        self._rebuild(keep_place=False)
+        self.statusBar().showMessage(t("settings.reset_done"), 6000)
 
     # ──────────────────────────────────────────────────────────────────────────
     # FAVORIS
@@ -707,107 +1157,176 @@ class AstroApp(QMainWindow):
             try:
                 with open(_FAVORITES_FILE, "r", encoding="utf-8") as f:
                     return json.load(f)
-            except Exception:
+            except (OSError, json.JSONDecodeError):
                 pass
         return {}
 
     def _save_favorites(self):
-        with open(_FAVORITES_FILE, "w", encoding="utf-8") as f:
-            json.dump(self.favorites, f, ensure_ascii=False, indent=2)
+        try:
+            with open(_FAVORITES_FILE, "w", encoding="utf-8") as f:
+                json.dump(self.favorites, f, ensure_ascii=False, indent=2)
+        except OSError as exc:
+            QMessageBox.critical(self, t("errors.error_title"), str(exc))
 
-    def _refresh_favorites_combo(self):
+    def _refresh_favorites_combo(self, select=None):
+        self.combo_fav.blockSignals(True)
         self.combo_fav.clear()
-        for name in self.favorites:
-            self.combo_fav.addItem(name)
+        self.combo_fav.addItems(list(self.favorites))
+        self.combo_fav.setCurrentIndex(self.combo_fav.findText(select) if select else -1)
+        self.combo_fav.blockSignals(False)
 
-    def _apply_favorite(self):
-        name = self.combo_fav.currentText()
-        if name in self.favorites:
-            loc = self.favorites[name]
-            self.entry_lat.setText(str(loc["lat"]))
-            self.entry_lon.setText(str(loc["lon"]))
-            self.calculate()
+    def _apply_favorite(self, index):
+        name = self.combo_fav.itemText(index)
+        loc = self.favorites.get(name)
+        if not loc:
+            return
+        self.entry_lat.setText(f"{float(loc['lat']):.4f}")
+        self.entry_lon.setText(f"{float(loc['lon']):.4f}")
+        self.location_name = name
+        self.calculate()
+
+    def _on_coords_edited(self, _text):
+        """Coordonnées tapées à la main : ce n'est plus un lieu nommé."""
+        self.location_name = ""
+        self.combo_fav.setCurrentIndex(-1)
 
     def save_location(self):
         try:
-            lat = float(self.entry_lat.text().replace(",", "."))
-            lon = float(self.entry_lon.text().replace(",", "."))
+            _dte, lat, lon = self.current_inputs()
         except ValueError:
-            QMessageBox.critical(self, "Erreur", "Coordonnées invalides.")
+            self._warn_invalid_coords()
             return
-        name, ok = QInputDialog.getText(self, "Sauvegarder", "Nom du lieu :")
-        if ok and name.strip():
-            name = name.strip()
-            self.favorites[name] = {"lat": lat, "lon": lon}
-            self._save_favorites()
-            self._refresh_favorites_combo()
+        name, ok = QInputDialog.getText(self, t("favs.save_title"),
+                                        t("favs.save_prompt"), text=self.location_name)
+        name = name.strip()
+        if not ok or not name:
+            return
+        self.favorites[name] = {"lat": round(lat, 4), "lon": round(lon, 4)}
+        self._save_favorites()
+        self._refresh_favorites_combo(select=name)
+        self.location_name = name
+        self._update_status()
+        self.statusBar().showMessage(tf("favs.saved", name=name), 5000)
 
     def delete_location(self):
-        name = self.combo_fav.currentText()
-        if name in self.favorites:
-            del self.favorites[name]
-            self._save_favorites()
-            self._refresh_favorites_combo()
+        name = self.combo_fav.currentText() if self.combo_fav.currentIndex() >= 0 else ""
+        if name not in self.favorites:
+            self.statusBar().showMessage(t("favs.none_selected"), 4000)
+            return
+        answer = QMessageBox.question(
+            self, t("favs.delete_title"), tf("favs.delete_confirm", name=name),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        del self.favorites[name]
+        self._save_favorites()
+        self._refresh_favorites_combo()
+        self.statusBar().showMessage(tf("favs.deleted", name=name), 5000)
 
     # ──────────────────────────────────────────────────────────────────────────
-    # FUSEAU / FORMAT HEURE
+    # DATE, FUSEAU, FORMAT DE L'HEURE
     # ──────────────────────────────────────────────────────────────────────────
 
-    def _on_offset_change(self, text):
-        val = text.replace("UTC", "").replace("+", "")
-        try:
-            self.utc_offset = int(val)
-        except ValueError:
-            self.utc_offset = 0
+    def _set_datetime(self, dte):
+        """Affiche *dte* (TU, sans fuseau) sans déclencher de recalcul."""
+        qdt = QDateTime(QDate(dte.year, dte.month, dte.day),
+                        QTime(dte.hour, dte.minute, dte.second), _utc_zone())
+        self.dt_edit.blockSignals(True)
+        self.dt_edit.setDateTime(qdt)
+        self.dt_edit.blockSignals(False)
+
+    def _edit_datetime(self):
+        """Date et heure TU saisies (datetime sans fuseau)."""
+        qdt = self.dt_edit.dateTime().toUTC()
+        d, tm = qdt.date(), qdt.time()
+        return datetime(d.year(), d.month(), d.day(), tm.hour(), tm.minute(), tm.second())
+
+    def current_inputs(self):
+        """(date TU, latitude, longitude) saisies ; ValueError si invalides."""
+        lat = _parse_coord(self.entry_lat.text(), 90.0)
+        lon = _parse_coord(self.entry_lon.text(), 180.0)
+        return self._edit_datetime(), lat, lon
+
+    def set_now(self):
+        self._set_datetime(_utc_now())
         self.calculate()
+
+    def _schedule_recalc(self, delay=350):
+        if not self.live_mode:
+            self._recalc_timer.start(delay)
+
+    def _on_offset_change(self, index):
+        self.utc_offset = int(self.offset_menu.itemData(index) or 0)
+        self.calculate()
+
+    def _fmt_clock(self, dt):
+        if prefs.get("time_format") == "12h":
+            return dt.strftime("%I:%M %p").lstrip("0")
+        return dt.strftime("%H:%M")
 
     def _format_event(self, dt):
         if dt is None:
             return "--:--"
-        local = dt + timedelta(hours=self.utc_offset)
-        if prefs.get("time_format") == "12h":
-            return local.strftime("%I:%M %p")
-        return local.strftime("%H:%M")
+        return self._fmt_clock(dt + timedelta(hours=self.utc_offset))
 
     # ──────────────────────────────────────────────────────────────────────────
-    # GÉOLOCALISATION / LIVE
+    # GÉOLOCALISATION / TEMPS RÉEL
     # ──────────────────────────────────────────────────────────────────────────
 
     def geolocate(self):
+        url = ("http://ip-api.com/json/"
+               "?fields=status,message,country,city,lat,lon,offset")
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
             req = urllib.request.Request(
-                "http://ip-api.com/json/",
-                headers={"User-Agent": "Mozilla/5.0"})
-            with urllib.request.urlopen(req, timeout=5) as r:
-                data = json.loads(r.read().decode())
-            if data["status"] == "success":
-                self.entry_lat.setText(str(data["lat"]))
-                self.entry_lon.setText(str(data["lon"]))
-                QMessageBox.information(self, "Géolocalisation",
-                    f"Lieu : {data['city']}, {data['country']}")
-                self.calculate()
-            else:
-                QMessageBox.warning(self, "Erreur", "Position indéterminée.")
-        except Exception as e:
-            QMessageBox.critical(self, "Erreur réseau",
-                f"Vérifiez votre connexion.\n{e}")
+                url, headers={"User-Agent": f"Celeste/{APP_VERSION}"})
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+        except Exception as exc:  # réseau, délai, JSON
+            QApplication.restoreOverrideCursor()
+            QMessageBox.critical(self, t("errors.network_title"),
+                                 tf("errors.geoloc_network", detail=exc))
+            return
+        QApplication.restoreOverrideCursor()
+        if data.get("status") != "success":
+            QMessageBox.warning(self, t("errors.geoloc_title"), t("errors.geoloc_fail"))
+            return
+        self.entry_lat.setText(f"{float(data['lat']):.4f}")
+        self.entry_lon.setText(f"{float(data['lon']):.4f}")
+        offset = data.get("offset")
+        if isinstance(offset, int) and offset % 3600 == 0:
+            idx = self.offset_menu.findData(offset // 3600)
+            if idx >= 0:
+                self.offset_menu.blockSignals(True)
+                self.offset_menu.setCurrentIndex(idx)
+                self.offset_menu.blockSignals(False)
+                self.utc_offset = offset // 3600
+        self.location_name = data.get("city") or ""
+        self.combo_fav.setCurrentIndex(-1)
+        self.calculate()
+        self.statusBar().showMessage(
+            tf("errors.geoloc_success", city=data.get("city", "?"),
+               country=data.get("country", "?")), 8000)
 
     def toggle_live(self, checked):
-        self.live_mode = checked
-        if checked:
-            self.btn_live.setText("\u23f8  PAUSE")
-            self.entry_date.setReadOnly(True)
-            iv = prefs.get("live_interval") or 2000
-            self._live_timer.start(iv)
+        self.live_mode = bool(checked)
+        self._apply_live_ui()
+        if self.live_mode:
+            self._live_timer.start(int(prefs.get("live_interval") or 2000))
             self._live_tick()
         else:
-            self.btn_live.setText("\u23f1  LIVE")
-            self.entry_date.setReadOnly(False)
             self._live_timer.stop()
 
+    def _apply_live_ui(self):
+        on = self.live_mode
+        self.btn_live.setText(f"⏸  {t('side.pause')}" if on else f"⏱  {t('side.live')}")
+        self.dt_edit.setReadOnly(on)
+        _repolish(self.dt_edit)
+        self.btn_now.setEnabled(not on)
+        self._lbl_live.setVisible(on)
+
     def _live_tick(self):
-        now = datetime.utcnow()
-        self.entry_date.setText(now.strftime("%d/%m/%Y %H:%M:%S"))
+        self._set_datetime(_utc_now())
         self.calculate()
 
     # ──────────────────────────────────────────────────────────────────────────
@@ -816,792 +1335,544 @@ class AstroApp(QMainWindow):
 
     def export_pdf(self):
         try:
-            from export_pdf import generate_report_pdf, build_data_from_app
-        except ImportError:
-            QMessageBox.critical(self, "Export PDF",
-                "Module export_pdf.py introuvable.")
+            from export_pdf import build_data_from_app, generate_report_pdf
+        except ImportError as exc:
+            QMessageBox.critical(self, t("pdf.title"), tf("pdf.error", detail=exc))
             return
-        ts   = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+        if not self._check_inputs():
+            self._warn_invalid_coords()
+            return
+        self.calculate()        # le rapport suit exactement les valeurs saisies
+        stamp = _utc_now().strftime("%Y%m%d_%H%M%S")
         path, _ = QFileDialog.getSaveFileName(
-            self, "Sauvegarder le rapport PDF", f"celeste_{ts}.pdf",
-            "Fichier PDF (*.pdf)")
+            self, t("pdf.dialog"),
+            os.path.join(os.path.expanduser("~"), f"celeste_{stamp}.pdf"),
+            t("pdf.filter"))
         if not path:
             return
+        if not path.lower().endswith(".pdf"):
+            path += ".pdf"
         try:
-            data = build_data_from_app(self)
-            generate_report_pdf(data, path)
-            QMessageBox.information(self, "Export PDF",
-                f"Rapport sauvegardé :\n{path}")
-        except Exception as e:
-            QMessageBox.critical(self, "Erreur PDF", str(e))
+            generate_report_pdf(build_data_from_app(self), path)
+        except Exception as exc:
+            QMessageBox.critical(self, t("pdf.title"), tf("pdf.error", detail=exc))
+            return
+        box = QMessageBox(QMessageBox.Icon.Information, t("pdf.title"),
+                          tf("pdf.saved", path=path), parent=self)
+        open_btn = box.addButton(t("pdf.open"), QMessageBox.ButtonRole.ActionRole)
+        box.addButton(QMessageBox.StandardButton.Ok)
+        box.exec()
+        if box.clickedButton() is open_btn:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(path))
 
     # ──────────────────────────────────────────────────────────────────────────
     # CALCUL PRINCIPAL
     # ──────────────────────────────────────────────────────────────────────────
 
+    def _warn_invalid_coords(self):
+        QMessageBox.warning(self, t("errors.error_title"), t("status.invalid_coords"))
+
+    def _check_inputs(self):
+        """Signale en rouge les coordonnées invalides ; True si tout est valide."""
+        ok = True
+        for edit, limit in ((self.entry_lat, 90.0), (self.entry_lon, 180.0)):
+            try:
+                _parse_coord(edit.text(), limit)
+                _set_invalid(edit, False)
+            except ValueError:
+                _set_invalid(edit, True)
+                ok = False
+        return ok
+
     def calculate(self):
-        try:
-            s   = self.entry_date.text()
-            fmt = "%d/%m/%Y %H:%M:%S" if s.count(":") == 2 else "%d/%m/%Y %H:%M"
-            dte = datetime.strptime(s, fmt)
-            lat = float(self.entry_lat.text().replace(",", "."))
-            lon = float(self.entry_lon.text().replace(",", "."))
-        except ValueError:
-            QMessageBox.critical(self, "Erreur",
-                "Format de date ou coordonnées invalides.")
+        """Recalcule tout pour la date et le lieu saisis, puis met l'affichage à jour."""
+        self._recalc_timer.stop()
+        if not self._check_inputs():
+            self.statusBar().showMessage(t("status.invalid_coords"), 6000)
             return
+        dte, lat, lon = self.current_inputs()
+        self._dte, self._lat, self._lon = dte, lat, lon
 
         jd = MeeusEngine.julian_day(dte)
-        t  = MeeusEngine.julian_century_j2000(dte)
+        tc = MeeusEngine.julian_century_j2000(dte)
 
-        s_l, _      = MeeusEngine.sun_position(t)
-        s_ra, s_dec = MeeusEngine.ecliptic_to_equatorial(s_l, 0, t)
+        s_l, r_sun  = MeeusEngine.sun_position(tc)
+        s_ra, s_dec = MeeusEngine.ecliptic_to_equatorial(s_l, 0, tc)
         s_alt, s_az = MeeusEngine.equatorial_to_horizontal(jd, lat, lon, s_ra, s_dec)
 
-        m_l, m_b, m_p = MeeusEngine.moon_position(t)
-        m_ra, m_dec   = MeeusEngine.ecliptic_to_equatorial(m_l, m_b, t)
+        m_l, m_b, m_p = MeeusEngine.moon_position(tc)
+        m_ra, m_dec   = MeeusEngine.ecliptic_to_equatorial(m_l, m_b, tc)
         m_alt, m_az   = MeeusEngine.equatorial_to_horizontal(jd, lat, lon, m_ra, m_dec)
         m_alt_c       = MeeusEngine.elevation_correction(m_alt, m_p)
 
         phase = MeeusEngine.mod360(m_l - s_l)
         illum = (1 - math.cos(math.radians(phase))) / 2.0 * 100.0
 
-        self._sun_data  = {'name': 'Sun',  'ra': s_ra, 'dec': s_dec,
-                           'alt': s_alt, 'az': s_az}
-        self._moon_data = {'name': 'Moon', 'ra': m_ra, 'dec': m_dec,
-                           'alt': m_alt_c, 'az': m_az,
-                           'illum': illum, 'phase': phase}
+        self.sun_data  = {"name": "Sun", "ra": s_ra, "dec": s_dec, "alt": s_alt,
+                          "az": s_az, "dist": r_sun,
+                          "eot": MeeusEngine.equation_of_time(tc)}
+        self.moon_data = {"name": "Moon", "ra": m_ra, "dec": m_dec, "alt": m_alt_c,
+                          "az": m_az, "illum": illum, "phase": phase,
+                          "dist": 6378.14 / math.sin(math.radians(m_p)),
+                          "age": phase / 360.0 * 29.530588}
 
-        key    = f"{dte.strftime('%Y-%m-%d')}_{lat:.2f}_{lon:.2f}"
-        redraw = key != self.last_cache_key
-        if redraw:
-            self.sun_events     = MeeusEngine.find_events(dte, lat, lon, "sun")
-            self.moon_events    = MeeusEngine.find_events(dte, lat, lon, "moon")
+        # Événements du jour et courbes 24 h : seulement si la date ou le lieu change
+        key = f"{dte:%Y-%m-%d}_{lat:.4f}_{lon:.4f}"
+        if key != self.last_cache_key:
+            self.sun_events  = MeeusEngine.find_events(dte, lat, lon, "sun")
+            self.moon_events = MeeusEngine.find_events(dte, lat, lon, "moon")
+            self.hours, self.sun_altitudes, self.moon_altitudes = \
+                charts.sample_day(dte, lat, lon)
             self.last_cache_key = key
 
-        eot = MeeusEngine.equation_of_time(t)
-        self._update_sun_card(s_ra, s_dec, s_alt, s_az, self.sun_events, eot)
-        self._update_moon_card(m_ra, m_dec, m_alt_c, m_az, illum, phase, self.moon_events)
-        self._plot_graphs(dte, lat, lon, s_alt, s_az, m_alt_c, m_az, redraw)
-        self._calculate_planets(dte, jd, t, lat, lon)
-        self._update_status(lat, lon, dte)
+        self.planets = []
+        for name in _PLANETS:
+            ra, dec, dist = MeeusEngine.planet_position(tc, name)
+            alt, az = MeeusEngine.equatorial_to_horizontal(jd, lat, lon, ra, dec)
+            self.planets.append({
+                "name": name, "ra": ra, "dec": dec, "dist": dist, "alt": alt, "az": az,
+                "elong": MeeusEngine.angular_separation(ra, dec, s_ra, s_dec),
+                "east": (ra - s_ra) % 24 < 12,
+            })
+
+        self._sky_scene = charts.sky_scene(jd, lat, lon, self._mag_limit(),
+                                           self.sun_data, self.moon_data, self.planets)
+        self._sky_objects = charts.visible_objects(self._sky_scene)
+        self.visible_stars = [s["name"] for s in self._sky_scene["stars"]]
+        self.visible_planets_map = [p["name"] for p in self.planets if p["alt"] > 0]
+
+        self._update_sun_card()
+        self._update_moon_card()
+        self._update_planet_table()
+        self._update_status()
+        self._dirty = {"traj", "sky", "orrery"}
+        self._draw_visible_chart()
 
     # ──────────────────────────────────────────────────────────────────────────
     # MISE À JOUR DES CARTES
     # ──────────────────────────────────────────────────────────────────────────
 
-    def _update_sun_card(self, ra, dec, alt, az, ev, eot=0.0):
-        lb = self.sun_labels
-        lb["RA"].setText(f"{Formatters.hms(ra)}  ({ra:.2f}h)")
-        lb["Dec"].setText(f"{Formatters.dms(dec)}  ({dec:.2f}°)")
-        lb["Alt"].setText(f"{alt:.2f}°")
-        lb["Az"].setText(f"{az:.2f}°")
-        lb["EoT"].setText(f"{eot:+.1f} min")
-        lb["DawnAstro"].setText(self._format_event(ev.get("dawn_astro")))
-        lb["DawnNaut"].setText(self._format_event(ev.get("dawn_naut")))
-        lb["Dawn"].setText(self._format_event(ev.get("dawn_civ")))
-        lb["Rise"].setText(self._format_event(ev.get("rise")))
-        lb["Transit"].setText(self._format_event(ev.get("transit")))
-        lb["Set"].setText(self._format_event(ev.get("set")))
-        lb["Dusk"].setText(self._format_event(ev.get("dusk_civ")))
-        lb["DuskNaut"].setText(self._format_event(ev.get("dusk_naut")))
-        lb["DuskAstro"].setText(self._format_event(ev.get("dusk_astro")))
+    def _events_title(self):
+        return tf("common.events_title", offset=_fmt_offset(self.utc_offset)).upper()
 
-        if alt > 0:
-            self._lbl_sun_vis.setText("✅ VISIBLE")
-            self._lbl_sun_vis.setStyleSheet(f"color: {Config.FG_GREEN};")
-        elif alt > -6:
-            self._lbl_sun_vis.setText("🌄 Crépuscule civil")
-            self._lbl_sun_vis.setStyleSheet(f"color: {Config.FG_SUN};")
-        elif alt > -12:
-            self._lbl_sun_vis.setText("🌅 Crépuscule naut.")
-            self._lbl_sun_vis.setStyleSheet(f"color: {Config.BTN_COLOR};")
-        elif alt > -18:
-            self._lbl_sun_vis.setText("🌃 Crépuscule astro.")
-            self._lbl_sun_vis.setStyleSheet(f"color: {Config.FG_PURPLE};")
+    def _day_length(self):
+        rise, sunset = self.sun_events.get("rise"), self.sun_events.get("set")
+        if rise is None or sunset is None:
+            return "—"
+        minutes = round((sunset - rise).total_seconds() / 60) % 1440
+        return tf("units.duration", h=minutes // 60, m=f"{minutes % 60:02d}")
+
+    def _update_sun_card(self):
+        sd, lb, ev = self.sun_data, self.sun_labels, self.sun_events
+        lb["ra"].setText(f"{Formatters.hms(sd['ra'])}  ({sd['ra']:.2f}h)")
+        lb["dec"].setText(f"{Formatters.dms(sd['dec'])}  ({sd['dec']:+.2f}°)")
+        lb["alt"].setText(f"{sd['alt']:+.2f}°")
+        lb["az"].setText(f"{sd['az']:.2f}°")
+        lb["eot"].setText(tf("units.minutes", value=f"{sd['eot']:+.1f}"))
+        lb["dist"].setText(tf("units.au", value=f"{sd['dist']:.4f}"))
+        for key in ("dawn_astro", "dawn_naut", "dawn_civ", "rise", "transit",
+                    "set", "dusk_civ", "dusk_naut", "dusk_astro"):
+            lb[key].setText(self._format_event(ev.get(key)))
+        lb["day_length"].setText(self._day_length())
+        self._sun_events_title.setText(self._events_title())
+
+        phase = charts.day_phase(sd["alt"])
+        color = {"day": Config.FG_GREEN, "civil": Config.FG_SUN,
+                 "nautical": Config.BTN_COLOR, "astronomical": Config.FG_PURPLE,
+                 "night": Config.FG_RED}[phase]
+        _set_badge(self._lbl_sun_state, t(f"sun.state_{phase}"), color)
+
+    def _update_moon_card(self):
+        md, lb, ev = self.moon_data, self.moon_labels, self.moon_events
+        lb["ra"].setText(f"{Formatters.hms(md['ra'])}  ({md['ra']:.2f}h)")
+        lb["dec"].setText(f"{Formatters.dms(md['dec'])}  ({md['dec']:+.2f}°)")
+        lb["alt"].setText(f"{md['alt']:+.2f}°")
+        lb["az"].setText(f"{md['az']:.2f}°")
+        lb["dist"].setText(tf("units.km", value=_fmt_int(md["dist"])))
+        key, emoji, _english = Formatters.PHASES[Formatters.phase_index(md["phase"])]
+        self._lbl_phase_emoji.setText(emoji)
+        self._lbl_phase_name.setText(t(f"phases.{key}"))
+        self._illum_bar.setValue(int(round(md["illum"] * 10)))
+        lb["illum"].setText(f"{md['illum']:.1f} %")
+        lb["age"].setText(tf("units.days", value=f"{md['age']:.1f}"))
+        for key in ("rise", "transit", "set"):
+            lb[key].setText(self._format_event(ev.get(key)))
+        self._moon_events_title.setText(self._events_title())
+        if md["alt"] > 0:
+            _set_badge(self._lbl_moon_state, t("common.above_horizon"), Config.FG_GREEN)
         else:
-            self._lbl_sun_vis.setText("🌑 Nuit noire")
-            self._lbl_sun_vis.setStyleSheet(f"color: {Config.FG_RED};")
+            _set_badge(self._lbl_moon_state, t("common.below_horizon"), Config.FG_RED)
 
-    def _update_moon_card(self, ra, dec, alt, az, illum, phase, ev):
-        lb = self.moon_labels
-        lb["RA"].setText(f"{Formatters.hms(ra)}  ({ra:.2f}h)")
-        lb["Dec"].setText(f"{Formatters.dms(dec)}  ({dec:.2f}°)")
-        lb["Alt"].setText(f"{alt:.2f}°")
-        lb["Az"].setText(f"{az:.2f}°")
-        lb["Illum"].setText(Formatters.lunar_phase(illum, phase))
-        lb["Rise"].setText(self._format_event(ev.get("rise")))
-        lb["Transit"].setText(self._format_event(ev.get("transit")))
-        lb["Set"].setText(self._format_event(ev.get("set")))
-        if alt > 0:
-            self._lbl_moon_vis.setText("✅ VISIBLE")
-            self._lbl_moon_vis.setStyleSheet(f"color: {Config.FG_GREEN};")
-        else:
-            self._lbl_moon_vis.setText("⬇ Sous l'horizon")
-            self._lbl_moon_vis.setStyleSheet(f"color: {Config.FG_RED};")
+    def _update_planet_table(self):
+        for p in self.planets:
+            items = self._planet_items[p["name"]]
+            side = t("coords.east") if p["east"] else t("coords.west")
+            items["col_ra"].setText(Formatters.hms(p["ra"]))
+            items["col_dec"].setText(Formatters.dms(p["dec"]))
+            items["col_alt"].setText(f"{p['alt']:+.2f}°")
+            items["col_az"].setText(f"{p['az']:.2f}°")
+            items["col_dist"].setText(tf("units.au", value=f"{p['dist']:.4f}"))
+            items["col_elong"].setText(f"{p['elong']:.1f}° {side}")
+            up = p["alt"] > 0
+            items["col_state"].setText(t("common.visible" if up else "common.below_horizon"))
+            items["col_state"].setForeground(
+                QBrush(QColor(Config.FG_GREEN if up else Config.FG_MUTED)))
 
-    # ──────────────────────────────────────────────────────────────────────────
-    # STATUT
-    # ──────────────────────────────────────────────────────────────────────────
-
-    def _update_status(self, lat, lon, dte):
-        self._lbl_pos.setText(
-            f"📍 Lat: {lat:+.4f}°  Lon: {lon:+.4f}°")
-        n      = len(self.visible_stars)
-        np_vis = len(self.visible_planets_map)
-        extra  = f"  🪐 {np_vis} planète(s)" if np_vis else ""
-        self._lbl_stars.setText(f"★ {n} étoile(s) visible(s){extra}")
+    def _update_status(self):
+        if self._lat is None:
+            return
+        coords = f"{_fmt_lat(self._lat)}, {_fmt_lon(self._lon)}"
+        self._lbl_pos.setText(f"📍 {self.location_name} · {coords}"
+                              if self.location_name else f"📍 {coords}")
+        n, n_pl = len(self.visible_stars), len(self.visible_planets_map)
+        self._lbl_stars.setText(
+            f"★ {tf(_plural_key('status.stars', n), n=n)}   "
+            f"🪐 {tf(_plural_key('status.planets', n_pl), n=n_pl)}")
+        local = self._dte + timedelta(hours=self.utc_offset)
         self._lbl_time.setText(
-            f"UT : {dte.strftime('%d/%m/%Y  %H:%M:%S')}")
+            f"{tf('status.ut', time=self._dte.strftime('%d/%m/%Y %H:%M:%S'))}   ·   "
+            f"{tf('status.local', time=self._fmt_clock(local), offset=_fmt_offset(self.utc_offset))}")
 
     # ──────────────────────────────────────────────────────────────────────────
-    # PLANÈTES
+    # GRAPHIQUES
     # ──────────────────────────────────────────────────────────────────────────
 
-    def _calculate_planets(self, dte, jd, t, lat, lon):
-        if not self.planet_labels:
+    def _on_tab_changed(self, _index):
+        self._draw_visible_chart()
+
+    def _draw_visible_chart(self):
+        """Dessine le graphique de l'onglet affiché s'il n'est plus à jour : en
+        temps réel, les graphiques cachés ne sont pas redessinés."""
+        name = self._chart_tabs.get(self.tabs.currentWidget())
+        if name not in self._dirty or self._dte is None:
             return
-        try:
-            from engine import _ORBITAL_ELEMENTS
-        except ImportError:
+        self._dirty.discard(name)
+        {"traj": self._draw_trajectory, "sky": self._draw_sky_map,
+         "orrery": self._draw_orrery}[name]()
+
+    def _draw_trajectory(self):
+        if not self.hours:
             return
-        helio = {}
-        for pname, lb in self.planet_labels.items():
-            try:
-                ra, dec, dist = MeeusEngine.planet_position(t, pname)
-                p_alt, p_az  = MeeusEngine.equatorial_to_horizontal(
-                    jd, lat, lon, ra, dec)
-                lb["RA"].setText(f"{Formatters.hms(ra)}  ({ra:.2f}h)")
-                lb["Dec"].setText(f"{Formatters.dms(dec)}  ({dec:.2f}°)")
-                lb["Alt"].setText(f"{p_alt:.2f}°")
-                lb["Az"].setText(f"{p_az:.2f}°")
-                lb["Dist"].setText(f"{dist:.4f} UA")
-                if p_alt > 0:
-                    lb["_vis"].setText("✅ VISIBLE")
-                    lb["_vis"].setStyleSheet(f"color: {Config.FG_GREEN};")
-                else:
-                    lb["_vis"].setText("⬇ Sous l'horizon")
-                    lb["_vis"].setStyleSheet(f"color: {Config.FG_RED};")
-                L0, L1, a, *_ = _ORBITAL_ELEMENTS[pname]
-                helio[pname] = (a, math.radians(MeeusEngine.mod360(L0 + L1 * t)))
-            except Exception:
-                pass
-        self._plot_orrery(t, helio)
+        dte = self._dte
+        labels = {
+            "title": tf("chart.trajectory_title", date=dte.strftime("%d/%m/%Y")),
+            "xlabel": t("chart.hour_ut"),
+            "ylabel": t("chart.altitude"),
+            "local_axis": tf("chart.hour_local", offset=_fmt_offset(self.utc_offset)),
+            "sun": t("chart.sun"),
+            "moon": t("chart.moon"),
+        }
+        labels.update({p: t(f"chart.phase_{p}") for p in charts.DAY_PHASES})
+        now_h = dte.hour + dte.minute / 60 + dte.second / 3600
+        self._traj_ax, tip = charts.draw_trajectory(
+            self.fig_traj, self.hours, self.sun_altitudes, self.moon_altitudes,
+            now_h, self.sun_data["alt"], self.moon_data["alt"], labels,
+            self.utc_offset)
+        self._traj_tip.attach(tip)
+        self.canvas_traj.draw_idle()
 
-    def _plot_orrery(self, t, helio):
-        ax = self.ax3
-        ax.clear()
-        ax.set_facecolor(Config.BG_PANEL)
-        ax.set_title("Système solaire — Vue de dessus",
-                     color=Config.FG_WHITE, fontsize=10, pad=8)
-        ax.tick_params(colors=Config.FG_LABEL, labelsize=8)
-        for sp in ax.spines.values():
-            sp.set_color(Config.GRID_COLOR)
-        ax.grid(color=Config.GRID_COLOR, linestyle=":", alpha=0.4)
-        ax.plot(0, 0, "o", color=Config.FG_SUN, markersize=14, zorder=5)
-        ax.annotate("Soleil", xy=(0, 0), xytext=(0.18, 0.05),
-                    color=Config.FG_SUN, fontsize=8)
-        s_l, r_e = MeeusEngine.sun_position(t)
-        l_e  = math.radians(MeeusEngine.mod360(s_l + 180))
-        xe, ye = r_e * math.cos(l_e), r_e * math.sin(l_e)
-        theta = [i * math.tau / 360 for i in range(361)]
-        ax.plot([r_e * math.cos(a) for a in theta],
-                [r_e * math.sin(a) for a in theta],
-                color=Config.FG_MOON, linewidth=0.5, alpha=0.3)
-        ax.plot(xe, ye, "o", color=Config.FG_MOON, markersize=7, zorder=5)
-        ax.annotate("Terre", xy=(xe, ye), xytext=(xe+0.1, ye+0.1),
-                    color=Config.FG_MOON, fontsize=8)
-        _PC = {"Venus": "#D4C060", "Mars": "#E07050",
-               "Jupiter": "#C8A870", "Saturn": "#C0C060"}
-        _PS = {"Venus": 6, "Mars": 6, "Jupiter": 9, "Saturn": 8}
-        for pname, (a, l_rad) in helio.items():
-            xp, yp = a * math.cos(l_rad), a * math.sin(l_rad)
-            color  = _PC.get(pname, "#AAAAAA")
-            ax.plot([a * math.cos(ang) for ang in theta],
-                    [a * math.sin(ang) for ang in theta],
-                    color=color, linewidth=0.5, alpha=0.25)
-            ax.plot(xp, yp, "o", color=color,
-                    markersize=_PS.get(pname, 6), zorder=4)
-            ax.annotate(pname, xy=(xp, yp), xytext=(xp+0.1, yp+0.15),
-                        color=color, fontsize=8)
-        lim = 11.0
-        ax.set_xlim(-lim, lim); ax.set_ylim(-lim, lim)
-        ax.set_xlabel("UA", color=Config.FG_LABEL, fontsize=8)
-        ax.set_ylabel("UA", color=Config.FG_LABEL, fontsize=8)
-        self.canvas3.draw_idle()
+    def _draw_sky_map(self):
+        dte = self._dte
+        labels = {
+            "title": tf("skymap.title", datetime=dte.strftime("%d/%m/%Y %H:%M")),
+            "sun": t("chart.sun"),
+            "moon": t("chart.moon"),
+            "horizon": t("skymap.horizon"),
+            "cardinals": [t(f"skymap.cardinal_{c}")
+                          for c in ("n", "ne", "e", "se", "s", "sw", "w", "nw")],
+            "planets": {n: _planet_name(n) for n in _PLANETS},
+        }
+        self._sky_ax, tip = charts.draw_sky_map(self.fig_sky, self._sky_scene, labels)
+        self._sky_tip.attach(tip)
+        self._sky_hover = None
+        self.canvas_sky.draw_idle()
 
+    def _draw_orrery(self):
+        labels = {
+            "inner": t("planets.orrery_inner"),
+            "outer": t("planets.orrery_outer"),
+            "au": t("planets.orrery_au"),
+            "sun": t("chart.sun"),
+            "earth": t("planets.orrery_earth"),
+            "vernal": t("planets.orrery_vernal"),
+            "planets": {n: _planet_name(n) for n in _PLANETS},
+        }
+        tc = MeeusEngine.julian_century_j2000(self._dte)
+        charts.draw_orrery(self.fig_orrery, charts.orrery_scene(tc), labels)
+        self.canvas_orrery.draw_idle()
 
-    # ── Trajectoires + Carte du ciel ─────────────────────────────────────────
-    def _plot_graphs(self, dte, lat, lon, s_alt, s_az, m_alt, m_az, redraw):
-        """Trace les courbes 24h (ax1) et la carte polaire (ax2)."""
-        mag_limit = prefs.get("mag_limit") or 6.0
+    # ── Survol et clic ───────────────────────────────────────────────────────
 
-        # ── Courbes 24h ──────────────────────────────────────────────────────
-        if redraw:
-            hours, sun_alts, moon_alts = [], [], []
-            base = dte.replace(hour=0, minute=0, second=0, microsecond=0)
-            for h in range(0, 1441, 15):
-                d    = base + timedelta(minutes=h)
-                jd_h = MeeusEngine.julian_day(d)
-                t_h  = MeeusEngine.julian_century_j2000(d)
-                sl, _ = MeeusEngine.sun_position(t_h)
-                sr, sd = MeeusEngine.ecliptic_to_equatorial(sl, 0, t_h)
-                sa, _  = MeeusEngine.equatorial_to_horizontal(jd_h, lat, lon, sr, sd)
-                ml, mb, mp = MeeusEngine.moon_position(t_h)
-                mr, md = MeeusEngine.ecliptic_to_equatorial(ml, mb, t_h)
-                ma, _  = MeeusEngine.equatorial_to_horizontal(jd_h, lat, lon, mr, md)
-                hours.append(h / 60)
-                sun_alts.append(sa)
-                moon_alts.append(MeeusEngine.elevation_correction(ma, mp))
-            self.hours          = hours
-            self.sun_altitudes  = sun_alts
-            self.moon_altitudes = moon_alts
-
-        ax = self.ax1
-        ax.clear()
-        ax.set_facecolor(Config.BG_PANEL)
-        ax.set_title("Trajectoires 24h \u2014 Soleil & Lune",
-                     color=Config.FG_WHITE, fontsize=11, pad=8)
-        ax.tick_params(colors=Config.FG_LABEL, labelsize=9)
-        for sp in ax.spines.values():
-            sp.set_color(Config.GRID_COLOR)
-        ax.grid(color=Config.GRID_COLOR, linestyle=":", alpha=0.4)
-        ax.axhline(0, color=Config.FG_RED, linewidth=0.8, alpha=0.6)
-        ax.plot(self.hours, self.sun_altitudes,
-                color=Config.FG_SUN, linewidth=2, label="Soleil")
-        ax.plot(self.hours, self.moon_altitudes,
-                color=Config.FG_MOON, linewidth=2, label="Lune")
-        h_now = dte.hour + dte.minute / 60 + dte.second / 3600
-        ax.axvline(h_now, color=Config.FG_WHITE,
-                   linewidth=1, alpha=0.5, linestyle="--")
-        ax.plot(h_now, s_alt, "o", color=Config.FG_SUN,  markersize=8, zorder=5)
-        ax.plot(h_now, m_alt, "o", color=Config.FG_MOON, markersize=8, zorder=5)
-        ax.set_xlim(0, 24)
-        ax.set_xlabel("Heure UT", color=Config.FG_LABEL, fontsize=9)
-        ax.set_ylabel("Altitude (\u00b0)", color=Config.FG_LABEL, fontsize=9)
-        ax.legend(facecolor=Config.BG_PANEL, edgecolor=Config.GRID_COLOR,
-                  labelcolor=Config.FG_WHITE, fontsize=9)
-        self.canvas1.draw_idle()
-
-        # ── Carte polaire du ciel ─────────────────────────────────────────────
-        jd  = MeeusEngine.julian_day(dte)
-        t   = MeeusEngine.julian_century_j2000(dte)
-        ax2 = self.ax2
-        ax2.clear()
-        # Fond ciel nocturne
-        self.fig2.patch.set_facecolor('#04040E')
-        ax2.set_facecolor('#06061A')
-        ax2.set_title("Carte du ciel", color='#C8D4FF',
-                      fontsize=11, fontweight='bold', pad=14)
-        ax2.tick_params(axis='x', colors='#7788AA', labelsize=9, pad=5)
-        ax2.set_theta_zero_location("N")
-        ax2.set_theta_direction(-1)
-        ax2.set_rlim(0, 1)
-        ax2.yaxis.set_visible(False)
-        ax2.set_xticks([math.radians(a) for a in range(0, 360, 45)])
-        ax2.set_xticklabels(["N", "NE", "E", "SE", "S", "SO", "O", "NO"],
-                            color='#8899BB', fontweight='bold')
-        ax2.set_rgrids([])
-        ax2.grid(color='#0F1E35', linewidth=0.4, alpha=0.6)
-        # Anneaux d'altitude 0° / 30° / 60°
-        _ang = [i * math.tau / 360 for i in range(361)]
-        for _adeg, _lw, _col, _alp, _lbl in [
-            (0,  1.8, '#2A4466', 0.9, "Horizon"),
-            (30, 0.7, '#152840', 0.8, "30\u00b0"),
-            (60, 0.7, '#152840', 0.7, "60\u00b0"),
-        ]:
-            _rr = (90 - _adeg) / 90
-            ax2.plot(_ang, [_rr] * 361,
-                     color=_col, linewidth=_lw, alpha=_alp, zorder=1)
-            ax2.annotate(_lbl, xy=(math.radians(222), _rr),
-                         color=_col, fontsize=6.5, ha='center',
-                         annotation_clip=True)
-        # Zenith
-        ax2.plot(0, 0, '+', color='#445566', markersize=12,
-                 markeredgewidth=1.5, zorder=4)
-        self.visible_stars      = []
-        self._star_scatter_data = []
-        for sname, (ra_h, dec_d, mag) in _STARS.items():
-            if mag > mag_limit:
-                continue
-            alt, az = MeeusEngine.equatorial_to_horizontal(jd, lat, lon, ra_h, dec_d)
-            if alt < -2:
-                continue
-            r, theta = (90 - max(alt, 0)) / 90, math.radians(az)
-            size  = max(2, (mag_limit - mag + 1) * 8)
-            alpha = min(1.0, max(0.4, 1.0 - mag / 8.0))
-            ax2.plot(theta, r, "o", color=Config.FG_WHITE,
-                     markersize=size, alpha=alpha, zorder=3,
-                     markeredgewidth=0)
-
-            if mag < 2.5:
-                ax2.annotate(sname, xy=(theta, r),
-                             xytext=(theta + 0.03, r + 0.03),
-                             color=Config.FG_LABEL, fontsize=7,
-                             annotation_clip=False)
-            self.visible_stars.append(sname)
-            self._star_scatter_data.append((theta, r, sname, mag, alt, az))
-
-        # Lignes de constellations
-        for cname, edges in CONSTELLATIONS.items():
-            for star_a, star_b in edges:
-                if star_a not in _STARS or star_b not in _STARS:
-                    continue
-                ra1, dec1, _ = _STARS[star_a]
-                ra2, dec2, _ = _STARS[star_b]
-                alt1, az1 = MeeusEngine.equatorial_to_horizontal(jd, lat, lon, ra1, dec1)
-                alt2, az2 = MeeusEngine.equatorial_to_horizontal(jd, lat, lon, ra2, dec2)
-                if alt1 < 0 and alt2 < 0:
-                    continue
-                r1, theta1 = (90 - max(alt1, 0)) / 90, math.radians(az1)
-                r2, theta2 = (90 - max(alt2, 0)) / 90, math.radians(az2)
-                ax2.plot([theta1, theta2], [r1, r2],
-                         color=Config.GRID_COLOR,
-                         linewidth=0.7, alpha=0.4, zorder=1)
-
-        # Soleil (avec halo)
-        _s_r, _s_th = (90 - max(s_alt, 0)) / 90, math.radians(s_az)
-        ax2.plot(_s_th, _s_r, "o", color=Config.FG_SUN,
-                 markersize=28, alpha=0.12, zorder=5, markeredgewidth=0)
-        ax2.plot(_s_th, _s_r, "*", color=Config.FG_SUN,
-                 markersize=16, zorder=6, markeredgewidth=0.5,
-                 markeredgecolor='#FFD080')
-        ax2.annotate("\u2600 Soleil", xy=(_s_th, _s_r),
-                     xytext=(_s_th + 0.07, _s_r + 0.06),
-                     color=Config.FG_SUN, fontsize=8, fontweight='bold',
-                     annotation_clip=False)
-        # Lune (avec halo)
-        _m_r, _m_th = (90 - max(m_alt, 0)) / 90, math.radians(m_az)
-        ax2.plot(_m_th, _m_r, "o", color=Config.FG_MOON,
-                 markersize=22, alpha=0.13, zorder=5, markeredgewidth=0)
-        ax2.plot(_m_th, _m_r, "o", color=Config.FG_MOON,
-                 markersize=11, zorder=6, markeredgewidth=0)
-        ax2.annotate("\U0001f319 Lune", xy=(_m_th, _m_r),
-                     xytext=(_m_th + 0.07, _m_r + 0.06),
-                     color=Config.FG_MOON, fontsize=8, fontweight='bold',
-                     annotation_clip=False)
-        # Planetes visibles
-        self.visible_planets_map = []
-        for pname, style in _PLANET_MAP_STYLE.items():
-            try:
-                p_ra, p_dec, _ = MeeusEngine.planet_position(t, pname)
-                p_alt, p_az    = MeeusEngine.equatorial_to_horizontal(
-                    jd, lat, lon, p_ra, p_dec)
-                if p_alt >= -2:
-                    r_p, theta_p = (90 - max(p_alt, 0)) / 90, math.radians(p_az)
-                    ax2.plot(theta_p, r_p, marker=style["marker"],
-                             color=style["color"], markersize=style["size"], zorder=5)
-                    ax2.annotate(style["label"], xy=(theta_p, r_p),
-                                 xytext=(theta_p + 0.04, r_p + 0.04),
-                                 color=style["color"], fontsize=8,
-                                 annotation_clip=False)
-                    self.visible_planets_map.append((pname, theta_p, r_p, p_alt, p_az))
-            except Exception:
-                pass
-
-        self._annot2 = ax2.annotate(
-            "", xy=(0, 0), xytext=(0.1, 0.1),
-            fontsize=8, color=Config.FG_WHITE,
-            bbox=dict(boxstyle="round,pad=0.3", fc=Config.BG_PANEL,
-                      ec=Config.GRID_COLOR, alpha=0.9),
-            annotation_clip=False)
-        self._annot2.set_visible(False)
-        self.canvas2.draw_idle()
-
-    # ── Survol ───────────────────────────────────────────────────────────────
-    def _on_hover(self, event):
-        """Tooltip au survol canvas1 (trajectoires) et canvas2 (carte)."""
-        if event.inaxes is None:
+    def _on_traj_hover(self, event):
+        tip = self._traj_tip.artist
+        if tip is None:
             return
-
-        if event.canvas is self.canvas1:
-            if not self.hours or event.xdata is None:
-                return
-            idx = min(range(len(self.hours)),
-                      key=lambda i: abs(self.hours[i] - event.xdata))
-            sa = self.sun_altitudes[idx]  if idx < len(self.sun_altitudes)  else None
-            ma = self.moon_altitudes[idx] if idx < len(self.moon_altitudes) else None
-            if sa is None:
-                return
-            tip = (f"UT {self.hours[idx]:05.2f}h\n"
-                   f"\u2600 {sa:+.1f}\u00b0\n"
-                   f"\U0001f319 {ma:+.1f}\u00b0")
-            if self._annot is None:
-                self._annot = self.ax1.annotate(
-                    tip, xy=(event.xdata, event.ydata),
-                    xytext=(10, 10), textcoords="offset points",
-                    fontsize=8, color=Config.FG_WHITE,
-                    bbox=dict(boxstyle="round,pad=0.3", fc=Config.BG_PANEL,
-                              ec=Config.GRID_COLOR, alpha=0.9))
-            else:
-                self._annot.set_text(tip)
-                self._annot.xy = (event.xdata, event.ydata)
-                self._annot.set_visible(True)
-            self.canvas1.draw_idle()
-
-        elif event.canvas is self.canvas2 and self._annot2 is not None:
-            if not hasattr(self, "_star_scatter_data"):
-                return
-            x, y = event.xdata, event.ydata
-            if x is None or y is None:
-                return
-            best_dist, best_name = 0.1, None
-            for (th, r, sname, mag, alt, az) in self._star_scatter_data:
-                dist = math.hypot(th - x, r - y)
-                if dist < best_dist:
-                    best_dist = dist
-                    best_name = (f"{sname}\n"
-                                 f"Alt {alt:.1f}\u00b0  Az {az:.1f}\u00b0  "
-                                 f"Mag {mag:.1f}")
-            for (pname, th, r, alt, az) in self.visible_planets_map:
-                dist = math.hypot(th - x, r - y)
-                if dist < best_dist:
-                    best_dist = dist
-                    best_name = (f"{pname}\n"
-                                 f"Alt {alt:.1f}\u00b0  Az {az:.1f}\u00b0")
-            if best_name:
-                self._annot2.set_text(best_name)
-                self._annot2.xy = (x, y)
-                self._annot2.set_visible(True)
-            else:
-                self._annot2.set_visible(False)
-            self.canvas2.draw_idle()
-
-    # ── Clic sur la carte ────────────────────────────────────────────────────
-    def _on_click_map(self, event):
-        """Clic sur la carte du ciel -> popup de detail."""
-        if event.inaxes is None or not hasattr(self, "_star_scatter_data"):
+        if event.inaxes is not self._traj_ax or event.xdata is None or not self.hours:
+            self._traj_tip.hide()
             return
-        x, y = event.xdata, event.ydata
-        if x is None or y is None:
+        step = self.hours[1] - self.hours[0]
+        i = max(0, min(len(self.hours) - 1, int(round(event.xdata / step))))
+        hour = self.hours[i]
+        base = datetime(2000, 1, 1)
+        ut = self._fmt_clock(base + timedelta(hours=hour))
+        first = f"{ut} {t('chart.ut')}"
+        if self.utc_offset:
+            local = self._fmt_clock(base + timedelta(hours=hour + self.utc_offset))
+            first += f"  ·  {local} {t('chart.local')}"
+        tip.set_text(f"{first}\n"
+                     f"☀ {t('chart.sun')}  {self.sun_altitudes[i]:+.1f}°\n"
+                     f"☾ {t('chart.moon')}  {self.moon_altitudes[i]:+.1f}°")
+        tip.xy = (hour, event.ydata)
+        right = hour > 16
+        tip.set_position((-14 if right else 14, 12))
+        tip.set_horizontalalignment("right" if right else "left")
+        tip.set_visible(True)
+        self._traj_tip.refresh()
+
+    def _sky_object_at(self, event):
+        if event.inaxes is not self._sky_ax or event.xdata is None:
+            return None
+        return charts.hit_test(self._sky_objects, event.xdata, event.ydata)
+
+    def _on_sky_leave(self, _event):
+        self.canvas_sky.unsetCursor()
+        self._sky_hover = None
+        self._sky_tip.hide()
+
+    def _on_sky_hover(self, event):
+        tip = self._sky_tip.artist
+        if tip is None:
             return
-        best_dist, best_obj = 0.08, None
-        for (th, r, sname, mag, alt, az) in self._star_scatter_data:
-            dist = math.hypot(th - x, r - y)
-            if dist < best_dist:
-                best_dist = dist
-                best_obj  = {"type": "star", "name": sname,
-                             "mag": mag, "alt": alt, "az": az}
-        for (pname, th, r, alt, az) in self.visible_planets_map:
-            dist = math.hypot(th - x, r - y)
-            if dist < best_dist:
-                best_dist = dist
-                best_obj  = {"type": "planet", "name": pname,
-                             "alt": alt, "az": az}
-        if best_obj:
-            self._show_object_detail(best_obj)
+        obj = self._sky_object_at(event)
+        if obj is None:
+            self._on_sky_leave(event)
+            return
+        self.canvas_sky.setCursor(Qt.CursorShape.PointingHandCursor)
+        if obj is self._sky_hover:
+            return
+        self._sky_hover = obj
+        title, _rows = self._object_details(obj)
+        line = (f"{t('detail.alt')} {obj['alt']:.1f}°  ·  "
+                f"{t('detail.az')} {obj['az']:.1f}°")
+        if obj["kind"] == "star":
+            line += f"  ·  {t('detail.mag')} {obj['mag']:.2f}"
+        tip.set_text(f"{title}\n{line}")
+        tip.xy = (obj["x"], obj["y"])
+        right = obj["x"] > 0.35
+        tip.set_position((-14 if right else 14, 12))
+        tip.set_horizontalalignment("right" if right else "left")
+        tip.set_visible(True)
+        self._sky_tip.refresh()
+
+    def _on_sky_click(self, event):
+        if getattr(event, "button", None) != 1:
+            return
+        obj = self._sky_object_at(event)
+        if obj is not None:
+            self._sky_tip.hide()
+            self._show_object_detail(obj)
+
+    def _object_details(self, obj):
+        """Titre et lignes (libellé, valeur) de la fiche d'un astre."""
+        kind = obj["kind"]
+        rows = []
+        if kind == "star":
+            title = obj["name"]
+            rows.append((t("detail.type"), t("detail.type_star")))
+            consts = STAR_CONSTELLATION.get(obj["name"], [])
+            if consts:
+                rows.append((t("detail.constellation"),
+                             ", ".join(t(f"constellations.{c}") for c in consts)))
+            rows.append((t("detail.mag"), f"{obj['mag']:.2f}"))
+        elif kind == "planet":
+            title = _planet_name(obj["name"])
+            side = t("coords.east") if obj.get("east") else t("coords.west")
+            rows.append((t("detail.type"), t("detail.type_planet")))
+            rows.append((t("detail.distance"), tf("units.au", value=f"{obj['dist']:.4f}")))
+            rows.append((t("detail.elongation"), f"{obj['elong']:.1f}° {side}"))
+        elif kind == "sun":
+            title = t("chart.sun")
+            rows.append((t("detail.type"), t("detail.type_sun")))
+            rows.append((t("detail.distance"), tf("units.au", value=f"{obj['dist']:.4f}")))
+        else:
+            title = t("chart.moon")
+            key = Formatters.PHASES[Formatters.phase_index(obj["phase"])][0]
+            rows.append((t("detail.type"), t("detail.type_moon")))
+            rows.append((t("detail.phase"), t(f"phases.{key}")))
+            rows.append((t("detail.illumination"), f"{obj['illum']:.1f} %"))
+            rows.append((t("detail.distance"), tf("units.km", value=_fmt_int(obj["dist"]))))
+        rows += [
+            (t("detail.ra"), Formatters.hms(obj["ra"])),
+            (t("detail.dec"), Formatters.dms(obj["dec"])),
+            (t("detail.alt"), f"{obj['alt']:+.2f}°"),
+            (t("detail.az"), f"{obj['az']:.2f}°"),
+        ]
+        return title, rows
+
+    def _build_detail_dialog(self, obj):
+        title, rows = self._object_details(obj)
+        dlg = QDialog(self)
+        dlg.setWindowTitle(tf("detail.title", name=title))
+        dlg.setMinimumWidth(340)
+        lay = QVBoxLayout(dlg)
+        lay.setContentsMargins(18, 16, 18, 14)
+        lay.setSpacing(10)
+        lay.addWidget(_label(title, name="cardTitle"))
+        card = _card()
+        grid = QGridLayout(card)
+        grid.setContentsMargins(14, 10, 14, 10)
+        grid.setHorizontalSpacing(18)
+        grid.setVerticalSpacing(6)
+        for r, (key, value) in enumerate(rows):
+            grid.addWidget(_label(key, role="key"), r, 0)
+            val = _label(value, role="value")
+            val.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            val.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            grid.addWidget(val, r, 1)
+        lay.addWidget(card)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        buttons.button(QDialogButtonBox.StandardButton.Close).setText(t("detail.close"))
+        buttons.rejected.connect(dlg.reject)
+        lay.addWidget(buttons)
+        return dlg
 
     def _show_object_detail(self, obj):
-        """QDialog de detail pour un objet celeste."""
-        from PyQt6.QtWidgets import QDialog, QDialogButtonBox
-        dlg = QDialog(self)
-        dlg.setWindowTitle(f"D\u00e9tail \u2014 {obj['name']}")
-        dlg.setMinimumWidth(300)
-        vlay = QVBoxLayout(dlg)
-        vlay.addWidget(_label(obj["name"], bold=True, size=13,
-                              color=Config.FG_MOON))
-        vlay.addWidget(_sep_h())
+        """Fiche détaillée d'un astre de la carte du ciel."""
+        self._build_detail_dialog(obj).exec()
 
-        if obj["type"] == "star":
-            rows = [("Type",      "\u00c9toile"),
-                    ("Magnitude", f"{obj['mag']:.2f}"),
-                    ("Altitude",  f"{obj['alt']:.2f}\u00b0"),
-                    ("Azimut",    f"{obj['az']:.2f}\u00b0")]
-            if obj["name"] in STAR_CONSTELLATION:
-                rows.insert(1, ("Constellation",
-                                STAR_CONSTELLATION[obj["name"]]))
-        else:
-            rows = [("Type",     "Plan\u00e8te"),
-                    ("Altitude", f"{obj['alt']:.2f}\u00b0"),
-                    ("Azimut",   f"{obj['az']:.2f}\u00b0")]
-        for key, val in rows:
-            row_w = QWidget()
-            row_l = QHBoxLayout(row_w)
-            row_l.setContentsMargins(4, 2, 4, 2)
-            lbl_k = _label(key)
-            lbl_k.setFixedWidth(130)
-            lbl_v = _label(val, bold=True, color=Config.FG_WHITE)
-            row_l.addWidget(lbl_k)
-            row_l.addWidget(lbl_v)
-            vlay.addWidget(row_w)
-        bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
-        bb.accepted.connect(dlg.accept)
-        vlay.addWidget(bb)
-        dlg.exec()
+    # ──────────────────────────────────────────────────────────────────────────
+    # ÉVÉNEMENTS
+    # ──────────────────────────────────────────────────────────────────────────
 
-    # ── Nettoyage zone evenements ────────────────────────────────────────────
     def _clear_evt_layout(self):
         while self._evt_layout.count():
             item = self._evt_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
+            widget = item.widget()
+            if widget is not None:
+                widget.hide()           # deleteLater n'agit qu'au retour dans la boucle
+                widget.deleteLater()
 
-    # ── Eclipses ─────────────────────────────────────────────────────────────
-    def _search_eclipses_gui(self):
-        """Recherche et affiche les eclipses sur 12 mois."""
-        try:
-            s   = self.entry_date.text()
-            fmt = "%d/%m/%Y %H:%M:%S" if s.count(":") == 2 else "%d/%m/%Y %H:%M"
-            dte = datetime.strptime(s, fmt)
-        except ValueError:
-            QMessageBox.critical(self, "Erreur", "Date invalide.")
-            return
+    def _show_events_placeholder(self):
         self._clear_evt_layout()
-        self._evt_layout.addWidget(
-            _label("\U0001f311  \u00c9clipses \u2014 12 prochains mois",
-                   bold=True, color=Config.FG_MOON, size=12))
-        self._evt_layout.addWidget(_sep_h())
+        self._evt_layout.addWidget(_label(t("events.click_to_search"),
+                                          name="emptyState", wrap=True))
+        self._evt_layout.addStretch()
+
+    def _events_header(self, title, count_text, note=None):
+        self._evt_layout.addWidget(_label(title, name="cardTitle"))
+        self._evt_layout.addWidget(_label(count_text, name="hint"))
+        if note:
+            self._evt_layout.addWidget(_label(note, name="hint", wrap=True))
+
+    def _event_card(self, accent, icon, title, when, pill=None, details=()):
+        """Carte d'événement : liseré de couleur, titre, date, détails."""
+        card = _card("eventCard")
+        card.setStyleSheet(f"QFrame#eventCard {{ border-left: 4px solid {accent}; }}")
+        lay = QVBoxLayout(card)
+        lay.setContentsMargins(14, 10, 14, 10)
+        lay.setSpacing(4)
+        top = QHBoxLayout()
+        top.setSpacing(10)
+        head = _label(f"{icon}  {title}", name="eventTitle")
+        head.setStyleSheet(f"color: {accent};")
+        top.addWidget(head)
+        top.addStretch()
+        if pill:
+            badge = QLabel()
+            _set_badge(badge, *pill)
+            top.addWidget(badge)
+        top.addWidget(_label(when, role="value", strong=True))
+        lay.addLayout(top)
+        if details:
+            lay.addWidget(_label("   ·   ".join(details), role="key", wrap=True))
+        self._evt_layout.addWidget(card)
+
+    def _search_start(self, kind):
+        self._last_search = kind
+        dte = self._edit_datetime()
+        self._clear_evt_layout()
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        return dte
+
+    def _search_failed(self, exc):
+        self._evt_layout.addWidget(_label(tf("events.search_error", detail=exc),
+                                          tone="error", wrap=True))
+        self._evt_layout.addStretch()
+
+    def _search_eclipses_gui(self):
+        """Recherche et affiche les éclipses des 12 prochains mois."""
+        dte = self._search_start("eclipses")
         try:
             eclipses = MeeusEngine.find_eclipses(dte, num_months=12)
-        except Exception as e:
-            self._evt_layout.addWidget(
-                _label(f"Erreur : {e}", color=Config.FG_RED))
-            self._evt_layout.addStretch()
+        except Exception as exc:
+            QApplication.restoreOverrideCursor()
+            self._search_failed(exc)
             return
+        QApplication.restoreOverrideCursor()
+
+        n = len(eclipses)
+        self._events_header(tf("events.eclipses_title", date=dte.strftime("%d/%m/%Y")),
+                            tf(_plural_key("events.eclipse_count", n), n=n))
         if not eclipses:
-            self._evt_layout.addWidget(
-                _label("Aucune \u00e9clipse trouv\u00e9e sur cette p\u00e9riode.",
-                       color=Config.FG_LABEL))
-        else:
-            for ec in eclipses:
-                etype = ec.get("type", "?")
-                edate = ec.get("date", "")
-                emag  = ec.get("magnitude",    None)
-                esub  = ec.get("sub_type",     "")
-                ecert = ec.get("certainty",    "")
-                edur  = ec.get("duration_min", None)
-                elat  = ec.get("moon_latitude", None)
-                edate_s = (edate.strftime("%d/%m/%Y  %H:%M UT")
-                           if isinstance(edate, datetime) else str(edate))
-                is_solar = (etype == "solar")
-                acc_col  = Config.FG_SUN if is_solar else Config.FG_MOON
-                icon     = "\u2600" if is_solar else "\U0001f311"
-                title    = (f"{icon}  Eclipse "
-                            f"{'Solaire' if is_solar else 'Lunaire'}")
-                if esub:
-                    title += f"  \u2014  {esub.capitalize()}"
-                # Carte verticale avec bordure coloree
-                card = QWidget()
-                card.setStyleSheet(
-                    f"background-color:{Config.BG_PANEL};"
-                    f"border:1px solid {Config.GRID_COLOR};"
-                    f"border-left:3px solid {acc_col};"
-                    f"border-radius:6px; margin:3px; padding:2px;")
-                card_l = QVBoxLayout(card)
-                card_l.setSpacing(4)
-                card_l.setContentsMargins(10, 6, 10, 6)
-                # Ligne 1 : titre + date + certitude
-                r1 = QWidget()
-                r1_l = QHBoxLayout(r1)
-                r1_l.setContentsMargins(0, 0, 0, 0)
-                lbl_t = _label(title, bold=True, color=acc_col)
-                lbl_t.setFixedWidth(270)
-                r1_l.addWidget(lbl_t)
-                r1_l.addWidget(_label(edate_s, bold=True,
-                                      color=Config.FG_WHITE))
-                if ecert:
-                    c_col = (Config.FG_GREEN if ecert == "certain"
-                             else Config.FG_LABEL)
-                    r1_l.addWidget(_label(f"  [{ecert}]", color=c_col))
-                r1_l.addStretch()
-                card_l.addWidget(r1)
-                # Ligne 2 : magnitude / duree / latitude lunaire
-                details = []
-                if emag is not None:
-                    details.append(f"Magnitude : {emag:.3f}")
-                if edur is not None:
-                    details.append(f"Dur\u00e9e centrale : ~{edur} min")
-                if elat is not None:
-                    details.append(f"Lat. Lune : {elat:+.2f}\u00b0")
-                if details:
-                    r2 = QWidget()
-                    r2_l = QHBoxLayout(r2)
-                    r2_l.setContentsMargins(0, 0, 0, 0)
-                    r2_l.setSpacing(20)
-                    for d in details:
-                        r2_l.addWidget(_label(d, color=Config.FG_LABEL))
-                    r2_l.addStretch()
-                    card_l.addWidget(r2)
-                self._evt_layout.addWidget(card)
+            self._evt_layout.addWidget(_label(t("events.no_eclipse"), name="emptyState"))
+        for ec in eclipses:
+            solar = ec.get("type") == "solar"
+            accent = Config.FG_SUN if solar else Config.FG_MOON
+            title = t("events.solar_eclipse" if solar else "events.lunar_eclipse")
+            if ec.get("sub_type"):
+                title += f" — {t('events.subtype_' + ec['sub_type'])}"
+            certainty = ec.get("certainty", "")
+            pill = None
+            if certainty:
+                color = Config.FG_GREEN if certainty == "certain" else Config.FG_LABEL
+                pill = (t(f"events.certainty_{certainty}"), color)
+            when = ec["date"].strftime("%d/%m/%Y %H:%M") + f" {t('chart.ut')}"
+            details = []
+            if ec.get("magnitude") is not None:
+                details.append(tf("events.magnitude", value=f"{ec['magnitude']:.3f}"))
+            if ec.get("duration_min") is not None:
+                details.append(tf("events.duration", value=ec["duration_min"]))
+            if ec.get("diameter_ratio") is not None:
+                details.append(tf("events.diameter_ratio",
+                                  value=f"{ec['diameter_ratio']:.4f}"))
+            if ec.get("moon_latitude") is not None:
+                details.append(tf("events.moon_lat", value=f"{ec['moon_latitude']:+.2f}"))
+            self._event_card(accent, "☀️" if solar else "🌕", title, when, pill, details)
         self._evt_layout.addStretch()
 
-    # ── Conjonctions ─────────────────────────────────────────────────────────
     def _search_conjunctions_gui(self):
-        """Recherche et affiche les conjonctions planetaires sur 12 mois."""
-        try:
-            s   = self.entry_date.text()
-            fmt = "%d/%m/%Y %H:%M:%S" if s.count(":") == 2 else "%d/%m/%Y %H:%M"
-            dte = datetime.strptime(s, fmt)
-        except ValueError:
-            QMessageBox.critical(self, "Erreur", "Date invalide.")
-            return
-        self._clear_evt_layout()
-        self._evt_layout.addWidget(
-            _label("\U0001f31f  Conjonctions plan\u00e9taires \u2014 12 mois",
-                   bold=True, color=Config.FG_MOON, size=12))
-        self._evt_layout.addWidget(_sep_h())
+        """Recherche et affiche les conjonctions et oppositions sur 12 mois."""
+        dte = self._search_start("conjunctions")
         try:
             conjs = MeeusEngine.find_conjunctions(dte, num_days=365)
-        except Exception as e:
-            self._evt_layout.addWidget(
-                _label(f"Erreur : {e}", color=Config.FG_RED))
-            self._evt_layout.addStretch()
+        except Exception as exc:
+            QApplication.restoreOverrideCursor()
+            self._search_failed(exc)
             return
+        QApplication.restoreOverrideCursor()
+
+        n = len(conjs)
+        self._events_header(
+            tf("events.conjunctions_title", date=dte.strftime("%d/%m/%Y")),
+            tf(_plural_key("events.event_count", n), n=n), t("events.daily_note"))
         if not conjs:
-            self._evt_layout.addWidget(
-                _label("Aucune conjonction trouv\u00e9e sur cette p\u00e9riode.",
-                       color=Config.FG_LABEL))
-        else:
-            for cj in conjs:
-                row   = QWidget()
-                row_l = QHBoxLayout(row)
-                row_l.setContentsMargins(8, 4, 8, 4)
-
-                ctype  = cj.get("type", "conjunction")
-                bodies = cj.get("bodies", ("?", "?"))
-                cdate  = cj.get("date", "")
-                csep   = cj.get("separation", None)
-                if isinstance(cdate, datetime):
-                    cdate = cdate.strftime("%d/%m/%Y %H:%M UT")
-                if hasattr(bodies, "__iter__") and not isinstance(bodies, str):
-                    bodies_str = " \u2014 ".join(bodies)
-                else:
-                    bodies_str = str(bodies)
-                icon  = "\U0001f31f" if ctype == "conjunction" else "\u21c4"
-                lbl_b = _label(f"{icon}  {bodies_str}",
-                               bold=True, color=Config.FG_MOON)
-                lbl_b.setFixedWidth(240)
-                lbl_d = _label(str(cdate), color=Config.FG_WHITE)
-                row_l.addWidget(lbl_b)
-                row_l.addWidget(lbl_d)
-                if csep is not None:
-                    row_l.addWidget(_label(f"S\u00e9par. {csep:.2f}\u00b0",
-                                           color=Config.FG_LABEL))
-                row_l.addStretch()
-                row.setStyleSheet(f"background-color: {Config.BG_PANEL};"
-                                  " border-radius:4px; margin:2px;")
-                self._evt_layout.addWidget(row)
+            self._evt_layout.addWidget(_label(t("events.no_conjunction"), name="emptyState"))
+        for cj in conjs:
+            a, b = cj.get("bodies", ("?", "?"))
+            sep = cj.get("separation")
+            if cj.get("type") == "opposition":
+                icon, accent = "🔭", Config.FG_PURPLE
+                title = tf("events.opposition", planet=_planet_name(a))
+                detail_key, digits = "events.elongation", 1
+            elif b == "Sun":
+                icon, accent = "☀️", Config.FG_SUN
+                title = tf("events.solar_conjunction", planet=_planet_name(a))
+                detail_key, digits = "events.separation", 2
+            else:
+                icon, accent = "✨", Config.planet_color(a)
+                title = tf("events.conjunction_pair", a=_planet_name(a), b=_planet_name(b))
+                detail_key, digits = "events.separation", 2
+            details = [tf(detail_key, value=f"{sep:.{digits}f}")] if sep is not None else []
+            self._event_card(accent, icon, title, cj["date"].strftime("%d/%m/%Y"),
+                             details=details)
         self._evt_layout.addStretch()
-
-    # ── Stylesheet global ────────────────────────────────────────────────────
-    def _apply_styles(self):
-        """Theme visuel Catppuccin + support emoji via Segoe UI Emoji."""
-        BG  = Config.BG_MAIN
-        PNL = Config.BG_PANEL
-        FG  = Config.FG_WHITE
-        LBL = Config.FG_LABEL
-        ACC = Config.BTN_COLOR
-        GRD = Config.GRID_COLOR
-        RED = Config.FG_RED
-        qss = f"""
-* {{
-    font-family: 'Segoe UI', 'Segoe UI Emoji', 'Apple Color Emoji',
-                 'Noto Color Emoji', sans-serif;
-    font-size: 10pt; color: {FG};
-}}
-QMainWindow, QWidget {{ background-color: {BG}; }}
-QGroupBox {{
-    border: 1px solid {GRD}; border-radius: 6px;
-    margin-top: 12px; padding-top: 6px;
-    font-weight: bold; color: {ACC};
-}}
-QGroupBox::title {{
-    subcontrol-origin: margin; left: 10px;
-    padding: 0 6px; background-color: {BG};
-}}
-QPushButton {{
-    background-color: {PNL}; border: 1px solid {GRD};
-    border-radius: 5px; padding: 5px 14px;
-    color: {FG}; min-height: 28px;
-}}
-QPushButton:hover {{ background-color: {ACC}33; border-color: {ACC}; }}
-QPushButton:checked {{
-    background-color: {ACC}55; border-color: {ACC};
-    color: {FG}; font-weight: bold;
-}}
-QPushButton:pressed {{ background-color: {ACC}77; }}
-QLineEdit {{
-    background-color: {BG}; border: 1px solid {GRD};
-    border-radius: 4px; padding: 4px 8px; color: {FG};
-}}
-QLineEdit:focus {{ border-color: {ACC}; }}
-QComboBox {{
-    background-color: {BG}; border: 1px solid {GRD};
-    border-radius: 4px; padding: 4px 8px; color: {FG};
-}}
-QComboBox::drop-down {{ border: none; width: 20px; }}
-QComboBox QAbstractItemView {{
-    background-color: {PNL}; border: 1px solid {GRD}; color: {FG};
-    selection-background-color: {ACC}44;
-}}
-QTabWidget::pane {{
-    border: 1px solid {GRD}; border-top: none;
-    background-color: {PNL};
-}}
-QTabBar::tab {{
-    background: {BG}; color: {LBL};
-    padding: 7px 16px; border: 1px solid transparent;
-    border-bottom: none; margin-right: 2px;
-    border-radius: 4px 4px 0 0;
-}}
-QTabBar::tab:selected {{
-    background: {PNL}; color: {FG};
-    border-color: {GRD}; font-weight: bold;
-}}
-QTabBar::tab:hover:!selected {{ background: {PNL}88; color: {FG}; }}
-QScrollBar:vertical {{
-    background: {BG}; width: 7px; border-radius: 3px; margin: 0;
-}}
-QScrollBar::handle:vertical {{
-    background: {GRD}; border-radius: 3px; min-height: 24px;
-}}
-QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
-QScrollBar:horizontal {{
-    background: {BG}; height: 7px; border-radius: 3px; margin: 0;
-}}
-QScrollBar::handle:horizontal {{
-    background: {GRD}; border-radius: 3px; min-width: 24px;
-}}
-QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width: 0; }}
-QStatusBar {{
-    background: {BG}; color: {LBL};
-    border-top: 1px solid {GRD}; padding: 2px 6px;
-}}
-QToolTip {{
-    background-color: {PNL}; color: {FG};
-    border: 1px solid {ACC}; padding: 4px 8px; border-radius: 4px;
-}}
-QSlider::groove:horizontal {{
-    background: {GRD}; height: 4px; border-radius: 2px;
-}}
-QSlider::handle:horizontal {{
-    background: {ACC}; width: 14px; height: 14px;
-    margin: -5px 0; border-radius: 7px;
-}}
-QSlider::sub-page:horizontal {{ background: {ACC}66; border-radius: 2px; }}
-QCheckBox::indicator {{
-    width: 16px; height: 16px; border-radius: 3px;
-    border: 1px solid {GRD}; background: {BG};
-}}
-QCheckBox::indicator:checked {{ background: {ACC}; border-color: {ACC}; }}
-QLabel {{ background: transparent; }}
-QScrollArea {{ border: none; background: transparent; }}
-"""
-        self.setStyleSheet(qss)
-        # Bouton CALCULER en couleur accent
-        if hasattr(self, 'btn_calc'):
-            self.btn_calc.setStyleSheet(
-                f"QPushButton {{ background-color:{ACC}; color:{BG}; "
-                f"font-weight:bold; border:none; border-radius:5px; "
-                f"min-height:32px; padding:6px 14px; }}"
-                f"QPushButton:hover {{ background-color:{ACC}cc; }}"
-                f"QPushButton:pressed {{ background-color:{ACC}88; }}")
-        # Bouton LIVE rouge quand actif
-        if hasattr(self, 'btn_live'):
-            self.btn_live.setStyleSheet(
-                f"QPushButton {{ background-color:{PNL}; color:{FG}; "
-                f"border:1px solid {GRD}; border-radius:5px; "
-                f"min-height:28px; padding:5px 14px; }}"
-                f"QPushButton:checked {{ background-color:{RED}44; "
-                f"border-color:{RED}; color:{FG}; font-weight:bold; }}"
-                f"QPushButton:hover {{ border-color:{RED}; }}")

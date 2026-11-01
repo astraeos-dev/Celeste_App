@@ -1,10 +1,47 @@
 """
-constellations.py — Star Constellation Data for Sky Map
-========================================================
-Additional stars, constellation edges, and reverse lookup.
+constellations.py — Star catalog and constellation figures for the sky map
+==========================================================================
+Bright stars (right ascension, declination, magnitude), the lines drawn
+between them, and a reverse lookup from a star to its constellations.
 """
 
-# Additional stars: {name: (RA hours, Dec degrees, magnitude)}
+# Bright stars: {name: (RA hours, Dec degrees, visual magnitude)}
+BRIGHT_STARS = {
+    "Sirius":      ( 6.7523, -16.7161, -1.46),
+    "Arcturus":    (14.2612,  19.1822, -0.05),
+    "Vega":        (18.6157,  38.7836,  0.03),
+    "Capella":     ( 5.2782,  45.9980,  0.08),
+    "Rigel":       ( 5.2423,  -8.2016,  0.13),
+    "Procyon":     ( 7.6550,   5.2250,  0.34),
+    "Betelgeuse":  ( 5.9194,   7.4070,  0.42),
+    "Altair":      (19.8463,   8.8683,  0.77),
+    "Aldebaran":   ( 4.5988,  16.5093,  0.87),
+    "Spica":       (13.4199, -11.1613,  1.04),
+    "Antares":     (16.4900, -26.4319,  1.06),
+    "Pollux":      ( 7.7553,  28.0262,  1.16),
+    "Fomalhaut":   (22.9608, -29.6223,  1.17),
+    "Deneb":       (20.6905,  45.2803,  1.25),
+    "Regulus":     (10.1395,  11.9672,  1.36),
+    "Adhara":      ( 6.9771, -28.9722,  1.50),
+    "Castor":      ( 7.5766,  31.8883,  1.58),
+    "El Nath":     ( 5.4381,  28.6075,  1.65),
+    "Bellatrix":   ( 5.4186,   6.3497,  1.64),
+    "Alnilam":     ( 5.6036,  -1.2019,  1.70),
+    "Alioth":      (12.9006,  55.9598,  1.76),
+    "Alnitak":     ( 5.6791,  -1.9425,  1.77),
+    "Mirfak":      ( 3.4054,  49.8614,  1.79),
+    "Dubhe":       (11.0623,  61.7508,  1.81),
+    "Alkaid":      (13.7924,  49.3133,  1.85),
+    "Alhena":      ( 6.6285,  16.3992,  1.93),
+    "Alphard":     ( 9.4597,  -8.6584,  1.99),
+    "Hamal":       ( 2.1197,  23.4622,  2.01),
+    "Denebola":    (11.8174,  14.5723,  2.14),
+    "Merak":       (11.0307,  56.3824,  2.37),
+    "Phecda":      (11.8966,  53.6948,  2.44),
+    "Polaris":     ( 2.5303,  89.2641,  1.97),
+}
+
+# Additional stars that complete the constellation figures
 STARS_EXTRA = {
     # Orion
     "Mintaka":   ( 5.5335,  -0.2991, 2.23),
@@ -26,8 +63,12 @@ STARS_EXTRA = {
     "Sargas":    (17.6217, -42.9978, 1.87),
 }
 
+# Every star drawn on the sky map
+STARS = {**BRIGHT_STARS, **STARS_EXTRA}
+
 # Constellations: {name: list of (star_a, star_b)}
-# Star names must match keys in _STARS (accents included).
+# Star names must match keys in STARS. The names are also the translation
+# keys of the "constellations" section of the locale files.
 CONSTELLATIONS = {
     "Orion": [
         ("Betelgeuse", "Bellatrix"),

@@ -7,10 +7,13 @@ et expose une API minimaliste pour le reste de l'application.
 API publique
 ------------
 - ``t(key)``            → chaîne traduite (notation pointée : ``t("sun.title")``)
+- ``tf(key, **values)`` → chaîne traduite dont les ``{champs}`` sont remplis
 - ``switch_lang(code)`` → change la langue active et recharge le fichier
 - ``get_lang()``        → code langue actif (``"fr"``, ``"en"``, …)
 - ``available_langs()`` → liste des codes langue disponibles
 - ``lang_name(code)``   → nom natif d'une langue (``"Français"``, ``"English"``, …)
+- ``resolve_lang(code, system_locale)`` → ``"auto"`` remplacé par la langue
+  du système si elle est traduite, sinon l'anglais
 
 Fallback : si une clé est absente de la langue active, la valeur de la langue
 de référence (``fr``) est utilisée. Si la clé est introuvable partout,
@@ -24,9 +27,12 @@ import os
 
 _LOCALES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "locales")
 # Translation fallback language — used when a key is missing from the active locale.
-# This is NOT the UI default language (set via settings.py / Config.DEFAULT_LANG).
-# Keep as "fr" since the French locale is the reference/most complete file.
+# This is NOT the UI default language (the "lang" preference, "auto" by default,
+# see resolve_lang). Keep as "fr": the French locale is the reference file.
 _FALLBACK_LANG = "fr"
+
+# Language chosen by "auto" when the system language has no translation.
+_AUTO_DEFAULT_LANG = "en"
 
 # Métadonnées des langues supportées — nom natif affiché dans le sélecteur.
 # Pour ajouter une langue : créer ``locales/xx.json`` et ajouter une entrée ici.
@@ -146,6 +152,36 @@ def t(key: str) -> str:
     if val is not None:
         return val
     return f"[{key}]"
+
+
+def tf(key: str, /, **values) -> str:
+    """
+    Traduit *key* puis remplit ses champs ``{nom}`` avec *values*
+    (un champ peut lui-même s'appeler ``key``).
+
+    Un champ absent de *values* laisse la chaîne telle quelle plutôt que
+    de lever une exception : une traduction incomplète ne bloque pas l'interface.
+    """
+    text = t(key)
+    try:
+        return text.format(**values)
+    except (KeyError, IndexError, ValueError):
+        return text
+
+
+def resolve_lang(code, system_locale=None) -> str:
+    """
+    Retourne le code de langue à utiliser pour la préférence *code*.
+
+    ``"auto"`` (ou une valeur vide) désigne la langue du système : les deux
+    premières lettres de *system_locale* (``"fr_FR"`` → ``"fr"``) si un fichier
+    de traduction existe pour elle, sinon l'anglais. Tout autre code est
+    retourné tel quel.
+    """
+    if code and code != "auto":
+        return code
+    sys_code = (system_locale or "").replace("-", "_").split("_")[0].lower()
+    return sys_code if sys_code in available_langs() else _AUTO_DEFAULT_LANG
 
 
 # ── Initialisation au chargement du module ────────────────────────────

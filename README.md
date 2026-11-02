@@ -17,8 +17,8 @@
 
 Céleste calcule en temps réel — ou pour n'importe quelle date — la position du Soleil, de la Lune et de quatre planètes
 (Vénus, Mars, Jupiter, Saturne), les événements du jour (lever, coucher, crépuscules), les phases de la Lune, les éclipses,
-les conjonctions et les oppositions. Les résultats s'affichent dans une interface PyQt6 aux couleurs Catppuccin, sombre ou
-claire, avec des graphiques interactifs et une carte du ciel.
+les conjonctions et les oppositions. Les résultats s'affichent dans une interface PyQt6 au design Astræos (thèmes Nuit,
+Jour et Observation), avec des graphiques interactifs et une carte du ciel.
 
 **Fonctionnalités principales :**
 
@@ -33,7 +33,9 @@ claire, avec des graphiques interactifs et une carte du ciel.
   info-bulle au survol et fiche détaillée au clic (constellation, magnitude, coordonnées)
 - **Planètes** — tableau de Vénus, Mars, Jupiter et Saturne (coordonnées, distance, élongation, visibilité) et système
   solaire vu de dessus, en vue rapprochée et en vue d'ensemble
-- **Prévision des éclipses** — type (totale, annulaire, hybride), rapport des diamètres, magnitude, durée de la phase centrale
+- **Prévision des éclipses** — éclipses de Soleil (totale, annulaire, hybride, partielle ; magnitude, durée de la phase
+  centrale) et de Lune (totale, partielle, pénombrale ; magnitudes d'ombre et de pénombre, durée de chaque phase), avec
+  l'heure du maximum
 - **Conjonctions et oppositions** — prochains événements planétaires
 - **Équation du temps** — écart entre temps solaire vrai et temps solaire moyen
 - **Favoris** — enregistrement des lieux (37 villes préchargées)
@@ -41,7 +43,8 @@ claire, avec des graphiques interactifs et une carte du ciel.
 - **Export PDF** — éphémérides du jour
 - **Interface multilingue** — français, anglais, espagnol, allemand ; langue du système par défaut, changement immédiat
   dans les paramètres (ou `--lang`)
-- **Thèmes** — Catppuccin Mocha, Frappé (sombres) et Latte (clair), appliqués sans redémarrer (ou `--theme`)
+- **Thèmes** — Nuit (sombre), Jour (clair) et Observation (rouge sur noir, pour garder la vision de nuit), choisis en bas
+  de la barre latérale sans redémarrer (ou `--theme`)
 - **Raccourcis clavier** — `F5` calculer, `Ctrl+L` temps réel, `Ctrl+E` export PDF
 - **Réglages persistants** — thème, langue, format de l'heure, lieu de démarrage, magnitude limite, intervalle temps réel
   (`settings.json`)
@@ -67,11 +70,12 @@ python main.py --lang fr   # français
 python main.py --lang en   # anglais
 python main.py --lang es   # espagnol
 python main.py --lang de   # allemand
-python main.py --theme latte   # thème clair (mocha, frape, latte)
+python main.py --theme jour   # thème clair (nuit, jour, observation)
 ```
 
-Sans option, la langue suit celle du système (l'anglais si elle n'est pas traduite) ; la langue et le thème se changent
-ensuite dans l'onglet ⚙️ Paramètres, sans redémarrer.
+Sans option, la langue suit celle du système (l'anglais si elle n'est pas traduite) et le thème est Nuit. La langue se
+change ensuite dans l'onglet Paramètres et le thème en bas de la barre latérale, sans redémarrer. Les anciens noms de
+thème (`mocha`, `frape`, `latte`) restent acceptés.
 
 ---
 
@@ -83,17 +87,25 @@ ensuite dans l'onglet ⚙️ Paramètres, sans redémarrer.
 | **Latitude** | Degrés décimaux, positif = nord (ex. `48.85` pour Paris), point ou virgule |
 | **Longitude** | Degrés décimaux, positif = est (ex. `2.35` pour Paris), point ou virgule |
 | **Fuseau** | Décalage UTC±N appliqué aux heures des événements |
-| **Favoris** | Choisir un lieu l'applique aussitôt ; 💾 enregistre le lieu saisi, 🗑 supprime le favori choisi |
+| **Favoris** | Choisir un lieu l'applique aussitôt ; l'étoile ajoute le lieu saisi aux favoris, la corbeille supprime le favori choisi |
 
-Une coordonnée invalide s'encadre de rouge, sans fenêtre d'erreur. Changer la date recalcule tout au bout d'un instant.
+Une coordonnée invalide s'encadre de la couleur d'alerte et un message s'affiche sous le champ, sans fenêtre d'erreur.
+Changer la date recalcule tout au bout d'un instant.
 
 **Boutons :**
 
-- `🕒` — revient à l'instant présent
-- `📍` — remplit la latitude, la longitude et le fuseau à partir de l'adresse IP
-- `⚡ CALCULER` (`F5`) — lance les calculs pour la date et le lieu saisis
-- `⏱ TEMPS RÉEL` (`Ctrl+L`) — suit l'heure actuelle (intervalle réglable dans les paramètres)
-- `📄 EXPORTER EN PDF` (`Ctrl+E`) — exporte les éphémérides du jour en PDF
+- Horloge, à droite de la date — revient à l'instant présent
+- Viseur, à droite de la longitude — remplit la latitude, la longitude et le fuseau à partir de l'adresse IP
+- **Calculer** (`F5`) — lance les calculs pour la date et le lieu saisis
+- **Suivre en temps réel** (`Ctrl+L`) — bouton à bascule : suit l'heure actuelle tant qu'il reste enfoncé (intervalle
+  réglable dans les paramètres)
+- **Exporter en PDF** (`Ctrl+E`) — exporte les éphémérides du jour en PDF
+- **Nuit · Jour · Observation** — sélecteur de thème, en bas de la barre latérale
+
+**Événements :** les deux boutons de l'onglet cherchent les éclipses des 12 prochaines lunaisons et les conjonctions de
+l'année à venir. Chaque éclipse indique son type, l'heure du maximum (en temps universel), les magnitudes et la durée
+des phases. Une éclipse pénombrale si faible que son existence tient à la précision du calcul (magnitude de pénombre
+inférieure à 0,01) est marquée « Incertaine ».
 
 **Graphiques :**
 
@@ -101,6 +113,30 @@ Une coordonnée invalide s'encadre de rouge, sans fenêtre d'erreur. Changer la 
 - La carte du ciel place le zénith au centre et l'horizon sur le cercle, le nord en haut ; le curseur règle la
   magnitude limite des étoiles
 - Survolez un astre de la carte pour l'identifier, cliquez pour afficher sa fiche
+
+---
+
+## Design Astræos
+
+L'interface et les graphiques suivent le design system Astræos :
+
+- **Thèmes** — Nuit (sombre, par défaut), Jour (clair) et Observation (rouge sur noir, pour garder la vision de nuit
+  dehors). Les couleurs sont les jetons du design system (`ciel-000`, `ciel-100`, `ciel-200`, `encre`,
+  `encre-attenuee`, `or`, `lune`, `signal-ok`, `signal-alerte`), définis une seule fois dans `config.py` et partagés
+  par Qt et matplotlib.
+- **Typographie** — IBM Plex Sans pour le texte, IBM Plex Mono pour les valeurs chiffrées, Astraeos Symboles pour les
+  symboles astronomiques (☉ ☽ ♀ ♂ ♃ ♄ ⊕ ♈ ☌ ☍). Les polices sont fournies dans `fonts/`, pour un rendu identique sur
+  toutes les machines.
+- **Composants** — boutons (principal, secondaire, discret, danger), champs de saisie avec libellé, unité et message
+  d'erreur, cartes de données, pastilles d'état, jauge, onglets et sélecteur de thème.
+- **Règles** — pas d'emoji (des icônes Material Design Icons à la place) ; une seule zone dorée par écran, le bouton
+  Calculer ; des filets plutôt que des ombres ; un symbole accompagne toujours le nom de l'astre, sans le remplacer ;
+  des libellés sans capitales ; un contraste du texte d'au moins 4,5:1 dans les trois thèmes (vérifié par
+  `tests/test_config.py`).
+
+L'export PDF garde sa propre mise en page. Polices IBM Plex (© IBM) et Astraeos Symboles (d'après Noto Sans Symbols)
+sous licence SIL Open Font License 1.1 ; icônes Material Design Icons (Pictogrammers) sous licence Apache 2.0 : voir
+`fonts/README.md` et `assets/README.md`.
 
 ---
 
@@ -115,7 +151,8 @@ Celeste_App/
 ├── gui.py               # Vue + contrôleur — interface PyQt6 et logique applicative
 ├── charts.py            # Graphiques matplotlib — trajectoires, carte du ciel, système solaire
 ├── utils.py             # Utilitaires — formats HMS/DMS, noms des phases
-├── config.py            # Configuration — palettes Catppuccin Mocha, Frappé et Latte
+├── config.py            # Design Astræos — couleurs des thèmes Nuit, Jour et Observation, espacements, styles de texte
+├── icons.py             # Icônes Material Design (SVG) et symbole Astræos aux couleurs du thème
 ├── i18n.py              # Internationalisation — traductions par clé avec repli
 ├── settings.py          # Préférences persistantes (settings.json)
 ├── constellations.py    # Catalogue d'étoiles et tracés des constellations
@@ -123,10 +160,12 @@ Celeste_App/
 ├── favorites.json       # Lieux préchargés (37 villes)
 ├── settings.json        # Préférences (générées automatiquement)
 ├── locales/             # Traductions (fr.json est la référence)
+├── fonts/               # Polices IBM Plex Sans, IBM Plex Mono et Astraeos Symboles (licence OFL)
+├── assets/              # Symbole et icône Astræos (SVG), licence des icônes
 ├── scripts/             # Scripts annexes (fiche haute précision Skyfield/INPOP)
 ├── requirements.txt     # Dépendances d'exécution
 ├── requirements-dev.txt # Dépendances de développement (pytest)
-└── tests/               # Tests unitaires (moteur, graphiques, interface, i18n, utilitaires)
+└── tests/               # Tests unitaires (moteur, graphiques, interface, thèmes, i18n, utilitaires)
 ```
 
 ### Modèle : `MeeusEngine`
@@ -137,6 +176,7 @@ Moteur de calcul entièrement découplé : uniquement des méthodes de classe ou
 |---------|------|
 | `julian_day(dte)` | Jour julien (JJ) |
 | `julian_century_j2000(dte)` | T en siècles juliens depuis J2000,0 |
+| `delta_t(year)` | ΔT = TT − TU en secondes (polynômes d'Espenak et Meeus, NASA) |
 | `sun_position(t)` | Longitude écliptique et distance du Soleil — série courte (~0,01°) |
 | `sun_position_hp(t)` | Position du Soleil — VSOP87 tronquée (~1″) |
 | `moon_position(t)` | Longitude, latitude et parallaxe de la Lune — Meeus ch. 47, ELP-2000/82 tronquée (~10″) |
@@ -150,7 +190,7 @@ Moteur de calcul entièrement découplé : uniquement des méthodes de classe ou
 | `equation_of_time(t)` | Équation du temps en minutes |
 | `angular_separation(ra1, dec1, ra2, dec2)` | Séparation angulaire entre deux astres |
 | `find_conjunctions(dte_start, num_days)` | Prochaines conjonctions et oppositions |
-| `find_eclipses(dte_start, num_months)` | Éclipses de Soleil et de Lune, avec type et magnitude |
+| `find_eclipses(dte_start, num_months)` | Éclipses de Soleil (éléments besséliens) et de Lune (ombre et pénombre de la Terre, règle de Danjon) : type, magnitudes, durées, heure du maximum en TU |
 
 ### Cache
 
@@ -173,9 +213,10 @@ Les tests de l'interface ouvrent la fenêtre hors écran (`QT_QPA_PLATFORM=offsc
 | Fichier | Portée |
 |---------|--------|
 | `test_engine.py` | Jour julien, positions Soleil/Lune, changements de repère, événements, planètes |
-| `test_engine_hp.py` | Soleil VSOP87, Lune ELP2000, équation du temps, séparations, conjonctions, éclipses |
-| `test_charts.py` | Bandes de crépuscule, géométrie et contenu de la carte du ciel, système solaire, rendu des graphiques |
-| `test_gui.py` | Fenêtre PyQt6 : calcul, langue et thème à chaud, favoris, événements, info-bulles, fiches, temps réel, PDF |
+| `test_engine_hp.py` | Soleil VSOP87, Lune ELP2000, équation du temps, séparations, conjonctions, éclipses de Soleil et de Lune comparées au canon de la NASA |
+| `test_charts.py` | Bandes de crépuscule, géométrie et contenu de la carte du ciel, système solaire, polices, rendu des graphiques |
+| `test_gui.py` | Fenêtre PyQt6 : calcul, langue et thème à chaud, favoris, événements, info-bulles, fiches, temps réel, PDF, règles du design (pas d'emoji, symboles, une seule action principale) |
+| `test_config.py` | Jetons des thèmes Astræos, anciens noms de thème, contraste du texte |
 | `test_i18n.py` | Chargement des traductions, repli, cohérence des 4 langues, langue automatique |
 | `test_utils.py` | Formats HMS/DMS (retenues), noms et normalisation des phases |
 
@@ -192,6 +233,11 @@ Les tests de l'interface ouvrent la fenêtre hors écran (`QT_QPA_PLATFORM=offsc
   - Chapitre 32 — Position du Soleil VSOP87 (~1″)
   - Chapitre 47 — Position de la Lune (ELP-2000/82 tronquée, ~10″)
   - Chapitre 54 — Prévision des éclipses de Soleil
+- **Explanatory Supplement to the Astronomical Almanac** (1992), chapitre 8 — éléments besséliens des éclipses de Soleil
+- **André Danjon** — agrandissement de l'ombre de la Terre par l'atmosphère (1/85 du rayon terrestre), retenu pour les
+  éclipses de Lune
+- **Fred Espenak et Jean Meeus**, *Five Millennium Canon of Solar Eclipses* et *Five Millennium Canon of Lunar
+  Eclipses*, NASA — valeurs de référence des tests, et polynômes de ΔT (écart entre temps dynamique et temps universel)
 
 ---
 
@@ -203,7 +249,8 @@ Les tests de l'interface ouvrent la fenêtre hors écran (`QT_QPA_PLATFORM=offsc
 | [matplotlib](https://matplotlib.org/) | 3.10.8 | Graphiques astronomiques interactifs |
 | [reportlab](https://www.reportlab.com/) | 4.0 | Export PDF |
 
-`urllib`, `json` et `argparse` font partie de la bibliothèque standard de Python.
+`urllib`, `json` et `argparse` font partie de la bibliothèque standard de Python. Les polices et les icônes sont fournies
+avec le projet (`fonts/`, `assets/`) : rien à installer.
 
 ---
 
@@ -218,7 +265,7 @@ Les tests de l'interface ouvrent la fenêtre hors écran (`QT_QPA_PLATFORM=offsc
 - [x] **Précision de la Lune** — termes complets du chapitre 47 de Meeus (ELP-2000/82 tronquée, ~10″)
 - [x] **Équation du temps**
 - [ ] **Planétaire 2D** — orbites animées
-- [ ] **Éclipses de Lune** — étendre la détection à la Lune
+- [x] **Éclipses de Lune** — type (totale, partielle, pénombrale), magnitudes, durée des phases, heure du maximum
 
 ### Interface et visualisation
 
@@ -227,7 +274,7 @@ Les tests de l'interface ouvrent la fenêtre hors écran (`QT_QPA_PLATFORM=offsc
 - [x] Planètes sur la carte du ciel (info-bulle et fiche au clic)
 - [x] **Couleurs des crépuscules** — fond du graphique de trajectoire coloré selon le moment de la journée
 - [x] **Carte du ciel interactive** — fiche complète d'une étoile au clic
-- [x] **Thème clair** — bascule entre Catppuccin Mocha (sombre) et Latte (clair), sans redémarrer
+- [x] **Design Astræos** — thèmes Nuit, Jour et Observation sans redémarrer, polices IBM Plex, icônes vectorielles
 
 ### Confort d'utilisation
 
@@ -242,12 +289,13 @@ Les tests de l'interface ouvrent la fenêtre hors écran (`QT_QPA_PLATFORM=offsc
 
 ### Technique et qualité
 
-- [x] **Tests unitaires** — pytest sur le moteur, les graphiques, l'interface (hors écran), `utils.py` et `i18n.py`
-  (6 fichiers, ~200 cas)
+- [x] **Tests unitaires** — pytest sur le moteur, les graphiques, l'interface (hors écran), les thèmes, `utils.py` et
+  `i18n.py` (7 fichiers, ~290 cas)
 - [ ] **Exécutable** — PyInstaller `.exe` (Windows) / `.app` (macOS)
 
 ---
 
 ## Licence
 
-Projet distribué sous licence MIT : voir le fichier `LICENSE`.
+Projet distribué sous licence MIT : voir le fichier `LICENSE`. Les polices de `fonts/` sont sous licence SIL Open Font
+License 1.1 et les icônes Material Design Icons sous licence Apache 2.0 (voir `fonts/README.md` et `assets/README.md`).

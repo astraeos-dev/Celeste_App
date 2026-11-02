@@ -1,131 +1,113 @@
 """
-config.py — Configuration and Visual Themes for Céleste
-======================================================
-Centralizes color palettes (Catppuccin Mocha / Frappé / Latte) and global
-application parameters.
+config.py — Astræos design tokens for Céleste
+=============================================
+The colors of the three Astræos themes, copied from the design system's
+tokens.json, and the spacing, radii and text styles the interface uses.
+
+- Nuit (default): screens, evening use.
+- Jour: daytime use and printed documents.
+- Observation: everything red on black, to read the screen in the dark
+  without losing the eye's adaptation.
+
+Roles (README of the design system):
+    ciel-000        page background
+    ciel-100        cards, panels, windows, input fields
+    ciel-200        hairlines, borders, gauge tracks (never text)
+    encre           text and values
+    encre-attenuee  labels, units, captions
+    or              identity: the logo's star, the primary action, focus.
+                    One gold area per screen.
+    sur-or          text and icons on a gold fill (= ciel-000)
+    lune            information: links, secondary data
+    signal-ok, signal-alerte   states only, always with a word or an icon
 
 Usage:
     from config import Config
-    # At startup, call Config.apply_theme(prefs.get("theme")) before building the UI.
-    # The interface calls it again when the theme changes, then redraws itself.
+    Config.apply_theme(prefs.get("theme"))   # before building the interface
+    Config.ENCRE, Config.token("ciel-200")
 """
 
 # ──────────────────────────────────────────────────────────────────────────────
-# THEME PRESETS  (Catppuccin family)
+# COLOR TOKENS (tokens.json of the Astræos design system)
 # ──────────────────────────────────────────────────────────────────────────────
-#
-# BG_*        window, tab pane, card and input field backgrounds
-# FG_*        text and accent colors
-# BTN_COLOR   accent color (primary button, selection, sliders)
-# GRID_COLOR  borders, separators and chart grids
-# TW_*        twilight bands of the trajectory chart (day → night)
-# PLANET_*    planet colors in tables and the orrery
-# MODE        "dark" or "light"
+
+THEME_NAMES = ("nuit", "jour", "observation")
 
 _THEMES = {
-    "mocha": {
-        "BG_MAIN":    "#1B1B25",
-        "BG_PANEL":   "#222230",
-        "BG_CARD":    "#292938",
-        "BG_INPUT":   "#1B1B25",
-        "FG_LABEL":   "#A0A0B0",
-        "FG_MUTED":   "#7F849C",
-        "FG_WHITE":   "#FFFFFF",
-        "FG_SUN":     "#F9E2AF",
-        "FG_MOON":    "#89B4FA",
-        "FG_GREEN":   "#A6E3A1",
-        "FG_PURPLE":  "#CBA6F7",
-        "FG_RED":     "#F38BA8",
-        "BTN_COLOR":  "#89B4FA",
-        "GRID_COLOR": "#45475A",
-        "TW_DAY":     "#33456A",
-        "TW_CIVIL":   "#2C3657",
-        "TW_NAUT":    "#252B46",
-        "TW_ASTRO":   "#1F2238",
-        "TW_NIGHT":   "#191A29",
-        "PLANET_VENUS":   "#D4C060",
-        "PLANET_MARS":    "#E07050",
-        "PLANET_JUPITER": "#C8A870",
-        "PLANET_SATURN":  "#C0C060",
-        "MODE":       "dark",
+    "nuit": {
+        "ciel-000":       "#0b0f17",
+        "ciel-100":       "#131a26",
+        "ciel-200":       "#1f2a3b",
+        "encre":          "#e8ecf2",
+        "encre-attenuee": "#9aa6b8",
+        "or":             "#f2b84b",
+        "lune":           "#8fb8e8",
+        "signal-ok":      "#5cc98a",
+        "signal-alerte":  "#ff6b5e",
     },
-    "frape": {
-        "BG_MAIN":    "#232634",
-        "BG_PANEL":   "#292C3C",
-        "BG_CARD":    "#303446",
-        "BG_INPUT":   "#232634",
-        "FG_LABEL":   "#A5ADCE",
-        "FG_MUTED":   "#838BA7",
-        "FG_WHITE":   "#C6D0F5",
-        "FG_SUN":     "#EF9F76",
-        "FG_MOON":    "#8CAAEE",
-        "FG_GREEN":   "#A6D189",
-        "FG_PURPLE":  "#CA9EE6",
-        "FG_RED":     "#E78284",
-        "BTN_COLOR":  "#8CAAEE",
-        "GRID_COLOR": "#414559",
-        "TW_DAY":     "#3E5079",
-        "TW_CIVIL":   "#364266",
-        "TW_NAUT":    "#2F3754",
-        "TW_ASTRO":   "#292E45",
-        "TW_NIGHT":   "#232636",
-        "PLANET_VENUS":   "#E5C890",
-        "PLANET_MARS":    "#EA999C",
-        "PLANET_JUPITER": "#EF9F76",
-        "PLANET_SATURN":  "#E5C890",
-        "MODE":       "dark",
+    "jour": {
+        "ciel-000":       "#f6f4ef",
+        "ciel-100":       "#ffffff",
+        "ciel-200":       "#e3dfd5",
+        "encre":          "#141a24",
+        "encre-attenuee": "#5a6372",
+        "or":             "#8f5c00",
+        "lune":           "#2f5d8f",
+        "signal-ok":      "#1f7a48",
+        "signal-alerte":  "#b3261e",
     },
-    "latte": {
-        "BG_MAIN":    "#EFF1F5",
-        "BG_PANEL":   "#E6E9EF",
-        "BG_CARD":    "#F7F8FA",
-        "BG_INPUT":   "#FFFFFF",
-        "FG_LABEL":   "#5C5F77",
-        "FG_MUTED":   "#8C8FA1",
-        "FG_WHITE":   "#4C4F69",
-        "FG_SUN":     "#FE640B",
-        "FG_MOON":    "#1E66F5",
-        "FG_GREEN":   "#40A02B",
-        "FG_PURPLE":  "#8839EF",
-        "FG_RED":     "#D20F39",
-        "BTN_COLOR":  "#1E66F5",
-        "GRID_COLOR": "#ACB0BE",
-        "TW_DAY":     "#F4F8FF",
-        "TW_CIVIL":   "#DCE5F5",
-        "TW_NAUT":    "#C6D1EA",
-        "TW_ASTRO":   "#B1BEDF",
-        "TW_NIGHT":   "#A0AED5",
-        "PLANET_VENUS":   "#A47A00",
-        "PLANET_MARS":    "#C2410C",
-        "PLANET_JUPITER": "#8B5E34",
-        "PLANET_SATURN":  "#7C7C00",
-        "MODE":       "light",
+    "observation": {
+        "ciel-000":       "#0a0000",
+        "ciel-100":       "#160303",
+        "ciel-200":       "#2a0707",
+        "encre":          "#ff5a46",
+        "encre-attenuee": "#da4733",
+        "or":             "#ff8a5c",
+        "lune":           "#e04a35",
+        "signal-ok":      "#e8604a",
+        "signal-alerte":  "#ffa090",
     },
 }
+for _palette in _THEMES.values():
+    _palette["sur-or"] = _palette["ciel-000"]          # alias, as in tokens.json
 
-# Theme names shown in the settings, in display order
-THEME_NAMES = ("mocha", "frape", "latte")
+# Theme names of earlier versions of Céleste (Catppuccin)
+_ALIASES = {"mocha": "nuit", "frape": "nuit", "frappe": "nuit", "latte": "jour",
+            "night": "nuit", "day": "jour"}
 
-# The sky map stays a night sky in every theme, so it has its own palette
-SKY = {
-    "FIG":      "#04040E",   # around the dome (dark themes)
-    "DOME":     "#06061A",   # inside the horizon circle
-    "TITLE":    "#C8D4FF",
-    "TICK":     "#8899BB",
-    "GRID":     "#0F1E35",
-    "HORIZON":  "#2A4466",
-    "RING":     "#1B3050",
-    "ZENITH":   "#445566",
-    "STAR":     "#F5F7FF",
-    "STAR_LBL": "#9AA6C8",
-    "LINE":     "#3A5A8C",
-    "SUN":      "#F9E2AF",
-    "MOON":     "#C6D8FF",
-    "VENUS":    "#D4C060",
-    "MARS":     "#E07050",
-    "JUPITER":  "#C8A870",
-    "SATURN":   "#C0C060",
+# ──────────────────────────────────────────────────────────────────────────────
+# SPACING, RADII, TYPE
+# ──────────────────────────────────────────────────────────────────────────────
+
+SPACE = {"espace-1": 4, "espace-2": 8, "espace-4": 16, "espace-6": 24}     # px
+RADIUS = {"rayon-s": 4, "rayon-m": 10, "rayon-plein": 999}                   # px
+
+# Families: Plex first, Astraeos Symboles after it for the astronomical symbols
+FONT_SANS = ("IBM Plex Sans", "Astraeos Symboles")
+FONT_MONO = ("IBM Plex Mono", "Astraeos Symboles")
+FONT_SYMBOLS = ("Astraeos Symboles",)
+
+# Text styles: name → (family, size px, line height px, weight)
+TEXT_STYLES = {
+    "affiche":    ("sans", 40, 44, 600),
+    "titre":      ("sans", 24, 30, 600),
+    "sous-titre": ("sans", 17, 24, 600),
+    "corps":      ("sans", 15, 22, 400),
+    "legende":    ("sans", 13, 18, 400),
+    "donnee":     ("mono", 15, 22, 500),
+    "cadran":     ("mono", 32, 36, 500),
 }
+
+
+def mix(color_a, color_b, weight_a):
+    """
+    Mix of two hex colors, *weight_a* of the first (0–1), like the design
+    system's color-mix() for hover and pressed states.
+    """
+    a = [int(color_a[i:i + 2], 16) for i in (1, 3, 5)]
+    b = [int(color_b[i:i + 2], 16) for i in (1, 3, 5)]
+    return "#" + "".join(f"{round(x * weight_a + y * (1 - weight_a)):02x}"
+                         for x, y in zip(a, b))
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -133,57 +115,41 @@ SKY = {
 # ──────────────────────────────────────────────────────────────────────────────
 
 class Config:
-    """Color palette and global parameters for Céleste application."""
+    """Active Astræos theme: one attribute per color token."""
 
-    # Name of the active theme (key of _THEMES)
-    THEME = "mocha"
-
-    # Active colors (defaults = mocha)
-    BG_MAIN    = "#1B1B25"
-    BG_PANEL   = "#222230"
-    BG_CARD    = "#292938"
-    BG_INPUT   = "#1B1B25"
-    FG_LABEL   = "#A0A0B0"
-    FG_MUTED   = "#7F849C"
-    FG_WHITE   = "#FFFFFF"
-    FG_SUN     = "#F9E2AF"
-    FG_MOON    = "#89B4FA"
-    FG_GREEN   = "#A6E3A1"
-    FG_PURPLE  = "#CBA6F7"
-    FG_RED     = "#F38BA8"
-    BTN_COLOR  = "#89B4FA"
-    GRID_COLOR = "#45475A"
-    TW_DAY     = "#33456A"
-    TW_CIVIL   = "#2C3657"
-    TW_NAUT    = "#252B46"
-    TW_ASTRO   = "#1F2238"
-    TW_NIGHT   = "#191A29"
-    PLANET_VENUS   = "#D4C060"
-    PLANET_MARS    = "#E07050"
-    PLANET_JUPITER = "#C8A870"
-    PLANET_SATURN  = "#C0C060"
-    MODE       = "dark"
+    THEME          = "nuit"
+    CIEL_000       = "#0b0f17"
+    CIEL_100       = "#131a26"
+    CIEL_200       = "#1f2a3b"
+    ENCRE          = "#e8ecf2"
+    ENCRE_ATTENUEE = "#9aa6b8"
+    OR             = "#f2b84b"
+    SUR_OR         = "#0b0f17"
+    LUNE           = "#8fb8e8"
+    SIGNAL_OK      = "#5cc98a"
+    SIGNAL_ALERTE  = "#ff6b5e"
 
     @staticmethod
     def normalize_theme(theme_name) -> str:
-        """Return the key of a theme ("frapé" → "frape"), mocha if unknown."""
-        key = (theme_name or "mocha").lower().replace("é", "e")
-        return key if key in _THEMES else "mocha"
+        """Key of a theme; old names are mapped ("latte" → "jour"), unknown → "nuit"."""
+        key = (theme_name or "nuit").strip().lower().replace("é", "e")
+        key = _ALIASES.get(key, key)
+        return key if key in _THEMES else "nuit"
 
     @classmethod
-    def apply_theme(cls, theme_name: str) -> None:
-        """Apply a named theme preset to all Config color attributes."""
+    def apply_theme(cls, theme_name) -> None:
+        """Make *theme_name* the active theme."""
         key = cls.normalize_theme(theme_name)
-        for attr, value in _THEMES[key].items():
-            setattr(cls, attr, value)
+        for token, value in _THEMES[key].items():
+            setattr(cls, token.upper().replace("-", "_"), value)
         cls.THEME = key
 
     @classmethod
-    def is_dark(cls) -> bool:
-        """True for the dark themes (mocha, frappé)."""
-        return cls.MODE == "dark"
+    def token(cls, name) -> str:
+        """Value of a color token ("ciel-200", "encre-attenuee"…) in the active theme."""
+        return _THEMES[cls.THEME][name]
 
     @classmethod
-    def planet_color(cls, name: str) -> str:
-        """Theme color of a planet ("Venus", "Mars", "Jupiter", "Saturn")."""
-        return getattr(cls, f"PLANET_{name.upper()}", cls.FG_LABEL)
+    def is_dark(cls) -> bool:
+        """True for Nuit and Observation."""
+        return cls.THEME != "jour"

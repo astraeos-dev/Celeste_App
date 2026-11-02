@@ -27,12 +27,12 @@ _SETTINGS_FILE = os.path.join(
 
 _DEFAULTS = {
     # Apparence
-    "theme":          "mocha",      # mocha | frape | latte
+    "theme":          "nuit",       # nuit | jour | observation (thèmes Astræos)
     "lang":           "auto",       # auto (langue du système) | fr | en | es | de
     "time_format":    "24h",        # 24h | 12h
 
     # Lieu par défaut
-    "default_place":  "\U0001f4cd Cherbourg-en-Cotentin",
+    "default_place":  "Cherbourg-en-Cotentin",
     "default_lat":    49.6333,      # latitude par défaut
     "default_lon":    -1.6167,      # longitude par défaut
     "default_utc":    0,            # offset UTC (-12 → +14)

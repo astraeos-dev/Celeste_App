@@ -248,7 +248,7 @@ class TestSolarEclipseCircumstances:
         assert approx(ec['magnitude'], mag, 0.005), f"magnitude {ec['magnitude']:.4f} (NASA {mag})"
 
     def test_greatest_eclipse_time(self):
-        """2027-08-02: greatest eclipse at 10:07:50 TD (the engine ignores ΔT ≈ 70 s)."""
+        """2027-08-02: greatest eclipse at 10:07:50 TD; ec['jd'] is in dynamical time too."""
         ec = _solar_eclipse_near(2027, 8, 2)
         nasa = MeeusEngine.julian_day(datetime(2027, 8, 2, 10, 7, 50))
         assert abs(ec['jd'] - nasa) * 1440 < 1, "greatest eclipse more than 1 min off"
@@ -271,6 +271,132 @@ class TestSolarEclipseCircumstances:
             assert 0 < d < 15, f"{r['date']:%Y-%m-%d} {st}: {d} min"
             limit = 7.6 if st == 'total' else 12.6
             assert d < limit, f"{r['date']:%Y-%m-%d} {st}: {d} min"
+
+
+# ===========================================================================
+# 4 bis. Lunar eclipse circumstances (Earth's shadow, Danjon's rule)
+# ===========================================================================
+
+# NASA, Five Millennium Canon of Lunar Eclipses (Espenak & Meeus), at greatest
+# eclipse: date, type, |γ|, umbral magnitude, penumbral magnitude (None: not
+# checked), total phase in minutes (None: not total)
+NASA_LUNAR = [
+    ((2021, 5, 26),  'total',     0.4774,  1.009, 1.954, 14.5),
+    ((2021, 11, 19), 'partial',   0.4552,  0.974, None,  None),
+    ((2022, 5, 16),  'total',     0.2532,  1.414, 2.373, 84.9),
+    ((2022, 11, 8),  'total',     0.2570,  1.359, 2.414, 85.0),
+    ((2023, 5, 5),   'penumbral', 1.0350, -0.046, 0.963, None),
+    ((2023, 10, 28), 'partial',   0.9472,  0.122, 1.118, None),
+    ((2024, 3, 25),  'penumbral', 1.0610, -0.132, 0.956, None),
+    ((2024, 9, 18),  'partial',   0.9792,  0.085, 1.036, None),
+    ((2025, 3, 14),  'total',     0.3485,  1.178, 2.259, 65.8),
+    ((2025, 9, 7),   'total',     0.2752,  1.362, 2.346, 82.1),
+    ((2026, 3, 3),   'total',     0.3765,  1.151, 2.184, 58.3),
+    ((2026, 8, 28),  'partial',   0.4964,  0.930, 1.964, None),
+    ((2027, 2, 20),  'penumbral', 1.0480, -0.057, 0.927, None),
+    ((2027, 8, 17),  'penumbral', 1.2797, -0.525, 0.546, None),
+    ((2028, 1, 12),  'partial',   0.9817,  0.066, 1.045, None),
+    ((2028, 12, 31), 'total',     0.3258,  1.246, 2.272, 71.0),
+]
+
+
+def _lunar_eclipse_near(year, month, day):
+    """_lunar_eclipse() for the true full moon nearest to the given date."""
+    fm = MeeusEngine._find_syzygy_hp(datetime(year, month, day), target_phase=180)
+    return MeeusEngine._lunar_eclipse(MeeusEngine.julian_day(fm))
+
+
+class TestLunarEclipseCircumstances:
+    """
+    _lunar_eclipse() against published values. The search used to rate a
+    lunar eclipse by the Moon's latitude alone: it called total eclipses
+    "certain", missed the partial eclipse of 2028-01-12 (rated penumbral) and
+    had the penumbral eclipses of July and August 2027 as merely "possible".
+    """
+
+    @pytest.mark.parametrize("ymd, sub_type, gamma, umbral, penumbral, total_min", NASA_LUNAR)
+    def test_against_nasa(self, ymd, sub_type, gamma, umbral, penumbral, total_min):
+        ec = _lunar_eclipse_near(*ymd)
+        assert ec is not None, "eclipse not found"
+        assert ec['sub_type'] == sub_type
+        assert ec['certainty'] == 'certain'
+        assert approx(abs(ec['gamma']), gamma, 0.002), f"γ = {ec['gamma']:+.4f} (NASA {gamma})"
+        assert approx(ec['umbral_magnitude'], umbral, 0.006), \
+            f"umbral magnitude {ec['umbral_magnitude']:.4f} (NASA {umbral})"
+        if penumbral is not None:
+            assert approx(ec['penumbral_magnitude'], penumbral, 0.012), \
+                f"penumbral magnitude {ec['penumbral_magnitude']:.4f} (NASA {penumbral})"
+        if total_min is None:
+            assert ec['duration_min'] is None
+        else:
+            assert approx(ec['duration_min'], total_min, 1.5), \
+                f"totality {ec['duration_min']} min (NASA {total_min})"
+
+    def test_magnitude_is_the_one_of_the_type(self):
+        total = _lunar_eclipse_near(2026, 3, 3)
+        penumbral = _lunar_eclipse_near(2027, 2, 20)
+        assert total['magnitude'] == total['umbral_magnitude']
+        assert penumbral['magnitude'] == penumbral['penumbral_magnitude']
+
+    def test_phases_nest(self):
+        """Totality < partial phase < penumbral phase (2026-03-03: 58 min, 3 h 27, 5 h 39)."""
+        d = _lunar_eclipse_near(2026, 3, 3)['durations']
+        assert d['total'] < d['partial'] < d['penumbral']
+        assert approx(d['partial'], 207, 2) and approx(d['penumbral'], 339, 3)
+
+    def test_greatest_eclipse_time(self):
+        """2026-03-03: greatest eclipse at 11:34:52 TD (NASA); ec['jd'] is in TT too."""
+        ec = _lunar_eclipse_near(2026, 3, 3)
+        nasa = MeeusEngine.julian_day(datetime(2026, 3, 3, 11, 34, 52))
+        assert abs(ec['jd'] - nasa) * 1440 < 0.5, "greatest eclipse more than 30 s off"
+
+    def test_search_gives_greatest_eclipse_in_ut(self):
+        """find_eclipses() turns TT into UT: 11:33:42 UT for NASA (ΔT = 70 s)."""
+        found = [r for r in MeeusEngine.find_eclipses(datetime(2026, 2, 1), num_months=2)
+                 if r['type'] == 'lunar']
+        assert len(found) == 1
+        assert abs(found[0]['greatest'] - datetime(2026, 3, 3, 11, 33, 42)) < timedelta(seconds=30)
+
+    def test_grazing_penumbral_eclipse_is_possible(self):
+        """2027-07-18: penumbral magnitude 0.0014 (NASA), within the accuracy."""
+        ec = _lunar_eclipse_near(2027, 7, 18)
+        assert ec is not None and ec['sub_type'] == 'penumbral'
+        assert ec['certainty'] == 'possible'
+        assert 0 < ec['penumbral_magnitude'] < 0.01
+
+    def test_no_eclipse_far_from_node(self):
+        """Full moon of 2026-11-24: the Moon passes far from the shadow."""
+        assert _lunar_eclipse_near(2026, 11, 24) is None
+
+
+# ===========================================================================
+# 4 ter. ΔT = TT − UT (Espenak & Meeus polynomials)
+# ===========================================================================
+
+class TestDeltaT:
+
+    @pytest.mark.parametrize("year, observed", [
+        (1900, -2.72), (1950, 29.15), (1980, 50.54), (2000, 63.83), (2005, 64.69),
+    ])
+    def test_observed_values(self, year, observed):
+        """Within 0.5 s of the measured ΔT (NASA, table of observed values)."""
+        assert approx(MeeusEngine.delta_t(year), observed, 0.5)
+
+    @pytest.mark.parametrize("year, table", [(0, 10580), (500, 5710), (1000, 1570), (1600, 120)])
+    def test_historical_values(self, year, table):
+        """Within 1 % of the historical table (Morrison & Stephenson 2004)."""
+        assert abs(MeeusEngine.delta_t(year) - table) < 0.01 * abs(table) + 1
+
+    def test_today(self):
+        """About 70 s in the 2020s (75 s with the 2006 extrapolation)."""
+        assert 65 < MeeusEngine.delta_t(2026.5) < 80
+
+    def test_continuous(self):
+        """No jump larger than 0.5 s where one polynomial hands over to the next."""
+        for year in (-500, 500, 1600, 1700, 1800, 1860, 1900, 1920, 1941, 1961, 1986,
+                     2005, 2050, 2150):
+            jump = MeeusEngine.delta_t(year - 1e-9) - MeeusEngine.delta_t(year)
+            assert abs(jump) < 0.5, f"{year}: {jump:+.3f} s"
 
 
 # ===========================================================================
@@ -353,6 +479,11 @@ class TestFindEclipsesHP:
         dte = datetime(2024, 4, 8)  # close to April 2024 new moon
         nl  = MeeusEngine._find_syzygy_hp(dte, target_phase=0)
         assert _phase_offset(nl, 0) < 0.01, f"HP syzygy phase not near 0: {_phase_offset(nl, 0):.4f}°"
+
+
+def _tt(dte):
+    """The UT instant dte in dynamical time (TT), as the ephemerides take it."""
+    return dte + timedelta(seconds=MeeusEngine.delta_t(dte.year + (dte.month - 0.5) / 12))
 
 
 def _phase_offset(dte, target):
@@ -465,10 +596,10 @@ class TestEclipseSearchFromNovember2026:
         assert lunar == [date(2027, 2, 20), date(2027, 7, 18), date(2027, 8, 17)]
 
     def test_dates_are_true_syzygies(self, eclipses):
-        """Each date is a new moon (solar) or full moon (lunar), not a window edge."""
+        """Each date (UT) is a new moon (solar) or full moon (lunar), not a window edge."""
         for r in eclipses:
             target = 0 if r['type'] == 'solar' else 180
-            assert _phase_offset(r['date'], target) < 0.01, r['details']
+            assert _phase_offset(_tt(r['date']), target) < 0.01, r['details']
 
     def test_nothing_before_start(self, eclipses):
         assert all(r['date'] >= self.START for r in eclipses)
@@ -480,6 +611,17 @@ class TestEclipseSearchFromNovember2026:
         # NASA: 7 min 51 s and 6 min 23 s
         assert approx(durations[date(2027, 2, 6)], 7.85, 0.3)
         assert approx(durations[date(2027, 8, 2)], 6.38, 0.3)
+
+    def test_lunar_types(self, eclipses):
+        """The three lunar eclipses of the period are penumbral (NASA)."""
+        lunar = [r for r in eclipses if r['type'] == 'lunar']
+        assert [r['sub_type'] for r in lunar] == ['penumbral'] * 3
+        assert [r['certainty'] for r in lunar] == ['certain', 'possible', 'certain']
+
+    def test_greatest_eclipse_near_the_syzygy(self, eclipses):
+        """Greatest eclipse falls within an hour of the new or full moon."""
+        for r in eclipses:
+            assert abs(r['greatest'] - r['date']) < timedelta(hours=1), r['details']
 
     def test_timezone_kept(self, eclipses):
         """An aware start date gives aware dates, at the same instants."""

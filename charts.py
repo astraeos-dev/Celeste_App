@@ -4,22 +4,26 @@ charts.py — Matplotlib drawings of Céleste
 The three charts of the interface:
 
 - the altitude of the Sun and the Moon over the UT day, on a background
-  coloured by the phases of the day (day, civil, nautical and astronomical
+  shaded by the phases of the day (day, civil, nautical and astronomical
   twilights, night);
 - the sky map: the dome seen from below with the zenith at the centre, the
   horizon on the circle, north up and east on the right;
 - the solar system seen from the north ecliptic pole, inner and outer views.
 
 The ``*_scene`` functions compute what to draw with the engine; the
-``draw_*`` functions only draw, with the active ``Config`` palette and the
-translated labels they receive. Nothing here depends on Qt, so the tests run
-these functions on the Agg backend.
+``draw_*`` functions only draw, with the active Astræos theme (``Config``)
+and the translated labels they receive. Nothing here depends on Qt, so the
+tests run these functions on the Agg backend.
 
-Matplotlib cannot draw colour emoji: the labels drawn here use plain text
-and the symbols of DejaVu Sans (☀ ☾ ♀ ♂ ♃ ♄ γ), the font shipped with matplotlib.
+Astræos rules applied here: hairlines rather than shadows, ``encre`` for
+values and ``encre-attenuee`` for labels, the Sun in ``or`` and the Moon in
+``lune`` where the color helps reading, and the astronomical symbols (☉ ☽ ♀ ♂
+♃ ♄ ⊕ ♈) always next to the body's name.
 """
 
+import logging
 import math
+import os
 from datetime import timedelta
 
 import matplotlib
@@ -28,31 +32,52 @@ from matplotlib.colors import to_rgba
 from matplotlib.patches import Circle, Patch
 from matplotlib.ticker import FuncFormatter, MultipleLocator
 
-from config import Config, SKY
+from config import Config, FONT_SANS, mix
 from constellations import CONSTELLATIONS, STARS
 from engine import MeeusEngine, _HORIZON_CORRECTION_SUN
+
+# Astronomical symbols (Astraeos Symboles). Matplotlib never draws emoji, so
+# they go without the U+FE0E selector here.
+SYMBOL = {"Sun": "☉", "Moon": "☽", "Earth": "⊕", "Venus": "♀",
+          "Mars": "♂", "Jupiter": "♃", "Saturn": "♄", "vernal": "♈"}
+
+# Text sizes of the design system (px) converted to points at the figures'
+# 100 dpi: legende 13 px, corps 15 px, sous-titre 17 px.
+_PT = 0.72
+SIZE_LEGENDE = 13 * _PT
+SIZE_CORPS = 15 * _PT
+SIZE_SOUS_TITRE = 17 * _PT
+
+_FONTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts")
 
 # ──────────────────────────────────────────────────────────────────────────────
 # FONTS
 # ──────────────────────────────────────────────────────────────────────────────
 
-PREFERRED_FONTS = ("Segoe UI", "Inter", "SF Pro Text", "Helvetica Neue",
-                    "Noto Sans", "Ubuntu", "Cantarell", "Liberation Sans", "Arial")
 
-
-def configure_fonts(preferred=PREFERRED_FONTS):
+def configure_fonts(fonts_dir=_FONTS_DIR):
     """
-    Use the first installed font of *preferred* for the charts, with
-    DejaVu Sans (shipped with matplotlib) as fallback for the symbols.
+    Register the Astræos fonts shipped in fonts/ with matplotlib and use
+    IBM Plex Sans, then Astraeos Symboles for the symbols (DejaVu Sans,
+    shipped with matplotlib, only when the files are missing).
 
     Returns:
-        str: The font family chosen ("DejaVu Sans" when none is installed).
+        str: The first family of the stack.
     """
+    if os.path.isdir(fonts_dir):
+        for name in sorted(os.listdir(fonts_dir)):
+            if name.endswith(".ttf"):
+                font_manager.fontManager.addfont(os.path.join(fonts_dir, name))
+    # Astraeos Symboles has a single weight: a semibold title falls back to
+    # its regular symbols, which matplotlib would report each time.
+    logging.getLogger("matplotlib.font_manager").setLevel(logging.ERROR)
     installed = {f.name for f in font_manager.fontManager.ttflist}
-    chosen = next((name for name in preferred if name in installed), "DejaVu Sans")
-    families = [chosen] if chosen == "DejaVu Sans" else [chosen, "DejaVu Sans"]
+    families = [f for f in FONT_SANS if f in installed]
+    if FONT_SANS[0] not in families:      # files missing: matplotlib's own font
+        families.append("DejaVu Sans")
     matplotlib.rcParams["font.family"] = families
-    return chosen
+    matplotlib.rcParams["axes.unicode_minus"] = True
+    return families[0]
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -65,6 +90,10 @@ def configure_fonts(preferred=PREFERRED_FONTS):
 DAY_PHASES = ("day", "civil", "nautical", "astronomical", "night")
 _PHASE_LIMITS = (("day", 0.0), ("civil", -6.0),
                  ("nautical", -12.0), ("astronomical", -18.0))
+
+# Share of lune laid over ciel-100: the more sunlight, the more lune
+_PHASE_TINT = {"day": 0.26, "civil": 0.17, "nautical": 0.10,
+               "astronomical": 0.05, "night": 0.0}
 
 
 def _phase_of_corrected(h):
@@ -131,14 +160,8 @@ def twilight_segments(hours, sun_alts):
 
 
 def phase_color(phase):
-    """Background color of a phase of the day in the active theme."""
-    return {
-        "day": Config.TW_DAY,
-        "civil": Config.TW_CIVIL,
-        "nautical": Config.TW_NAUT,
-        "astronomical": Config.TW_ASTRO,
-        "night": Config.TW_NIGHT,
-    }[phase]
+    """Background of a phase of the day in the active theme: lune over ciel-100."""
+    return mix(Config.LUNE, Config.CIEL_100, _PHASE_TINT[phase])
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -146,20 +169,21 @@ def phase_color(phase):
 # ──────────────────────────────────────────────────────────────────────────────
 
 def _style_axes(ax):
-    ax.set_facecolor(Config.BG_CARD)
-    ax.tick_params(colors=Config.FG_LABEL, labelsize=9)
+    ax.set_facecolor(Config.CIEL_100)
+    ax.tick_params(colors=Config.ENCRE_ATTENUEE, labelsize=SIZE_LEGENDE,
+                   length=3, width=0.8)
     for spine in ax.spines.values():
-        spine.set_color(Config.GRID_COLOR)
-    ax.grid(color=Config.GRID_COLOR, linestyle=":", alpha=0.55)
+        spine.set_color(Config.CIEL_200)
+    ax.grid(color=Config.CIEL_200, linewidth=0.8)
 
 
-def _tooltip(ax, fontsize=8.5):
+def _tooltip(ax):
     """Hidden annotation used as a hover tooltip."""
     tip = ax.annotate(
         "", xy=(0, 0), xytext=(12, 12), textcoords="offset points",
-        fontsize=fontsize, color=Config.FG_WHITE, zorder=20, multialignment="left",
-        bbox=dict(boxstyle="round,pad=0.45", fc=Config.BG_MAIN,
-                  ec=Config.GRID_COLOR, alpha=0.95),
+        fontsize=SIZE_LEGENDE, color=Config.ENCRE, zorder=20, multialignment="left",
+        bbox=dict(boxstyle="round,pad=0.5,rounding_size=0.3", fc=Config.CIEL_100,
+                  ec=Config.CIEL_200, lw=1),
         annotation_clip=False)
     tip.set_visible(False)
     return tip
@@ -167,6 +191,11 @@ def _tooltip(ax, fontsize=8.5):
 
 def _hour_label(x, _pos=None):
     return f"{int(round(x)) % 24:02d}h"
+
+
+def _title(fig, ax, text):
+    ax.set_title(text, color=Config.ENCRE, fontsize=SIZE_SOUS_TITRE,
+                 fontweight=600, loc="left", pad=12)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -219,24 +248,24 @@ def draw_trajectory(fig, hours, sun_alts, moon_alts, now_hour, sun_now, moon_now
     """
     fig.clear()
     fig.set_layout_engine("constrained")
-    fig.get_layout_engine().set(w_pad=0.12, h_pad=0.1)
-    fig.patch.set_facecolor(Config.BG_PANEL)
+    fig.get_layout_engine().set(w_pad=0.16, h_pad=0.12)
+    fig.patch.set_facecolor(Config.CIEL_100)
     ax = fig.add_subplot(111)
     _style_axes(ax)
 
     for start, end, phase in twilight_segments(hours, sun_alts):
         ax.axvspan(start, end, color=phase_color(phase), lw=0, zorder=0)
 
-    ax.axhline(0, color=Config.FG_RED, linewidth=1.0, alpha=0.75, zorder=2)
-    sun_line, = ax.plot(hours, sun_alts, color=Config.FG_SUN, linewidth=2.2,
-                        label=labels["sun"], zorder=3)
-    moon_line, = ax.plot(hours, moon_alts, color=Config.FG_MOON, linewidth=2.2,
-                         label=labels["moon"], zorder=3)
-    ax.axvline(now_hour, color=Config.FG_WHITE, linewidth=1.0, alpha=0.55,
-               linestyle="--", zorder=4)
-    for alt, color in ((sun_now, Config.FG_SUN), (moon_now, Config.FG_MOON)):
-        ax.plot(now_hour, alt, "o", color=color, markersize=8,
-                markeredgecolor=Config.BG_CARD, markeredgewidth=1.5, zorder=5)
+    ax.axhline(0, color=Config.ENCRE_ATTENUEE, linewidth=1.0, zorder=2)
+    sun_line, = ax.plot(hours, sun_alts, color=Config.OR, linewidth=2.0,
+                        label=f"{SYMBOL['Sun']}  {labels['sun']}", zorder=3)
+    moon_line, = ax.plot(hours, moon_alts, color=Config.LUNE, linewidth=2.0,
+                         label=f"{SYMBOL['Moon']}  {labels['moon']}", zorder=3)
+    ax.axvline(now_hour, color=Config.ENCRE, linewidth=1.0, alpha=0.7,
+               linestyle=(0, (4, 3)), zorder=4)
+    for alt, color in ((sun_now, Config.OR), (moon_now, Config.LUNE)):
+        ax.plot(now_hour, alt, "o", color=color, markersize=7,
+                markeredgecolor=Config.CIEL_100, markeredgewidth=1.5, zorder=5)
 
     ax.set_xlim(0, 24)
     ax.xaxis.set_major_locator(MultipleLocator(3))
@@ -245,25 +274,27 @@ def draw_trajectory(fig, hours, sun_alts, moon_alts, now_hour, sun_now, moon_now
     low = min(-10.0, 10 * math.floor((min(values) - 5) / 10))
     high = max(10.0, 10 * math.ceil((max(values) + 5) / 10))
     ax.set_ylim(low, high)
-    ax.set_title(labels["title"], color=Config.FG_WHITE, fontsize=11, pad=10)
-    ax.set_xlabel(labels["xlabel"], color=Config.FG_LABEL, fontsize=9)
-    ax.set_ylabel(labels["ylabel"], color=Config.FG_LABEL, fontsize=9)
+    _title(fig, ax, labels["title"])
+    ax.set_xlabel(labels["xlabel"], color=Config.ENCRE_ATTENUEE, fontsize=SIZE_LEGENDE)
+    ax.set_ylabel(labels["ylabel"], color=Config.ENCRE_ATTENUEE, fontsize=SIZE_LEGENDE)
 
     if utc_offset:
         top = ax.secondary_xaxis(
             "top", functions=(lambda x: x + utc_offset, lambda x: x - utc_offset))
         top.xaxis.set_major_locator(MultipleLocator(3))
         top.xaxis.set_major_formatter(FuncFormatter(_hour_label))
-        top.tick_params(colors=Config.FG_LABEL, labelsize=8)
-        top.spines["top"].set_color(Config.GRID_COLOR)
-        top.set_xlabel(labels["local_axis"], color=Config.FG_LABEL, fontsize=8.5)
+        top.tick_params(colors=Config.ENCRE_ATTENUEE, labelsize=SIZE_LEGENDE,
+                        length=3, width=0.8)
+        top.spines["top"].set_color(Config.CIEL_200)
+        top.set_xlabel(labels["local_axis"], color=Config.ENCRE_ATTENUEE,
+                       fontsize=SIZE_LEGENDE)
 
     handles = [sun_line, moon_line] + [
-        Patch(facecolor=phase_color(p), edgecolor=Config.GRID_COLOR, label=labels[p])
+        Patch(facecolor=phase_color(p), edgecolor=Config.CIEL_200, label=labels[p])
         for p in DAY_PHASES]
     fig.legend(handles=handles, loc="outside lower center", ncol=len(handles),
-               frameon=False, fontsize=8.5, labelcolor=Config.FG_LABEL,
-               handlelength=1.6, columnspacing=1.5)
+               frameon=False, fontsize=SIZE_LEGENDE, labelcolor=Config.ENCRE_ATTENUEE,
+               handlelength=1.6, columnspacing=1.6)
     return ax, _tooltip(ax)
 
 
@@ -363,6 +394,11 @@ def hit_test(objects, x, y, radius=0.06):
     return best
 
 
+def _body_label(ax, x, y, text, color, size=SIZE_LEGENDE, weight=400, dx=8, dy=6):
+    ax.annotate(text, (x, y), xytext=(dx, dy), textcoords="offset points",
+                fontsize=size, fontweight=weight, color=color, zorder=8)
+
+
 def draw_sky_map(fig, scene, labels):
     """
     Draws the sky map.
@@ -378,42 +414,41 @@ def draw_sky_map(fig, scene, labels):
     """
     fig.clear()
     fig.set_layout_engine("none")
-    dark_ui = Config.is_dark()
-    fig.patch.set_facecolor(SKY["FIG"] if dark_ui else Config.BG_PANEL)
-    text_color = SKY["TICK"] if dark_ui else Config.FG_LABEL
+    fig.patch.set_facecolor(Config.CIEL_100)
     ax = fig.add_axes((0.02, 0.02, 0.96, 0.89))
     ax.set_aspect("equal")
     ax.set_xlim(-1.17, 1.17)
     ax.set_ylim(-1.17, 1.17)
     ax.axis("off")
 
-    dome = Circle((0, 0), 1.0, facecolor=SKY["DOME"], edgecolor=SKY["HORIZON"],
-                  linewidth=1.8, zorder=0)
+    dome = Circle((0, 0), 1.0, facecolor=Config.CIEL_000,
+                  edgecolor=Config.ENCRE_ATTENUEE, linewidth=1.2, zorder=0)
     ax.add_patch(dome)
     for az in range(0, 360, 45):
         x, y = sky_xy(0, az)
-        ax.plot([0, x], [0, y], color=SKY["GRID"], linewidth=0.6, zorder=1)
+        ax.plot([0, x], [0, y], color=Config.CIEL_200, linewidth=0.8, zorder=1)
     for alt in (30, 60):
         ax.add_patch(Circle((0, 0), (90 - alt) / 90, fill=False,
-                            edgecolor=SKY["RING"], linewidth=0.8, zorder=1))
+                            edgecolor=Config.CIEL_200, linewidth=1.0, zorder=1))
         lx, ly = sky_xy(alt, 202)
-        ax.text(lx, ly, f"{alt}°", color=SKY["ZENITH"], fontsize=7,
+        ax.text(lx, ly, f"{alt}°", color=Config.ENCRE_ATTENUEE, fontsize=SIZE_LEGENDE * 0.85,
                 ha="center", va="center", zorder=1)
     hx, hy = sky_xy(0, 202)
-    ax.text(hx * 0.93, hy * 0.93, labels["horizon"], color=SKY["ZENITH"],
-            fontsize=7, ha="center", va="center", rotation=-22, zorder=1)
-    ax.plot(0, 0, "+", color=SKY["ZENITH"], markersize=10, markeredgewidth=1.2,
+    ax.text(hx * 0.93, hy * 0.93, labels["horizon"], color=Config.ENCRE_ATTENUEE,
+            fontsize=SIZE_LEGENDE * 0.85, ha="center", va="center", rotation=-22, zorder=1)
+    ax.plot(0, 0, "+", color=Config.ENCRE_ATTENUEE, markersize=9, markeredgewidth=1.0,
             zorder=2)
     for i, card in enumerate(labels["cardinals"]):
         cx, cy = sky_xy(-8.5, i * 45)
         main = i % 2 == 0
-        ax.text(cx, cy, card, ha="center", va="center", color=text_color,
-                fontsize=11 if main else 8.5,
-                fontweight="bold" if main else "normal")
+        ax.text(cx, cy, card, ha="center", va="center",
+                color=Config.ENCRE if i == 0 else Config.ENCRE_ATTENUEE,
+                fontsize=SIZE_CORPS if main else SIZE_LEGENDE,
+                fontweight=600 if main else 400)
 
     for (x1, y1), (x2, y2) in scene["lines"]:
-        line, = ax.plot([x1, x2], [y1, y2], color=SKY["LINE"], linewidth=0.9,
-                        alpha=0.65, zorder=2)
+        line, = ax.plot([x1, x2], [y1, y2], color=Config.ENCRE_ATTENUEE, linewidth=0.8,
+                        alpha=0.4, zorder=2)
         line.set_clip_path(dome)
 
     stars = scene["stars"]
@@ -422,10 +457,10 @@ def draw_sky_map(fig, scene, labels):
         if bright:
             ax.scatter([s["x"] for s in bright], [s["y"] for s in bright],
                        s=[star_marker_size(s["mag"]) * 4.5 for s in bright],
-                       color=to_rgba(SKY["STAR"], 0.10), linewidths=0, zorder=3)
+                       color=to_rgba(Config.ENCRE, 0.10), linewidths=0, zorder=3)
         ax.scatter([s["x"] for s in stars], [s["y"] for s in stars],
                    s=[star_marker_size(s["mag"]) for s in stars],
-                   color=[to_rgba(SKY["STAR"], min(1.0, max(0.45, 1.0 - s["mag"] / 7.0)))
+                   color=[to_rgba(Config.ENCRE, min(1.0, max(0.45, 1.0 - s["mag"] / 7.0)))
                           for s in stars],
                    linewidths=0, zorder=4)
         # Name the brightest stars, skipping a label that would sit on top of
@@ -438,41 +473,34 @@ def draw_sky_map(fig, scene, labels):
                 continue
             labelled.append((s["x"], s["y"]))
             ax.annotate(s["name"], (s["x"], s["y"]), xytext=(4, 3),
-                        textcoords="offset points", fontsize=6.5,
-                        color=SKY["STAR_LBL"], zorder=5)
+                        textcoords="offset points", fontsize=SIZE_LEGENDE * 0.75,
+                        color=Config.ENCRE_ATTENUEE, zorder=5)
 
     for p in scene["planets"]:
         if p["alt"] <= 0:
             continue
-        color = SKY[p["name"].upper()]
-        ax.plot(p["x"], p["y"], marker="D", color=color, markersize=6.5,
+        ax.plot(p["x"], p["y"], "o", color=Config.ENCRE, markersize=4.5,
                 markeredgewidth=0, zorder=6)
-        ax.annotate(labels["planets"].get(p["name"], p["name"]), (p["x"], p["y"]),
-                    xytext=(6, 4), textcoords="offset points", fontsize=8,
-                    color=color, zorder=6)
+        _body_label(ax, p["x"], p["y"],
+                    f"{SYMBOL[p['name']]} {labels['planets'].get(p['name'], p['name'])}",
+                    Config.ENCRE, dx=6, dy=4)
 
     moon = scene["moon"]
     if moon["alt"] > 0:
-        ax.plot(moon["x"], moon["y"], "o", color=SKY["MOON"], markersize=22,
-                alpha=0.13, markeredgewidth=0, zorder=6)
-        ax.plot(moon["x"], moon["y"], "o", color=SKY["MOON"], markersize=11,
+        ax.plot(moon["x"], moon["y"], "o", color=Config.LUNE, markersize=10,
                 markeredgewidth=0, zorder=7)
-        ax.annotate(f"☾ {labels['moon']}", (moon["x"], moon["y"]), xytext=(9, 7),
-                    textcoords="offset points", fontsize=8.5, fontweight="bold",
-                    color=SKY["MOON"], zorder=7)
+        _body_label(ax, moon["x"], moon["y"], f"{SYMBOL['Moon']} {labels['moon']}",
+                    Config.LUNE, size=SIZE_CORPS, weight=600)
 
     sun = scene["sun"]
     if sun["alt"] > 0:
-        ax.plot(sun["x"], sun["y"], "o", color=SKY["SUN"], markersize=28,
-                alpha=0.14, markeredgewidth=0, zorder=6)
-        ax.plot(sun["x"], sun["y"], "*", color=SKY["SUN"], markersize=17,
-                markeredgewidth=0.5, markeredgecolor="#FFD080", zorder=7)
-        ax.annotate(f"☀ {labels['sun']}", (sun["x"], sun["y"]), xytext=(10, 8),
-                    textcoords="offset points", fontsize=8.5, fontweight="bold",
-                    color=SKY["SUN"], zorder=7)
+        ax.plot(sun["x"], sun["y"], "o", color=Config.OR, markersize=12,
+                markeredgewidth=0, zorder=7)
+        _body_label(ax, sun["x"], sun["y"], f"{SYMBOL['Sun']} {labels['sun']}",
+                    Config.OR, size=SIZE_CORPS, weight=600)
 
-    fig.text(0.5, 0.975, labels["title"], ha="center", va="top", fontsize=11,
-             fontweight="bold", color=SKY["TITLE"] if dark_ui else Config.FG_WHITE)
+    fig.text(0.03, 0.97, labels["title"], ha="left", va="top", fontsize=SIZE_SOUS_TITRE,
+             fontweight=600, color=Config.ENCRE)
     return ax, _tooltip(ax)
 
 
@@ -483,7 +511,7 @@ def draw_sky_map(fig, scene, labels):
 # Sidereal periods (years), to trace one full orbit
 _PERIOD_YEARS = {"Venus": 0.61520, "Mars": 1.88085,
                  "Jupiter": 11.8622, "Saturn": 29.4571}
-_PLANET_MARKER = {"Venus": 7, "Mars": 6, "Jupiter": 11, "Saturn": 10}
+_PLANET_MARKER = {"Venus": 6, "Mars": 5, "Jupiter": 9, "Saturn": 8}
 
 
 def orrery_scene(t, samples=180):
@@ -530,8 +558,8 @@ def draw_orrery(fig, scene, labels):
     """
     fig.clear()
     fig.set_layout_engine("constrained")
-    fig.get_layout_engine().set(w_pad=0.15, h_pad=0.12, wspace=0.08)
-    fig.patch.set_facecolor(Config.BG_PANEL)
+    fig.get_layout_engine().set(w_pad=0.16, h_pad=0.12, wspace=0.08)
+    fig.patch.set_facecolor(Config.CIEL_100)
     panels = (
         (fig.add_subplot(1, 2, 1), 1.8, ("Venus", "Mars"), labels["inner"]),
         (fig.add_subplot(1, 2, 2), 10.6, ("Jupiter", "Saturn"), labels["outer"]),
@@ -542,27 +570,24 @@ def draw_orrery(fig, scene, labels):
         ax.set_aspect("equal")
         ax.set_xlim(-lim, lim)
         ax.set_ylim(-lim, lim)
-        ax.set_title(title, color=Config.FG_WHITE, fontsize=10, pad=8)
-        ax.set_xlabel(labels["au"], color=Config.FG_LABEL, fontsize=8)
-        ax.tick_params(labelsize=8)
-
-        ax.plot(0, 0, "o", color=Config.FG_SUN, markersize=24, alpha=0.18,
-                markeredgewidth=0, zorder=4)
-        ax.plot(0, 0, "o", color=Config.FG_SUN, markersize=12 if lim < 5 else 9,
-                markeredgewidth=0, zorder=5)
-        if lim < 5:
-            ax.annotate(labels["sun"], (0, 0), xytext=(8, -12),
-                        textcoords="offset points", fontsize=8, color=Config.FG_SUN)
-        # Direction of the vernal point (x axis of the ecliptic frame)
-        ax.annotate(f"γ  {labels['vernal']}", xy=(lim * 0.98, 0),
-                    xytext=(lim * 0.70, 0), fontsize=7.5, color=Config.FG_MUTED,
-                    va="center", ha="right",
-                    arrowprops=dict(arrowstyle="->", color=Config.FG_MUTED, lw=0.8))
+        _title(fig, ax, title)
+        ax.set_xlabel(labels["au"], color=Config.ENCRE_ATTENUEE, fontsize=SIZE_LEGENDE)
 
         inner = lim < 5
-        bodies = [("Earth", earth, Config.FG_MOON, 7)]
-        bodies += [(name, scene["planets"][name], Config.planet_color(name),
-                    _PLANET_MARKER[name]) for name in _PERIOD_YEARS]
+        ax.plot(0, 0, "o", color=Config.OR, markersize=10 if inner else 7,
+                markeredgewidth=0, zorder=5)
+        if inner:
+            _body_label(ax, 0, 0, f"{SYMBOL['Sun']} {labels['sun']}", Config.OR,
+                        dx=8, dy=-14)
+        # Direction of the vernal point (x axis of the ecliptic frame)
+        ax.annotate(f"{SYMBOL['vernal']} {labels['vernal']}", xy=(lim * 0.98, 0),
+                    xytext=(lim * 0.68, 0), fontsize=SIZE_LEGENDE * 0.9,
+                    color=Config.ENCRE_ATTENUEE, va="center", ha="right",
+                    arrowprops=dict(arrowstyle="->", color=Config.ENCRE_ATTENUEE, lw=0.8))
+
+        bodies = [("Earth", earth, Config.LUNE, 6)]
+        bodies += [(name, scene["planets"][name], Config.ENCRE, _PLANET_MARKER[name])
+                   for name in _PERIOD_YEARS]
         for name, body, color, size in bodies:
             # Inner panel: Venus, Earth, Mars. Outer panel: the giants, with
             # the inner orbits faint and the Earth as a small dot.
@@ -570,14 +595,13 @@ def draw_orrery(fig, scene, labels):
             if inner and not main:
                 continue
             xs, ys = zip(*body["orbit"])
-            ax.plot(xs, ys, color=color, linewidth=0.8,
-                    alpha=0.55 if main else 0.3, zorder=2)
+            ax.plot(xs, ys, color=color, linewidth=0.9,
+                    alpha=0.45 if main else 0.2, zorder=2)
             if main or name == "Earth":
                 ax.plot(body["x"], body["y"], "o", color=color,
-                        markersize=size if main else 4,
-                        markeredgecolor=Config.BG_CARD, markeredgewidth=1, zorder=6)
+                        markersize=size if main else 3.5,
+                        markeredgecolor=Config.CIEL_100, markeredgewidth=1, zorder=6)
             if main:
                 text = labels["earth"] if name == "Earth" else labels["planets"][name]
-                ax.annotate(text, (body["x"], body["y"]), xytext=(7, 6),
-                            textcoords="offset points", fontsize=8.5, color=color,
-                            zorder=7)
+                _body_label(ax, body["x"], body["y"], f"{SYMBOL[name]} {text}", color,
+                            dx=7, dy=6)

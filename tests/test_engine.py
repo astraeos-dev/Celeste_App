@@ -309,6 +309,39 @@ class TestPlanetPosition:
             assert ra1 != ra2, f"{p} : position unchanged after 1 year"
 
 
+class TestPlanetHeliocentric:
+    """planet_heliocentric() feeds the orrery and planet_position()."""
+
+    T = MeeusEngine.julian_century_j2000(datetime(2026, 11, 1))
+
+    def test_radius_between_perihelion_and_aphelion(self):
+        """Heliocentric distance stays within a(1 - e) and a(1 + e)."""
+        from engine import _ORBITAL_ELEMENTS
+        for p in ("Venus", "Mars", "Jupiter", "Saturn"):
+            _, _, a, e0, e1, *_ = _ORBITAL_ELEMENTS[p]
+            e = e0 + e1 * self.T
+            x, y, z = MeeusEngine.planet_heliocentric(self.T, p)
+            r = math.sqrt(x * x + y * y + z * z)
+            assert a * (1 - e) - 1e-6 <= r <= a * (1 + e) + 1e-6, f"{p} : r = {r:.4f} AU"
+
+    def test_close_to_ecliptic_plane(self):
+        """Inclinations are under 3.4°, so |z| ≤ r·sin(3.4°)."""
+        for p in ("Venus", "Mars", "Jupiter", "Saturn"):
+            x, y, z = MeeusEngine.planet_heliocentric(self.T, p)
+            r = math.sqrt(x * x + y * y + z * z)
+            assert abs(z) <= r * math.sin(math.radians(3.4)), p
+
+    def test_geocentric_distance_consistent(self):
+        """planet_position() distance = |planet − Earth| from the same vectors."""
+        lon_sun, r_sun = MeeusEngine.sun_position(self.T)
+        a = math.radians(lon_sun + 180.0)
+        xe, ye = r_sun * math.cos(a), r_sun * math.sin(a)
+        for p in ("Venus", "Mars", "Jupiter", "Saturn"):
+            x, y, z = MeeusEngine.planet_heliocentric(self.T, p)
+            _, _, dist = MeeusEngine.planet_position(self.T, p)
+            assert approx(dist, math.sqrt((x - xe) ** 2 + (y - ye) ** 2 + z * z), 1e-9), p
+
+
 # ──────────────────────────────────────────────────────────────────────
 # Moon High Precision Tests
 # ──────────────────────────────────────────────────────────────────────

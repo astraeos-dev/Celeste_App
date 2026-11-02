@@ -978,10 +978,18 @@ class MeeusEngine:
     # ──────────────────────────────────────────────────────────────────
 
     @classmethod
-    def planet_position(cls, t, name):
+    def planet_heliocentric(cls, t, name):
         """
-        Geocentric planet position in equatorial coordinates.
-        Precision: ~1-2° (Meeus, chap. 33 / App. II).
+        Heliocentric ecliptic position of a planet from its mean orbital
+        elements (Meeus, App. II), solving Kepler's equation.
+
+        Args:
+            t (float): Julian centuries since J2000.0.
+            name (str): "Venus", "Mars", "Jupiter" or "Saturn".
+
+        Returns:
+            tuple[float, float, float]: (x, y, z) in AU, ecliptic frame
+            (x towards the vernal equinox).
         """
         L0, L1, a, e0, e1, i_deg, omega_deg, peri_deg = _ORBITAL_ELEMENTS[name]
         L     = cls.mod360(L0 + L1*t)
@@ -1006,6 +1014,18 @@ class MeeusEngine:
         xp = r*math.cos(br)*math.cos(lr)
         yp = r*math.cos(br)*math.sin(lr)
         zp = r*math.sin(br)
+        return xp, yp, zp
+
+    @classmethod
+    def planet_position(cls, t, name):
+        """
+        Geocentric planet position in equatorial coordinates.
+        Precision: ~1-2° (Meeus, chap. 33 / App. II).
+
+        Returns:
+            tuple[float, float, float]: (RA hours, Dec degrees, distance AU)
+        """
+        xp, yp, zp = cls.planet_heliocentric(t, name)
 
         ls, r_e = cls.sun_position(t)
         ls_r = math.radians(cls.mod360(ls + 180.0))

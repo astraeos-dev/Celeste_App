@@ -43,7 +43,7 @@ Dependencies: reportlab
 """
 
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
@@ -239,7 +239,7 @@ def generate_report_pdf(data: dict, output_path: str = None) -> str:
         str: Absolute path of generated PDF.
     """
     if output_path is None:
-        ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         output_path = os.path.join(
             os.path.dirname(os.path.abspath(__file__)),
             f"celeste_{ts}.pdf")
@@ -262,7 +262,7 @@ def generate_report_pdf(data: dict, output_path: str = None) -> str:
     p.blank()
     p.center("C E L E S T E   --   A S T R O N O M I C A L   O B S E R V A T O R Y",
              color=_FG_BLACK, bold=True, fs=_FS_TITLE)
-    p.center("EPHEMERIS REPORT  --  v3.1  --  VSOP87 + ELP2000-82B",
+    p.center("EPHEMERIS REPORT  --  v3.2  --  VSOP87 + ELP2000-82B",
              color=_FG_DKGRAY)
     p.blank()
     p.line(_hline())
@@ -344,9 +344,9 @@ def generate_report_pdf(data: dict, output_path: str = None) -> str:
     p.blank(); p.line(_hline()); p.nl(0.3)
 
     # ── FOOTER ────────────────────────────────────────────────────────
-    gen_ts = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    gen_ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     p.line(_hline())
-    p.center(f"Generated {gen_ts} UT  |  Celeste v3.1", color=_FG_GRAY)
+    p.center(f"Generated {gen_ts} UT  |  Celeste v3.2", color=_FG_GRAY)
     p.center("Jean Meeus — Astronomical Algorithms, 2nd ed.", color=_FG_GRAY)
     p.center("VSOP87 (Sun ~1\")  |  ELP2000-82B (Moon ~10\")", color=_FG_GRAY)
     p.blank()
@@ -365,28 +365,28 @@ def build_data_from_app(app) -> dict:
     """
     Builds the data dict for generate_report_pdf() from a running AstroApp.
 
+    Reads the window's public state: ``current_inputs()`` (UT date, latitude,
+    longitude), ``location_name``, ``utc_offset``, ``sun_data``, ``moon_data``
+    and the daily events of the last calculation (``sun_events``,
+    ``moon_events``). Call ``app.calculate()`` first so they match the inputs.
+
     Args:
         app: AstroApp instance (gui.py).
 
     Returns:
         dict: Ready to pass to generate_report_pdf().
+
+    Raises:
+        ValueError: If the coordinates typed in the window are invalid.
     """
     from utils import Formatters
     from engine import MeeusEngine
 
-    try:
-        s   = app.entry_date.get()
-        fmt = "%d/%m/%Y %H:%M:%S" if s.count(":") == 2 else "%d/%m/%Y %H:%M"
-        dte = datetime.strptime(s, fmt)
-    except Exception:
-        dte = datetime.utcnow()
+    dte, lat, lon = app.current_inputs()
+    location = getattr(app, "location_name", "") or "---"
 
-    lat      = float(app.entry_lat.get().replace(",","."))
-    lon      = float(app.entry_lon.get().replace(",","."))
-    location = app.combo_favorites.get() or "---"
-
-    sd = app._sun_data
-    md = app._moon_data
+    sd = app.sun_data
+    md = app.moon_data
     se = app.sun_events
     me = app.moon_events
 
@@ -428,7 +428,8 @@ def build_data_from_app(app) -> dict:
             'alt'   : round(md.get('alt',0),   2),
             'az'    : round(md.get('az',0),    2),
             'illum' : round(md.get('illum',0), 1),
-            'phase' : Formatters.lunar_phase(md.get('illum',0), md.get('phase',0)),
+            # Plain English name: Courier has no glyph for the phase emoji
+            'phase' : Formatters.PHASES[Formatters.phase_index(md.get('phase',0))][2],
             'status': m_status,
         },
         'events'    : {

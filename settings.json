@@ -1,6 +1,6 @@
 {
   "theme": "mocha",
-  "lang": "en",
+  "lang": "auto",
   "time_format": "24h",
   "default_place": "📍 Cherbourg-en-Cotentin",
   "default_lat": 49.6333,

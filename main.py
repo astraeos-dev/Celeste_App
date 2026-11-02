@@ -4,12 +4,12 @@ main.py — Point d'entrée de l'application Céleste (PyQt6)
 Usage :
     python main.py
     python main.py --lang fr        (auto, fr, en, es, de)
-    python main.py --theme latte    (mocha, frape, latte)
+    python main.py --theme jour     (nuit, jour, observation)
 
 Sans option, la langue et le thème viennent de settings.json ; la langue
 « auto » (par défaut) suit celle du système, ou l'anglais si elle n'est pas
-traduite. Les deux se changent ensuite dans l'onglet Paramètres, sans
-redémarrer.
+traduite. La langue se change ensuite dans l'onglet Paramètres et le thème
+en bas de la barre latérale, sans redémarrer.
 """
 
 import argparse
@@ -28,7 +28,7 @@ def parse_args(argv):
     parser = argparse.ArgumentParser(
         prog="main.py", description="Céleste — observatoire astronomique")
     parser.add_argument("--lang", help="langue de l'interface : auto, fr, en, es, de")
-    parser.add_argument("--theme", help="thème : mocha, frape, latte")
+    parser.add_argument("--theme", help="thème : nuit, jour, observation")
     args, _qt_args = parser.parse_known_args(argv)
     return args
 

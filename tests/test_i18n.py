@@ -88,15 +88,15 @@ class TestSwitchLang:
         switch_lang("en")
         en_title = t("sun.title")
         assert fr_title != en_title
-        assert "SOLEIL" in fr_title
-        assert "SUN" in en_title
+        assert "Soleil" in fr_title
+        assert "Sun" in en_title
 
     def test_switch_back_to_fr(self):
         """Retour au français fonctionne."""
         switch_lang("en")
         switch_lang("fr")
         assert get_lang() == "fr"
-        assert "SOLEIL" in t("sun.title")
+        assert "Soleil" in t("sun.title")
 
     def test_switch_unknown_lang_fallback(self):
         """Une langue inconnue retombe sur le français."""

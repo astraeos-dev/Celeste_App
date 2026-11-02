@@ -1,14 +1,14 @@
 {
   "app": {
     "title": "Céleste — Observatorio astronómico",
-    "header": "CÉLESTE",
-    "subtitle": "Observatorio astronómico"
+    "header": "Céleste",
+    "subtitle": "Observatorio astronómico",
+    "version": "Céleste {version} · diseño Astræos"
   },
   "side": {
     "datetime": "Fecha y hora (UT)",
     "datetime_tip": "Fecha y hora en tiempo universal; la flecha abre el calendario",
     "now_tip": "Volver al momento actual",
-    "place": "Lugar",
     "latitude": "Latitud",
     "latitude_tip": "Grados decimales, positivos al norte (48.85 para París)",
     "longitude": "Longitud",
@@ -16,17 +16,18 @@
     "geoloc_tip": "Detectar mi posición (según la dirección IP)",
     "timezone": "Huso",
     "timezone_tip": "Desfase sumado al UT para mostrar las horas locales",
-    "favorites": "Favoritos",
+    "favorites": "Lugares favoritos",
     "favorites_placeholder": "Elegir un lugar…",
     "fav_save_tip": "Añadir este lugar a favoritos",
     "fav_delete_tip": "Eliminar el favorito seleccionado",
-    "calculate": "CALCULAR",
+    "calculate": "Calcular",
     "calculate_tip": "Calcular para la fecha y el lugar introducidos ({key})",
-    "live": "TIEMPO REAL",
+    "live": "Seguir en tiempo real",
     "live_tip": "Seguir la hora actual, con actualización automática ({key})",
-    "pause": "PAUSA",
-    "export": "EXPORTAR PDF",
-    "export_tip": "Efemérides del día en PDF ({key})"
+    "export": "Exportar en PDF",
+    "export_tip": "Efemérides del día en PDF ({key})",
+    "lat_error": "Introduzca una latitud entre −90 y 90",
+    "lon_error": "Introduzca una longitud entre −180 y 180"
   },
   "coords": {
     "north": "N",
@@ -41,16 +42,16 @@
     "planets_many": "{n} planetas visibles",
     "ut": "UT {time}",
     "local": "Hora local {time} ({offset})",
-    "live_on": "● TIEMPO REAL",
+    "live_on": "En directo",
     "invalid_coords": "Coordenadas no válidas: latitud entre −90 y 90, longitud entre −180 y 180."
   },
   "tabs": {
-    "ephemeris": "☀️  Efemérides",
-    "trajectory": "📈  Trayectorias",
-    "skymap": "🌌  Mapa del cielo",
-    "planets": "🪐  Planetas",
-    "events": "📅  Eventos",
-    "settings": "⚙️  Ajustes"
+    "ephemeris": "Efemérides",
+    "trajectory": "Trayectorias",
+    "skymap": "Mapa del cielo",
+    "planets": "Planetas",
+    "events": "Eventos",
+    "settings": "Ajustes"
   },
   "common": {
     "visible": "Visible",
@@ -67,7 +68,7 @@
     "ms": "{value} ms"
   },
   "sun": {
-    "title": "SOL",
+    "title": "Sol",
     "section_position": "Posición",
     "ra": "Ascensión recta",
     "dec": "Declinación",
@@ -85,14 +86,14 @@
     "dusk_naut": "Crepúsculo náutico (−12°)",
     "dusk_astro": "Crepúsculo astronómico (−18°)",
     "day_length": "Duración del día",
-    "state_day": "☀️ Día",
-    "state_civil": "🌅 Crepúsculo civil",
-    "state_nautical": "🌆 Crepúsculo náutico",
-    "state_astronomical": "🌌 Crepúsculo astronómico",
-    "state_night": "🌑 Noche cerrada"
+    "state_day": "Día",
+    "state_civil": "Crepúsculo civil",
+    "state_nautical": "Crepúsculo náutico",
+    "state_astronomical": "Crepúsculo astronómico",
+    "state_night": "Noche cerrada"
   },
   "moon": {
-    "title": "LUNA",
+    "title": "Luna",
     "section_position": "Posición",
     "section_phase": "Fase",
     "ra": "Ascensión recta",
@@ -200,23 +201,27 @@
     "no_conjunction": "Ninguna conjunción ni oposición en este periodo.",
     "solar_eclipse": "Eclipse de Sol",
     "lunar_eclipse": "Eclipse de Luna",
-    "subtype_total": "total",
-    "subtype_annular": "anular",
-    "subtype_hybrid": "híbrido",
-    "subtype_partial": "parcial",
-    "certainty_certain": "seguro",
-    "certainty_possible": "posible",
-    "certainty_penumbral": "penumbral",
+    "subtype_total": "Total",
+    "subtype_annular": "Anular",
+    "subtype_hybrid": "Híbrido",
+    "subtype_partial": "Parcial",
+    "certainty_possible": "Incierto",
     "magnitude": "Magnitud {value}",
-    "duration": "Fase central ~{value} min",
     "diameter_ratio": "Relación de diámetros {value}",
-    "moon_lat": "Latitud de la Luna {value}°",
     "conjunction_pair": "{a} y {b}",
     "solar_conjunction": "{planet} en conjunción con el Sol",
     "opposition": "{planet} en oposición",
     "separation": "Separación {value}°",
     "elongation": "Elongación {value}°",
-    "search_error": "La búsqueda ha fallado: {detail}"
+    "search_error": "La búsqueda ha fallado: {detail}",
+    "eclipse_note": "Hora del máximo del eclipse, en tiempo universal.",
+    "subtype_penumbral": "Penumbral",
+    "umbral_magnitude": "Magnitud umbral {value}",
+    "penumbral_magnitude": "Magnitud penumbral {value}",
+    "duration_central": "Fase central {value} min",
+    "duration_total": "Totalidad {value}",
+    "duration_partial": "Fase parcial {value}",
+    "duration_penumbral": "Fase penumbral {value}"
   },
   "favs": {
     "save_title": "Añadir a favoritos",
@@ -244,15 +249,9 @@
     "error": "La exportación a PDF ha fallado:\n{detail}"
   },
   "settings": {
-    "appearance": "Apariencia",
-    "theme": "Tema",
-    "theme_mocha": "Catppuccin Mocha (oscuro)",
-    "theme_frape": "Catppuccin Frappé (oscuro suave)",
-    "theme_latte": "Catppuccin Latte (claro)",
     "time_format": "Formato de hora",
     "time_24h": "24 h",
     "time_12h": "12 h (AM/PM)",
-    "language_section": "Idioma",
     "language": "Idioma de la interfaz",
     "lang_auto": "Automático",
     "default_place_section": "Lugar de inicio",
@@ -269,7 +268,12 @@
     "reset_title": "Restablecer",
     "reset_confirm": "¿Restaurar todos los ajustes predeterminados (tema, idioma, lugar de inicio, tiempo real)?",
     "reset_done": "Ajustes predeterminados restaurados.",
-    "about": "Céleste v{version} — posiciones calculadas según Jean Meeus, Astronomical Algorithms (2.ª edición). Los favoritos se guardan en favorites.json y los ajustes en settings.json."
+    "about": "Céleste {version} calcula las posiciones del Sol, la Luna y los planetas según Jean Meeus, Astronomical Algorithms (2.ª edición). Los favoritos se guardan en favorites.json y los ajustes en settings.json.",
+    "display_section": "Idioma y visualización",
+    "theme_hint": "El tema se elige al pie de la barra lateral: Noche, Día u Observación (rojo sobre negro, para observar al aire libre de noche).",
+    "reset_hint": "Devuelve el tema, el idioma, el formato de hora, el lugar de inicio y el tiempo real a sus valores de origen. Los favoritos se conservan.",
+    "about_section": "Acerca de",
+    "credits": "Diseño Astræos. Fuentes IBM Plex Sans e IBM Plex Mono (licencia OFL), Astraeos Symboles a partir de Noto Sans Symbols (licencia OFL). Iconos Material Design Icons (licencia Apache 2.0)."
   },
   "constellations": {
     "Orion": "Orión",
@@ -280,5 +284,23 @@
     "Scorpius": "Escorpio",
     "Summer Triangle": "Triángulo de verano",
     "Ursa Minor": "Osa Menor"
+  },
+  "theme": {
+    "legend": "Tema de visualización",
+    "nuit": "Noche",
+    "jour": "Día",
+    "observation": "Observación",
+    "nuit_tip": "Oscuro, para pantallas y para la noche",
+    "jour_tip": "Claro, para el día y la impresión",
+    "observation_tip": "Rojo sobre negro, para conservar la visión nocturna al aire libre"
+  },
+  "cards": {
+    "sun_alt": "Altura del Sol",
+    "sun_rise": "Salida del Sol",
+    "moon_alt": "Altura de la Luna",
+    "moon_illum": "Iluminación de la Luna",
+    "azimuth": "Acimut {value}",
+    "set_at": "Puesta a las {time}",
+    "rise_at": "Salida a las {time}"
   }
 }

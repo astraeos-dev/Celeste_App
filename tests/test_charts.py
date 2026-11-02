@@ -115,10 +115,12 @@ class TestTwilightSegments:
         assert abs(ends["civil"] - hour(events["dusk_civ"])) < 2 / 60
 
     def test_phase_colors_follow_theme(self):
-        Config.apply_theme("latte")
-        assert charts.phase_color("day") == Config.TW_DAY
-        Config.apply_theme("mocha")
-        assert charts.phase_color("night") == Config.TW_NIGHT
+        """Night is the card surface; the more sunlight, the more lune over it."""
+        for theme in ("jour", "nuit"):
+            Config.apply_theme(theme)
+            assert charts.phase_color("night") == Config.CIEL_100
+            assert len({charts.phase_color(p) for p in charts.DAY_PHASES}) == 5
+        assert charts.phase_color("day") != charts.phase_color("civil")
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -210,7 +212,7 @@ LABELS_TRAJ = {"title": "T", "xlabel": "UT", "ylabel": "Alt", "local_axis": "Loc
 PLANET_LABELS = {"Venus": "Venus", "Mars": "Mars", "Jupiter": "Jupiter", "Saturn": "Saturn"}
 
 
-@pytest.mark.parametrize("theme", ["mocha", "frape", "latte"])
+@pytest.mark.parametrize("theme", ["nuit", "jour", "observation"])
 def test_draw_all_charts(theme, day):
     Config.apply_theme(theme)
     try:
@@ -238,12 +240,23 @@ def test_draw_all_charts(theme, day):
         assert len(fig.axes) == 2
         fig.canvas.draw()
     finally:
-        Config.apply_theme("mocha")
+        Config.apply_theme("nuit")
 
 
-def test_configure_fonts_picks_an_installed_family():
+def test_configure_fonts_uses_the_astraeos_fonts():
+    """IBM Plex Sans for the text, Astraeos Symboles for ☉ ☽ ♀ ♂ ♃ ♄."""
     from matplotlib import font_manager
-    installed = {f.name for f in font_manager.fontManager.ttflist}
-    chosen = charts.configure_fonts(("No Such Font", "DejaVu Sans"))
-    assert chosen in installed
-    assert matplotlib.rcParams["font.family"][0] == chosen
+    assert charts.configure_fonts() == "IBM Plex Sans"
+    assert matplotlib.rcParams["font.family"][:2] == ["IBM Plex Sans", "Astraeos Symboles"]
+    path = font_manager.findfont(font_manager.FontProperties(family="Astraeos Symboles"),
+                                 fallback_to_default=False)
+    assert path.endswith("AstraeosSymboles-Regular.ttf")
+
+
+def test_symbols_are_in_the_symbol_font():
+    """Every symbol drawn on the charts exists in Astraeos Symboles."""
+    from fontTools.ttLib import TTFont
+    font = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        "fonts", "AstraeosSymboles-Regular.ttf")
+    cmap = TTFont(font).getBestCmap()
+    assert all(ord(s) in cmap for s in charts.SYMBOL.values())

@@ -23,6 +23,8 @@ values and ``encre-attenuee`` for labels, the Sun in ``or`` and the Moon in
 
 import logging
 import math
+
+import numpy as np
 import os
 from datetime import timedelta
 
@@ -84,11 +86,12 @@ def configure_fonts(fonts_dir=_FONTS_DIR):
 # PHASES OF THE DAY
 # ──────────────────────────────────────────────────────────────────────────────
 
-# Same convention as MeeusEngine.find_events: the Sun's altitude plus 0.833°
-# (refraction and semi-diameter) compared with 0, −6, −12 and −18°, so the
-# bands line up with the times listed in the Ephemeris tab.
+# Same convention as MeeusEngine.find_events, so the bands line up with the
+# times listed in the Ephemeris tab: day from sunrise (geometric centre at
+# −0.833°: refraction and semi-diameter), then the twilights of the geometric
+# centre at −6, −12 and −18°.
 DAY_PHASES = ("day", "civil", "nautical", "astronomical", "night")
-_PHASE_LIMITS = (("day", 0.0), ("civil", -6.0),
+_PHASE_LIMITS = (("day", -_HORIZON_CORRECTION_SUN), ("civil", -6.0),
                  ("nautical", -12.0), ("astronomical", -18.0))
 
 # Share of lune laid over ciel-100: the more sunlight, the more lune
@@ -113,7 +116,7 @@ def day_phase(sun_alt):
     Returns:
         str: "day", "civil", "nautical", "astronomical" or "night".
     """
-    return _phase_of_corrected(sun_alt + _HORIZON_CORRECTION_SUN)
+    return _phase_of_corrected(sun_alt)
 
 
 def twilight_segments(hours, sun_alts):
@@ -132,13 +135,12 @@ def twilight_segments(hours, sun_alts):
     """
     if not hours:
         return []
-    corr = _HORIZON_CORRECTION_SUN
     segments = []
     start = hours[0]
-    current = _phase_of_corrected(sun_alts[0] + corr)
+    current = _phase_of_corrected(sun_alts[0])
     for i in range(1, len(hours)):
         h0, h1 = hours[i - 1], hours[i]
-        a0, a1 = sun_alts[i - 1] + corr, sun_alts[i] + corr
+        a0, a1 = sun_alts[i - 1], sun_alts[i]
         crossings = []
         for _, limit in _PHASE_LIMITS:
             if a0 < limit <= a1:            # rising through the limit
@@ -204,28 +206,18 @@ def _title(fig, ax, text):
 
 def sample_day(dte, lat, lon, step_min=5):
     """
-    Altitude of the Sun (geometric) and the Moon (refraction and parallax
-    included) over the UT day of *dte*.
+    Altitude of the Sun (geometric centre) and the Moon (seen from the
+    observer, refraction included) over the UT day of *dte*, computed at once
+    from the DE440 ephemeris.
 
     Returns:
         tuple[list, list, list]: (hours, sun_altitudes, moon_altitudes)
     """
     base = dte.replace(hour=0, minute=0, second=0, microsecond=0)
-    hours, sun_alts, moon_alts = [], [], []
-    for minute in range(0, 1441, step_min):
-        d = base + timedelta(minutes=minute)
-        jd = MeeusEngine.julian_day(d)
-        t = MeeusEngine.julian_century_j2000(d)
-        s_l, _ = MeeusEngine.sun_position(t)
-        s_ra, s_dec = MeeusEngine.ecliptic_to_equatorial(s_l, 0, t)
-        s_alt, _ = MeeusEngine.equatorial_to_horizontal(jd, lat, lon, s_ra, s_dec)
-        m_l, m_b, m_p = MeeusEngine.moon_position(t)
-        m_ra, m_dec = MeeusEngine.ecliptic_to_equatorial(m_l, m_b, t)
-        m_alt, _ = MeeusEngine.equatorial_to_horizontal(jd, lat, lon, m_ra, m_dec)
-        hours.append(minute / 60.0)
-        sun_alts.append(s_alt)
-        moon_alts.append(MeeusEngine.elevation_correction(m_alt, m_p))
-    return hours, sun_alts, moon_alts
+    minutes = range(0, 1441, step_min)
+    sun_alts, moon_alts = MeeusEngine.altitudes(
+        [base + timedelta(minutes=minute) for minute in minutes], lat, lon)
+    return [minute / 60.0 for minute in minutes], sun_alts.tolist(), moon_alts.tolist()
 
 
 def draw_trajectory(fig, hours, sun_alts, moon_alts, now_hour, sun_now, moon_now,
@@ -526,24 +518,14 @@ def orrery_scene(t, samples=180):
         dict: "earth" and "planets" ({name: ...}), each with "x", "y" (AU)
         and "orbit" (list of (x, y)).
     """
-    planets = {}
-    for name, period in _PERIOD_YEARS.items():
+    def body(name, period_years):
         x, y, _ = MeeusEngine.planet_heliocentric(t, name)
-        orbit = []
-        for k in range(samples + 1):
-            ox, oy, _ = MeeusEngine.planet_heliocentric(
-                t + (k / samples) * period / 100.0, name)
-            orbit.append((ox, oy))
-        planets[name] = {"x": x, "y": y, "orbit": orbit}
+        ox, oy, _ = MeeusEngine.planet_heliocentric(               # one orbit, at once
+            t + np.linspace(0.0, period_years / 100.0, samples + 1), name)
+        return {"x": float(x), "y": float(y), "orbit": list(zip(ox.tolist(), oy.tolist()))}
 
-    def earth_at(tt):
-        lon_sun, r = MeeusEngine.sun_position(tt)
-        a = math.radians(lon_sun + 180.0)
-        return r * math.cos(a), r * math.sin(a)
-
-    ex, ey = earth_at(t)
-    earth_orbit = [earth_at(t + (k / samples) / 100.0) for k in range(samples + 1)]
-    return {"earth": {"x": ex, "y": ey, "orbit": earth_orbit}, "planets": planets}
+    planets = {name: body(name, period) for name, period in _PERIOD_YEARS.items()}
+    return {"earth": body("Earth", 1.0), "planets": planets}
 
 
 def draw_orrery(fig, scene, labels):

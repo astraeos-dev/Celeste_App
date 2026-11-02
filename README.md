@@ -1,6 +1,6 @@
 # ✨ Céleste — observatoire astronomique
 
-> Application de bureau qui calcule et affiche la position du Soleil, de la Lune et des planètes, d'après les algorithmes de Jean Meeus.
+> Application de bureau qui calcule et affiche la position du Soleil, de la Lune et des planètes, d'après l'éphéméride JPL DE440 (via Skyfield).
 
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python)
 ![PyQt6](https://img.shields.io/badge/UI-PyQt6-blueviolet)
@@ -170,77 +170,56 @@ Celeste_App/
 
 ### Modèle : `MeeusEngine`
 
-Moteur de calcul entièrement découplé : uniquement des méthodes de classe ou statiques, sans état interne.
+Moteur de calcul entièrement découplé : uniquement des méthodes de classe ou statiques, sans état interne. Le nom est
+conservé pour la compatibilité, mais les positions viennent de l'éphéméride **JPL DE440** (fichier `de440s.bsp`,
+1850–2149) par [Skyfield] : précession IAU 2006, nutation IAU 2000A, temps de lumière, aberration, déflexion ; TU1 et ΔT
+de l'IERS. Précision : planètes à 0,07″ de JPL Horizons, levers et couchers à la seconde (à moins de 30 s des heures
+arrondies de l'USNO).
+
+L'éphéméride (32 Mo) est cherchée dans `data/` à côté du programme, puis dans `~/.celeste` (ou `$CELESTE_DATA`), où elle
+est téléchargée depuis le serveur JPL/NAIF au premier lancement.
 
 | Méthode | Rôle |
 |---------|------|
 | `julian_day(dte)` | Jour julien (JJ) |
 | `julian_century_j2000(dte)` | T en siècles juliens depuis J2000,0 |
-| `delta_t(year)` | ΔT = TT − TU en secondes (valeurs mesurées USNO/IERS 2005–2026, polynômes d'Espenak et Meeus sinon) |
-| `sun_position(t)` | Longitude écliptique et distance du Soleil — série courte (~0,01°) |
-| `sun_position_hp(t)` | Position du Soleil — VSOP87 tronquée (~1″) |
-| `moon_position(t)` | Longitude, latitude et parallaxe de la Lune — Meeus ch. 47, ELP-2000/82 tronquée (~10″) |
-| `moon_position_elp2000(t)` | Même calcul, avec la distance de la Lune |
+| `delta_t(year)` | ΔT = TT − TU en secondes (IERS ; Stephenson, Morrison et Hohenkerk 2016 avant 1973) |
+| `sun_position(t)` / `sun_position_tt(t)` | Longitude apparente et distance du Soleil (t en TU / en TT) |
+| `moon_position(t)` | Longitude, latitude et parallaxe apparentes de la Lune (t en TU) |
+| `moon_position_tt(t)` | Même calcul en TT, avec la distance de la Lune |
 | `ecliptic_to_equatorial(l, b, t)` | Écliptique → équatorial (AD, Déc), obliquité vraie (IAU 2006 + nutation) |
-| `equatorial_to_horizontal(jd, lat, lon, ra, dec)` | Équatorial → horizontal (hauteur, azimut) |
-| `elevation_correction(h, p)` | Réfraction atmosphérique et parallaxe |
-| `find_events(dte, lat, lon, body)` | Lever, coucher, culmination, crépuscules |
-| `planet_heliocentric(t, name)` | Position héliocentrique écliptique J2000 (x, y, z en UA), éléments képlériens JPL |
-| `planet_position(t, name)` | Position géocentrique apparente : AD, Déc et distance (Vénus, Mars, Jupiter, Saturne) — ~1′ à quelques ′ |
+| `equatorial_to_horizontal(jd, lat, lon, ra, dec)` | Équatorial → horizontal (hauteur, azimut), temps sidéral apparent |
+| `elevation_correction(h, p)` | Parallaxe en hauteur (π cos h), puis réfraction atmosphérique |
+| `find_events(dte, lat, lon, body, utc_offset)` | Lever, coucher (bord supérieur), culmination, crépuscules sur le jour local, à la seconde |
+| `altitudes(dtes, lat, lon)` | Hauteurs du Soleil et de la Lune à une série d'instants, en un calcul vectorisé |
+| `planet_heliocentric(t, name)` | Position héliocentrique écliptique J2000 (x, y, z en UA), Terre comprise |
+| `planet_position(t, name)` | Position géocentrique apparente : AD, Déc et distance (Vénus, Mars, Jupiter, Saturne) |
 | `equation_of_time(t)` | Équation du temps en minutes |
 | `angular_separation(ra1, dec1, ra2, dec2)` | Séparation angulaire entre deux astres |
 | `find_conjunctions(dte_start, num_days)` | Prochaines conjonctions et oppositions |
 | `find_eclipses(dte_start, num_months)` | Éclipses de Soleil (éléments besséliens) et de Lune (ombre et pénombre de la Terre, règle de Danjon) : type, magnitudes, durées, heure du maximum en TU |
 
+[Skyfield]: https://rhodesmill.org/skyfield/
+
 ### Cache
 
-Le calcul des événements du jour (1 440 itérations × 2 astres) est coûteux. Un cache indexé par `AAAA-MM-JJ_lat_lon`
-évite de le refaire tant que la date et le lieu ne changent pas, ce qui est précieux en mode temps réel. Pour la même
-raison, seul le graphique de l'onglet affiché est redessiné ; les autres le sont quand on les ouvre.
-
----
-
-## Tests
-
-```bash
-pip install -r requirements-dev.txt
-pytest tests/ -v
-```
-
-Les tests de l'interface ouvrent la fenêtre hors écran (`QT_QPA_PLATFORM=offscreen`, réglé par le test lui-même) et
-écrivent leurs réglages et favoris dans un dossier temporaire.
-
-| Fichier | Portée |
-|---------|--------|
-| `test_engine.py` | Jour julien, positions Soleil/Lune, changements de repère, événements, planètes |
-| `test_engine_hp.py` | Soleil VSOP87, Lune ELP2000, équation du temps, séparations, conjonctions, éclipses de Soleil et de Lune comparées au canon de la NASA |
-| `test_charts.py` | Bandes de crépuscule, géométrie et contenu de la carte du ciel, système solaire, polices, rendu des graphiques |
-| `test_gui.py` | Fenêtre PyQt6 : calcul, langue et thème à chaud, favoris, événements, info-bulles, fiches, temps réel, PDF, règles du design (pas d'emoji, symboles, une seule action principale) |
-| `test_config.py` | Jetons des thèmes Astræos, anciens noms de thème, contraste du texte |
-| `test_i18n.py` | Chargement des traductions, repli, cohérence des 4 langues, langue automatique |
-| `test_utils.py` | Formats HMS/DMS (retenues), noms et normalisation des phases |
-
----
+Un cache indexé par `AAAA-MM-JJ_lat_lon_fuseau` évite de recalculer les événements du jour tant que la date, le lieu et le
+fuseau ne changent pas, ce qui est précieux en mode temps réel. Pour la même raison, seul le graphique de l'onglet
+affiché est redessiné ; les autres le sont quand on les ouvre.
 
 ## Références scientifiques
 
-- **Jean Meeus**, *Astronomical Algorithms*, 2e édition, Willmann-Bell, 1998.
-  - Chapitre 7 — Jour julien
-  - Chapitre 13 — Changements de coordonnées
-  - Chapitre 16 — Réfraction atmosphérique (formule de Bennett)
-  - Chapitre 25 — Position du Soleil (série courte, ±0,01°)
-  - Chapitre 28 — Équation du temps
-  - Chapitre 32 — Position du Soleil VSOP87 (~1″)
-  - Chapitre 47 — Position de la Lune (ELP-2000/82 tronquée, ~10″)
-  - Chapitre 54 — Prévision des éclipses de Soleil
+- **R. S. Park et al.** (2021), *The JPL Planetary and Lunar Ephemerides DE440 and DE441*, AJ 161, 105 — positions
+- **B. Rhodes**, *Skyfield* — réduction des positions (IAU 2006/2000A), levers, couchers et phases de la Lune
+- **F. R. Stephenson, L. V. Morrison et C. Y. Hohenkerk** (2016), Proc. R. Soc. A 472 — ΔT historique ; IERS ensuite
+- **Jean Meeus**, *Astronomical Algorithms*, 2e édition, Willmann-Bell, 1998 — chapitre 54 (règles des éclipses),
+  chapitres 13 et 16 (changements de coordonnées, réfraction)
 - **Explanatory Supplement to the Astronomical Almanac** (1992), chapitre 8 — éléments besséliens des éclipses de Soleil
 - **André Danjon** — agrandissement de l'ombre de la Terre par l'atmosphère (1/85 du rayon terrestre), retenu pour les
   éclipses de Lune
 - **Fred Espenak et Jean Meeus**, *Five Millennium Canon of Solar Eclipses* et *Five Millennium Canon of Lunar
-  Eclipses*, NASA — valeurs de référence des tests, et polynômes de ΔT (écart entre temps dynamique et temps universel)
-- **E. M. Standish (JPL)**, *Keplerian Elements for Approximate Positions of the Major Planets*
-  (ssd.jpl.nasa.gov/planets/approx_pos.html) — éléments des planètes, 1800–2050
-- **USNO / IERS** — valeurs mesurées de ΔT (maia.usno.navy.mil/ser7/deltat.data)
+  Eclipses*, NASA — valeurs de référence des tests d'éclipses
+- **JPL Horizons** et **USNO** (aa.usno.navy.mil) — valeurs de référence des tests de positions, levers et couchers
 
 ---
 
@@ -251,6 +230,7 @@ Les tests de l'interface ouvrent la fenêtre hors écran (`QT_QPA_PLATFORM=offsc
 | [PyQt6](https://www.riverbankcomputing.com/software/pyqt/) | 6.5 | Interface graphique (Qt 6) |
 | [matplotlib](https://matplotlib.org/) | 3.10.8 | Graphiques astronomiques interactifs |
 | [reportlab](https://www.reportlab.com/) | 4.0 | Export PDF |
+| [Skyfield](https://rhodesmill.org/skyfield/) | 1.47 | Éphéméride JPL DE440, temps (TU1, ΔT), levers et couchers (installe NumPy) |
 
 `urllib`, `json` et `argparse` font partie de la bibliothèque standard de Python. Les polices et les icônes sont fournies
 avec le projet (`fonts/`, `assets/`) : rien à installer.
@@ -265,7 +245,7 @@ avec le projet (`fonts/`, `assets/`) : rien à installer.
 - [x] **Système solaire** — positions de Vénus, Mars, Jupiter et Saturne
 - [x] **Éclipses de Soleil** — type, magnitude, durée de la phase centrale
 - [x] **Conjonctions et oppositions** — prochains événements planétaires
-- [x] **Précision de la Lune** — termes complets du chapitre 47 de Meeus (ELP-2000/82 tronquée, ~10″)
+- [x] **Précision** — éphéméride JPL DE440 (Skyfield) à la place des séries de Meeus ; levers et couchers à la seconde
 - [x] **Équation du temps**
 - [ ] **Planétaire 2D** — orbites animées
 - [x] **Éclipses de Lune** — type (totale, partielle, pénombrale), magnitudes, durée des phases, heure du maximum

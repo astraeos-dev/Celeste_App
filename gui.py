@@ -56,7 +56,7 @@ import icons  # noqa: E402
 import settings as prefs  # noqa: E402
 from config import FONT_MONO, FONT_SANS, THEME_NAMES, Config, mix  # noqa: E402
 from constellations import STAR_CONSTELLATION  # noqa: E402
-from engine import MeeusEngine  # noqa: E402
+from engine import EPHEMERIS_YEARS, MeeusEngine  # noqa: E402
 from i18n import (  # noqa: E402
     available_langs, get_lang, lang_name, resolve_lang, switch_lang, t, tf,
 )
@@ -877,6 +877,9 @@ class AstroApp(QMainWindow):
         else:
             self.dt_edit.setTimeSpec(Qt.TimeSpec.UTC)
         self.dt_edit.setDisplayFormat(_QT_DATETIME_FORMAT)
+        # dates covered by the JPL DE440 ephemeris
+        self.dt_edit.setMinimumDate(QDate(EPHEMERIS_YEARS[0], 1, 1))
+        self.dt_edit.setMaximumDate(QDate(EPHEMERIS_YEARS[1], 12, 31))
         self.dt_edit.setCalendarPopup(True)
         self.dt_edit.setToolTip(t("side.datetime_tip"))
         self._set_datetime(_utc_now())
@@ -1588,7 +1591,8 @@ class AstroApp(QMainWindow):
     def _format_event(self, dt):
         if dt is None:
             return "--:--"
-        return self._fmt_clock(dt + timedelta(hours=self.utc_offset))
+        # rounded to the nearest minute, as in the almanacs (the engine gives the second)
+        return self._fmt_clock(dt + timedelta(hours=self.utc_offset, seconds=30))
 
     # ──────────────────────────────────────────────────────────────────────────
     # GÉOLOCALISATION / TEMPS RÉEL
@@ -1742,10 +1746,10 @@ class AstroApp(QMainWindow):
                           "age": phase / 360.0 * 29.530588}
 
         # Événements du jour et courbes 24 h : seulement si la date ou le lieu change
-        key = f"{dte:%Y-%m-%d}_{lat:.4f}_{lon:.4f}"
+        key = f"{dte:%Y-%m-%d}_{lat:.4f}_{lon:.4f}_{self.utc_offset}"
         if key != self.last_cache_key:
-            self.sun_events  = MeeusEngine.find_events(dte, lat, lon, "sun")
-            self.moon_events = MeeusEngine.find_events(dte, lat, lon, "moon")
+            self.sun_events  = MeeusEngine.find_events(dte, lat, lon, "sun", self.utc_offset)
+            self.moon_events = MeeusEngine.find_events(dte, lat, lon, "moon", self.utc_offset)
             self.hours, self.sun_altitudes, self.moon_altitudes = \
                 charts.sample_day(dte, lat, lon)
             self.last_cache_key = key

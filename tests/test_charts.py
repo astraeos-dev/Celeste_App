@@ -62,12 +62,12 @@ def _bodies(dte=DTE):
 
 class TestDayPhase:
     def test_thresholds(self):
-        """Same convention as find_events: altitude + 0.833° vs 0/−6/−12/−18°."""
+        """Same convention as find_events: day from −0.833°, twilights of the geometric centre."""
         assert charts.day_phase(10) == "day"
         assert charts.day_phase(-0.8) == "day"
         assert charts.day_phase(-1.0) == "civil"
-        assert charts.day_phase(-6.5) == "civil"
-        assert charts.day_phase(-7.0) == "nautical"
+        assert charts.day_phase(-5.9) == "civil"
+        assert charts.day_phase(-6.5) == "nautical"
         assert charts.day_phase(-13.0) == "astronomical"
         assert charts.day_phase(-19.0) == "night"
 
@@ -193,7 +193,9 @@ class TestOrreryScene:
             orbit = body["orbit"]
             assert len(orbit) == 91
             first, last = orbit[0], orbit[-1]
-            assert math.hypot(first[0] - last[0], first[1] - last[1]) < 0.05, name
+            # DE440 orbits are perturbed (Jupiter–Saturn): closed to 1 % of the radius
+            gap = math.hypot(first[0] - last[0], first[1] - last[1])
+            assert gap < 0.01 * math.hypot(*first), name
             assert math.hypot(first[0] - body["x"], first[1] - body["y"]) < 1e-9, name
 
     def test_earth_one_au_from_the_sun(self):

@@ -1,51 +1,65 @@
 """
 engine.py — Astronomical Calculation Engine for Céleste
 =========================================================
-Implements the algorithms of Jean Meeus (Astronomical Algorithms, 2nd ed.)
-for calculating Sun, Moon and planetary positions, as well as detecting
-daily events (sunrise, sunset, twilights).
+v4.0: the positions come from the JPL DE440 ephemeris (Park et al., AJ 161,
+105, 2021; file de440s.bsp, 1849–2150) through Skyfield: IAU 2006 precession,
+IAU 2000A nutation, light time, aberration and light deflection; UT1 and ΔT
+from the IERS (Skyfield's built-in tables) and, before 1973, the long-term
+model of Stephenson, Morrison & Hohenkerk (2016).
 
-v3.1 additions:
-  • sun_position_hp(t)       — VSOP87 truncated (~1" arc)
-  • moon_position_elp2000(t) — Meeus chap. 47, truncated ELP-2000/82 (~10" arc),
-                                with the Moon's distance
-  • find_eclipses()          — total/annular/hybrid type, diameter ratio,
-                                magnitude, central phase duration
+  • sun_position(), moon_position(), planet_position() — apparent geocentric
+    positions (DE440, milliarcseconds)
+  • find_events()   — rises, sets, transits and twilights to the second over
+    the local day (Skyfield almanac): upper limb with the standard
+    refraction, topocentric Moon, twilights of the Sun's geometric centre
+  • find_eclipses() — Besselian elements of the Moon's shadow (solar eclipses)
+    and Danjon's rule (lunar eclipses), fed by DE440; syzygies from DE440
+  • ecliptic_to_equatorial(), equatorial_to_horizontal() — true obliquity
+    (IAU 2006 + nutation) and apparent sidereal time, for the interface
 
-v3.3 additions:
-  • find_eclipses()          — lunar eclipses from the Earth's shadow
-                                (Danjon's rule): type, umbral and penumbral
-                                magnitudes, phase durations; greatest eclipse
-  • delta_t(year)            — ΔT = TT − UT, so that eclipse instants are in UT
-
-v3.4 precision:
-  • delta_t(year)            — measured values (USNO/IERS) for 2005–2026
-  • planet_position()        — JPL Keplerian elements (Standish, 1800–2050),
-                                precession to the date, light time, aberration
-  • nutation (4 terms), IAU 2006 true obliquity, apparent sidereal time
+The ephemeris (32 MB) is looked for in data/ next to this module, then in
+~/.celeste (or $CELESTE_DATA), where it is downloaded from the JPL/NAIF
+server the first time (load_ephemeris()).
 
 This module is completely independent from the graphical interface (MVC model).
 """
 
 import math
+import os
 from datetime import timedelta
+
+import numpy as np
+from skyfield import almanac
+from skyfield.api import Loader, wgs84
+from skyfield.framelib import ecliptic_J2000_frame, true_equator_and_equinox_of_date
 
 # ==========================================================
 # CONSTANTS
 # ==========================================================
 
-# Atmospheric refraction correction (Meeus, chap. 16)
+# JPL DE440, short version: 1849-12-26 → 2150-01-22
+_EPHEMERIS_URL  = "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/de440s.bsp"
+_EPHEMERIS_FILE = "de440s.bsp"
+EPHEMERIS_YEARS = (1850, 2149)            # whole years covered by the ephemeris
+_DATA_DIRS = (
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "data"),
+    os.environ.get("CELESTE_DATA") or os.path.join(os.path.expanduser("~"), ".celeste"),
+)
+
+# DE440 targets (barycentres for Mars, Jupiter and Saturn: their moons move
+# them by less than a millisecond of arc)
+_PLANETS = {"Venus": "venus", "Mars": "mars barycenter", "Jupiter": "jupiter barycenter",
+            "Saturn": "saturn barycenter", "Earth": "earth"}
+
+# Rise and set of the Sun: refraction (34′) and semi-diameter (16′)
 _HORIZON_CORRECTION_SUN = 0.833  # degrees
 
-# Refraction coefficients for Bennett's formula (Meeus, chap. 16)
+# Refraction coefficients of Sæmundsson's formula (Meeus, chap. 16)
 _REFRACTION_A = 10.3
 _REFRACTION_B = 5.11
 
-# Lunations (Meeus, chap. 49): mean new moon k = 0 (2000 January 6) and
-# mean synodic month. A true phase is never more than ~15 h from its mean one.
-_MEAN_NEW_MOON_JDE = 2451550.09766
-_SYNODIC_MONTH     = 29.530588861                  # days
-_ELONGATION_RATE   = 360.0 / _SYNODIC_MONTH        # mean Moon − Sun motion, °/day
+# Twilights: depth of the Sun's geometric centre below the horizon
+_TWILIGHTS = ((6.0, "civ"), (12.0, "naut"), (18.0, "astro"))
 
 # Solar eclipse geometry (Besselian elements); lengths in Earth equatorial radii
 _EARTH_RADIUS_KM = 6378.14
@@ -54,7 +68,7 @@ _SUN_RADIUS      = _AU_KM * math.sin(math.radians(959.63 / 3600.0)) / _EARTH_RAD
 _MOON_RADIUS_PENUMBRA = 0.2725076                  # Moon radius for the penumbral cone
 _MOON_RADIUS_UMBRA    = 0.2722810                  # … and for the umbral cone
 _CENTRAL_LIMIT   = 0.9972     # |γ| under which the shadow axis meets the flattened Earth (Meeus, chap. 54)
-_GAMMA_ACCURACY  = 0.005      # accuracy of γ from the truncated series (vs NASA: ≤ 0.001, 1991–2031)
+_GAMMA_ACCURACY  = 0.005      # margin on γ under which a grazing eclipse is only 'possible'
 _SIDEREAL_RATE   = 2.0 * math.pi * 1.00273790935 / 24.0   # Earth rotation, radians per hour
 
 # Lunar eclipse geometry: Danjon's rule, as in NASA's Five Millennium Canon of
@@ -67,458 +81,49 @@ _SUN_SEMI_DIAMETER_1AU = 959.63 / 3600.0         # degrees, at 1 AU
 _LUNAR_LATITUDE_LIMIT = 1.6       # degrees: farther from the ecliptic at full moon, the Moon misses the penumbra
 _LUNAR_MAG_ACCURACY   = 0.01      # accuracy of the magnitudes (vs NASA: ≤ 0.004, 2021–2028)
 
-# ΔT = TT − UT (seconds): polynomial expressions of Espenak & Meeus for NASA's
-# Five Millennium Canons (eclipse.gsfc.nasa.gov/SEcat5/deltatpoly.html).
-# Each row: end of the range (decimal year), origin y0, scale s, coefficients
-# of the polynomial in u = (y − y0) / s. Outside the table: −20 + 32 u²,
-# u = (y − 1820) / 100, minus 0.5628 (2150 − y) until 2150.
-# From 2005 on, the 2006 extrapolation (75 s in 2026) is replaced by the
-# measured values below.
-_DELTA_T_POLYNOMIALS = (
-    (-500, 1820, 100, (-20.0, 0.0, 32.0)),
-    (500,     0, 100, (10583.6, -1014.41, 33.78311, -5.952053, -0.1798452, 0.022174192,
-                       0.0090316521)),
-    (1600, 1000, 100, (1574.2, -556.01, 71.23472, 0.319781, -0.8503463, -0.005050998,
-                       0.0083572073)),
-    (1700, 1600, 1, (120.0, -0.9808, -0.01532, 1.0 / 7129.0)),
-    (1800, 1700, 1, (8.83, 0.1603, -0.0059285, 0.00013336, -1.0 / 1174000.0)),
-    (1860, 1800, 1, (13.72, -0.332447, 0.0068612, 0.0041116, -0.00037436, 0.0000121272,
-                     -0.0000001699, 0.000000000875)),
-    (1900, 1860, 1, (7.62, 0.5737, -0.251754, 0.01680668, -0.0004473624, 1.0 / 233174.0)),
-    (1920, 1900, 1, (-2.79, 1.494119, -0.0598939, 0.0061966, -0.000197)),
-    (1941, 1920, 1, (21.20, 0.84493, -0.076100, 0.0020936)),
-    (1961, 1950, 1, (29.07, 0.407, -1.0 / 233.0, 1.0 / 2547.0)),
-    (1986, 1975, 1, (45.45, 1.067, -1.0 / 260.0, -1.0 / 718.0)),
-    (2005, 2000, 1, (63.86, 0.3345, -0.060374, 0.0017275, 0.000651814, 0.00002373599)),
-)
-
-# Measured ΔT (s) on January 1 of each year, from USNO/IERS
-# (maia.usno.navy.mil/ser7/deltat.data, last value 2026 October 1).
-# Interpolated linearly; after the last value, a cubic leaves it with the
-# recent trend and joins the long-term parabola in 2050.
-_DELTA_T_OBSERVED = (
-    (2005, 64.69), (2006, 64.85), (2007, 65.15), (2008, 65.46), (2009, 65.78),
-    (2010, 66.07), (2011, 66.32), (2012, 66.60), (2013, 66.91), (2014, 67.28),
-    (2015, 67.64), (2016, 68.10), (2017, 68.59), (2018, 68.97), (2019, 69.22),
-    (2020, 69.36), (2021, 69.36), (2022, 69.29), (2023, 69.20), (2024, 69.18),
-    (2025, 69.14), (2026, 69.11), (2026.75, 69.21),
-)
-_DELTA_T_TREND = 0.12             # s/year, 2025 October → 2026 October
-_DELTA_T_JOIN  = 2050.0           # year where the extrapolation meets the parabola
-
-# Keplerian elements and their rates per Julian century, mean ecliptic and
-# equinox of J2000, valid 1800–2050 (E. M. Standish, JPL — Table 1 of
-# ssd.jpl.nasa.gov/planets/approx_pos.html). Heliocentric errors: Venus 20",
-# Mars 40", Jupiter 400", Saturn 600" in longitude.
-# Format: ((a AU, e, I °, L °, ϖ °, Ω °), (rates per century, same order))
-_ORBITAL_ELEMENTS = {
-    "Venus":   ((0.72333566,  0.00677672, 3.39467605, 181.97909950, 131.60246718,  76.67984255),
-                (0.00000390, -0.00004107, -0.00078890, 58517.81538729, 0.00268329, -0.27769418)),
-    "Mars":    ((1.52371034,  0.09339410, 1.84969142,  -4.55343205, -23.94362959,  49.55953891),
-                (0.00001847,  0.00007882, -0.00813131, 19140.30268499, 0.44441088, -0.29257343)),
-    "Jupiter": ((5.20288700,  0.04838624, 1.30439695,  34.39644051,  14.72847983, 100.47390909),
-                (-0.00011607, -0.00013253, -0.00183714, 3034.74612775, 0.21252668,  0.20469106)),
-    "Saturn":  ((9.53667594,  0.05386179, 2.48599187,  49.95424423,  92.59887831, 113.66242448),
-                (-0.00125060, -0.00050991, 0.00193609, 1222.49362201, -0.41897216, -0.28867794)),
-}
-_LIGHT_TIME_DAYS_PER_AU = 0.0057755183
 
 # ==========================================================
-# MOON PERIODIC TABLES — Meeus chapter 47 (Tables 47.A and 47.B, complete)
+# EPHEMERIS
 # ==========================================================
 
-_MOON_LONGITUDE_TERMS = (
-    ( 0,  0,  1,  0,  6288774),
-    ( 2,  0, -1,  0,  1274027),   # evection: positive in Meeus Table 47.A
-    ( 2,  0,  0,  0,   658314),
-    ( 0,  0,  2,  0,   213618),
-    ( 0,  1,  0,  0,  -185116),
-    ( 0,  0,  0,  2,  -114332),
-    ( 2,  0, -2,  0,    58793),
-    ( 2, -1, -1,  0,    57066),
-    ( 2,  0,  1,  0,    53322),
-    ( 2, -1,  0,  0,    45758),
-    ( 0,  1, -1,  0,   -40923),
-    ( 1,  0,  0,  0,   -34720),
-    ( 0,  1,  1,  0,   -30383),
-    ( 2,  0,  0, -2,    15327),
-    ( 0,  0,  1,  2,   -12528),
-    ( 0,  0,  1, -2,    10980),
-    ( 4,  0, -1,  0,    10675),
-    ( 0,  0,  3,  0,    10034),
-    ( 4,  0, -2,  0,     8548),
-    ( 2,  1, -1,  0,    -7888),
-    ( 2,  1,  0,  0,    -6766),
-    ( 1,  0, -1,  0,    -5163),
-    ( 1,  1,  0,  0,     4987),
-    ( 2, -1,  1,  0,     4036),
-    ( 2,  0,  2,  0,     3994),
-    ( 4,  0,  0,  0,     3861),
-    ( 2,  0, -3,  0,     3665),
-    ( 0,  1, -2,  0,    -2689),
-    ( 2,  0, -1,  2,    -2602),
-    ( 2, -1, -2,  0,     2390),
-    ( 1,  0,  1,  0,    -2348),
-    ( 2, -2,  0,  0,     2236),
-    ( 0,  1,  2,  0,    -2120),
-    ( 0,  2,  0,  0,    -2069),
-    ( 2, -2, -1,  0,     2048),
-    ( 2,  0,  1, -2,    -1773),
-    ( 2,  0,  0,  2,    -1595),
-    ( 4, -1, -1,  0,     1215),
-    ( 0,  0,  2,  2,    -1110),
-    ( 3,  0, -1,  0,     -892),
-    ( 2,  1,  1,  0,     -810),
-    ( 4, -1, -2,  0,      759),
-    ( 0,  2, -1,  0,     -713),
-    ( 2,  2, -1,  0,     -700),
-    ( 2,  1, -2,  0,      691),
-    ( 2, -1,  0, -2,      596),
-    ( 4,  0,  1,  0,      549),
-    ( 0,  0,  4,  0,      537),
-    ( 4, -1,  0,  0,      520),
-    ( 1,  0, -2,  0,     -487),
-    ( 2,  1,  0, -2,     -399),
-    ( 0,  0,  2, -2,     -381),
-    ( 1,  1,  1,  0,      351),
-    ( 3,  0, -2,  0,     -340),
-    ( 4,  0, -3,  0,      330),
-    ( 2, -1,  2,  0,      327),
-    ( 0,  2,  1,  0,     -323),
-    ( 1,  1, -1,  0,      299),
-    ( 2,  0,  3,  0,      294),
-    ( 2,  0, -1, -2,        0),
-)
+class EphemerisUnavailable(RuntimeError):
+    """The DE440 file is missing and could not be downloaded."""
 
-_MOON_DISTANCE_TERMS = (
-    ( 0,  0,  1,  0, -20905355),
-    ( 2,  0, -1,  0,  -3699111),
-    ( 2,  0,  0,  0,  -2955968),
-    ( 0,  0,  2,  0,   -569925),
-    ( 0,  1,  0,  0,     48888),
-    ( 0,  0,  0,  2,     -3149),
-    ( 2,  0, -2,  0,    246158),
-    ( 2, -1, -1,  0,   -152138),
-    ( 2,  0,  1,  0,   -170733),
-    ( 2, -1,  0,  0,   -204586),
-    ( 0,  1, -1,  0,   -129620),
-    ( 1,  0,  0,  0,    108743),
-    ( 0,  1,  1,  0,    104755),
-    ( 2,  0,  0, -2,     10321),
-    ( 0,  0,  1,  2,         0),
-    ( 0,  0,  1, -2,     79661),
-    ( 4,  0, -1,  0,    -34782),
-    ( 0,  0,  3,  0,    -23210),
-    ( 4,  0, -2,  0,    -21636),
-    ( 2,  1, -1,  0,     24208),
-    ( 2,  1,  0,  0,     30824),
-    ( 1,  0, -1,  0,     -8379),
-    ( 1,  1,  0,  0,    -16675),
-    ( 2, -1,  1,  0,    -12831),
-    ( 2,  0,  2,  0,    -10445),
-    ( 4,  0,  0,  0,    -11650),
-    ( 2,  0, -3,  0,     14403),
-    ( 0,  1, -2,  0,     -7003),
-    ( 2,  0, -1,  2,         0),
-    ( 2, -1, -2,  0,     10056),
-    ( 1,  0,  1,  0,      6322),
-    ( 2, -2,  0,  0,     -9884),
-    ( 0,  1,  2,  0,      5751),
-    ( 0,  2,  0,  0,         0),
-    ( 2, -2, -1,  0,     -4950),
-    ( 2,  0,  1, -2,      4130),
-    ( 2,  0,  0,  2,         0),
-    ( 4, -1, -1,  0,     -3958),
-    ( 0,  0,  2,  2,         0),
-    ( 3,  0, -1,  0,      3258),
-    ( 2,  1,  1,  0,      2616),
-    ( 4, -1, -2,  0,     -1897),
-    ( 0,  2, -1,  0,     -2117),
-    ( 2,  2, -1,  0,      2354),
-    ( 2,  1, -2,  0,         0),
-    ( 2, -1,  0, -2,         0),
-    ( 4,  0,  1,  0,     -1423),
-    ( 0,  0,  4,  0,     -1117),
-    ( 4, -1,  0,  0,     -1571),
-    ( 1,  0, -2,  0,     -1739),
-    ( 2,  1,  0, -2,         0),
-    ( 0,  0,  2, -2,     -4421),
-    ( 1,  1,  1,  0,         0),
-    ( 3,  0, -2,  0,         0),
-    ( 4,  0, -3,  0,         0),
-    ( 2, -1,  2,  0,         0),
-    ( 0,  2,  1,  0,      1165),
-    ( 1,  1, -1,  0,         0),
-    ( 2,  0,  3,  0,         0),
-    ( 2,  0, -1, -2,      8752),
-)
 
-_MOON_LATITUDE_TERMS = (
-    ( 0,  0,  0,  1,  5128122),
-    ( 0,  0,  1,  1,   280602),
-    ( 0,  0,  1, -1,   277693),
-    ( 2,  0,  0, -1,   173237),
-    ( 2,  0, -1,  1,    55413),
-    ( 2,  0, -1, -1,    46271),
-    ( 2,  0,  0,  1,    32573),
-    ( 0,  0,  2,  1,    17198),
-    ( 2,  0,  1, -1,     9266),
-    ( 0,  0,  2, -1,     8822),
-    ( 2, -1,  0, -1,     8216),
-    ( 2,  0, -2, -1,     4324),
-    ( 2,  0,  1,  1,     4200),
-    ( 2,  1,  0, -1,    -3359),
-    ( 2, -1, -1,  1,     2463),
-    ( 2, -1,  0,  1,     2211),
-    ( 2, -1, -1, -1,     2065),
-    ( 0,  1, -1, -1,    -1870),
-    ( 4,  0, -1, -1,     1828),
-    ( 0,  1,  0,  1,    -1794),
-    ( 0,  0,  0,  3,    -1749),
-    ( 0,  1, -1,  1,    -1565),
-    ( 1,  0,  0,  1,    -1491),
-    ( 0,  1,  1,  1,    -1475),
-    ( 0,  1,  1, -1,    -1410),
-    ( 0,  1,  0, -1,    -1344),
-    ( 1,  0,  0, -1,    -1335),
-    ( 0,  0,  3,  1,     1107),
-    ( 4,  0,  0, -1,     1021),
-    ( 4,  0, -1,  1,      833),
-    ( 0,  0,  1, -3,      777),
-    ( 4,  0, -2,  1,      671),
-    ( 2,  0,  0, -3,      607),
-    ( 2,  0,  2, -1,      596),
-    ( 2, -1,  1, -1,      491),
-    ( 2,  0, -2,  1,     -451),
-    ( 0,  0,  3, -1,      439),
-    ( 2,  0,  2,  1,      422),
-    ( 2,  0, -3, -1,      421),
-    ( 2,  1, -1,  1,     -366),
-    ( 2,  1,  0,  1,     -351),
-    ( 4,  0,  0,  1,      331),
-    ( 2, -1,  1,  1,      315),
-    ( 2, -2,  0, -1,      302),
-    ( 0,  0,  1,  3,     -283),
-    ( 2,  1,  1, -1,     -229),
-    ( 1,  1,  0, -1,      223),
-    ( 1,  1,  0,  1,      223),
-    ( 0,  1, -2, -1,     -220),
-    ( 2,  1, -1, -1,     -220),
-    ( 1,  0,  1,  1,     -185),
-    ( 2, -1, -2, -1,      181),
-    ( 0,  1,  2,  1,     -177),
-    ( 4,  0, -2, -1,      176),
-    ( 4, -1, -1, -1,      166),
-    ( 1,  0,  1, -1,     -164),
-    ( 4,  0,  1, -1,      132),
-    ( 1,  0, -1, -1,     -119),
-    ( 4, -1,  0, -1,      115),
-    ( 2, -2,  0,  1,      107),
-)
+_SKY = {}
 
-# ==========================================================
-# VSOP87 — Sun high precision (Meeus, chap. 32)
-# Terms (A, B, C): contribution = A × cos(B + C×τ), τ = t/10 (millennia)
-# Precision after truncation: ~1" arc over ±2000 years
-# ==========================================================
 
-_VSOP87_L0 = (
-    (175347046.0, 0.0,         0.0         ),
-    (  3341656.0, 4.6692568,   6283.0758500),
-    (    34894.0, 4.62610,    12566.15170  ),
-    (     3497.0, 2.7441,      5753.3849   ),
-    (     3418.0, 2.8289,         3.5231   ),
-    (     3136.0, 3.6277,     77713.7715   ),
-    (     2676.0, 4.4181,      7860.4194   ),
-    (     2343.0, 6.1352,      3930.2097   ),
-    (     1324.0, 0.7425,     11506.7698   ),
-    (     1273.0, 2.0371,       529.6910   ),
-    (     1199.0, 1.1096,      1577.3435   ),
-    (      990.0, 5.233,       5884.927    ),
-    (      902.0, 2.045,         26.298    ),
-    (      857.0, 3.508,        398.149    ),
-    (      780.0, 1.179,       5223.694    ),
-    (      753.0, 2.533,       5507.553    ),
-    (      505.0, 4.583,      18849.228    ),
-    (      492.0, 4.205,        775.523    ),
-    (      357.0, 2.920,          0.067    ),
-    (      317.0, 5.849,      11790.629    ),
-    (      284.0, 1.899,        796.298    ),
-    (      271.0, 0.315,      10977.079    ),
-    (      243.0, 0.345,       5486.778    ),
-    (      206.0, 4.806,       2544.314    ),
-    (      205.0, 1.869,       5573.143    ),
-    (      202.0, 2.458,       6069.777    ),
-    (      156.0, 0.833,        213.299    ),
-    (      132.0, 3.411,       2942.463    ),
-    (      126.0, 1.083,         20.775    ),
-    (      115.0, 0.645,          0.980    ),
-    (      103.0, 0.636,       4694.003    ),
-    (       99.0, 6.210,      15720.839    ),
-    (       98.0, 0.68,        7084.897    ),
-    (       86.0, 5.98,       11243.685    ),
-    (       86.0, 1.27,      161000.685    ),
-    (       65.0, 1.43,       17260.155    ),
-    (       63.0, 1.05,        5088.629    ),
-    (       57.0, 5.30,       14712.317    ),
-    (       56.0, 5.97,       12036.461    ),
-    (       49.0, 5.86,        1349.867    ),
-    (       45.0, 1.72,         -220.413   ),
-    (       43.0, 0.50,        1059.382    ),
-    (       39.0, 3.36,       10447.388    ),
-    (       38.0, 1.78,        2352.866    ),
-    (       37.0, 1.52,        9437.763    ),
-    (       37.0, 4.37,        5765.847    ),
-    (       36.0, 6.04,        3154.690    ),
-    (       32.0, 1.78,        4690.480    ),
-    (       29.0, 3.45,         522.577    ),
-    (       28.0, 1.90,        6286.599    ),
-    (       27.0, 0.27,        6279.553    ),
-    (       27.0, 0.09,       12139.554    ),
-)
-_VSOP87_L1 = (
-    (628331966747.0, 0.0,        0.0        ),
-    (    206059.0,   2.678235,   6283.075850),
-    (      4303.0,   2.6351,    12566.1517  ),
-    (       425.0,   1.590,         3.523   ),
-    (       119.0,   5.796,        26.298   ),
-    (       109.0,   2.966,      1577.344   ),
-    (        93.0,   2.59,      18849.23    ),
-    (        72.0,   1.14,        529.69    ),
-    (        68.0,   1.87,        398.15    ),
-    (        67.0,   4.41,       5507.55    ),
-    (        59.0,   2.89,       5223.69    ),
-    (        56.0,   2.17,        155.42    ),
-    (        45.0,   0.40,        796.30    ),
-    (        36.0,   0.47,        775.52    ),
-    (        29.0,   2.65,          7.11    ),
-    (        21.0,   5.34,          0.98    ),
-    (        19.0,   1.85,       5486.78    ),
-    (        19.0,   4.97,        213.30    ),
-    (        17.0,   2.99,       6275.96    ),
-    (        16.0,   0.03,       2544.31    ),
-    (        16.0,   1.43,       2146.17    ),
-    (        15.0,   1.21,      10977.08    ),
-    (        12.0,   2.83,       1748.02    ),
-    (        12.0,   3.26,       5088.63    ),
-    (        12.0,   5.27,       1194.45    ),
-    (        12.0,   2.08,       4694.00    ),
-    (        11.0,   0.77,        553.57    ),
-    (        10.0,   1.30,       6286.60    ),
-    (        10.0,   4.24,       1349.87    ),
-    (         9.0,   2.70,        242.73    ),
-    (         9.0,   5.64,        951.72    ),
-    (         8.0,   5.30,       2352.87    ),
-    (         6.0,   2.65,       9437.76    ),
-    (         6.0,   4.67,       4690.48    ),
-)
-_VSOP87_L2 = (
-    ( 52919.0, 0.0,       0.0      ),
-    (  8720.0, 1.0721,    6283.0758),
-    (   309.0, 0.867,    12566.152 ),
-    (    27.0, 0.05,         3.52  ),
-    (    16.0, 5.19,        26.30  ),
-    (    16.0, 3.68,       155.42  ),
-    (    10.0, 0.76,     18849.23  ),
-    (     9.0, 2.06,     77713.77  ),
-    (     7.0, 0.83,       775.52  ),
-    (     5.0, 4.66,      1577.34  ),
-    (     4.0, 1.03,         7.11  ),
-    (     4.0, 3.44,      5573.14  ),
-    (     3.0, 5.14,       796.30  ),
-    (     3.0, 6.05,      5507.55  ),
-    (     3.0, 1.19,       242.73  ),
-    (     3.0, 6.12,       529.69  ),
-    (     3.0, 0.31,       398.15  ),
-    (     3.0, 2.28,       553.57  ),
-    (     2.0, 4.38,      5223.69  ),
-    (     2.0, 3.75,         0.98  ),
-)
-_VSOP87_L3 = (
-    (289.0, 5.844, 6283.076),
-    ( 35.0, 0.0,      0.0  ),
-    ( 17.0, 5.49,  12566.15),
-    (  3.0, 5.20,    155.42),
-    (  1.0, 4.72,      3.52),
-    (  1.0, 5.30,  18849.23),
-    (  1.0, 5.97,    242.73),
-)
-_VSOP87_L4 = (
-    (114.0, 3.1417, 6283.0758),
-    (  8.0, 4.13,      0.0   ),
-    (  1.0, 3.84,  12566.15  ),
-)
-_VSOP87_L5 = ((1.0, 3.14, 0.0),)
+def ephemeris_path():
+    """Path of the DE440 file: the first data directory holding it, else where it will be downloaded."""
+    for directory in _DATA_DIRS:
+        path = os.path.join(directory, _EPHEMERIS_FILE)
+        if os.path.isfile(path):
+            return path
+    return os.path.join(_DATA_DIRS[-1], _EPHEMERIS_FILE)
 
-_VSOP87_B0 = (
-    (280.0, 3.199, 84334.662),
-    (102.0, 5.422,  5507.553),
-    ( 80.0, 3.88,   5223.69 ),
-    ( 44.0, 3.70,   2352.87 ),
-    ( 32.0, 4.00,   1577.34 ),
-)
-_VSOP87_B1 = (
-    (9.0, 3.90, 5507.55),
-    (6.0, 1.73, 5223.69),
-)
 
-_VSOP87_R0 = (
-    (100013989.0, 0.0,        0.0        ),
-    (  1670700.0, 3.0984635,  6283.07585 ),
-    (    13956.0, 3.05525,   12566.1517  ),
-    (     3084.0, 5.1985,    77713.7715  ),
-    (     1628.0, 1.1739,     5753.3849  ),
-    (     1576.0, 2.8469,     7860.4194  ),
-    (      925.0, 5.453,     11506.770   ),
-    (      542.0, 4.564,      3930.210   ),
-    (      472.0, 3.661,      5884.927   ),
-    (      346.0, 0.964,      5507.553   ),
-    (      329.0, 5.900,      5223.694   ),
-    (      307.0, 0.299,      5573.143   ),
-    (      243.0, 4.273,     11790.629   ),
-    (      212.0, 5.847,      1577.344   ),
-    (      186.0, 5.022,     10977.079   ),
-    (      175.0, 3.012,     18849.228   ),
-    (      110.0, 5.055,      5486.778   ),
-    (       98.0, 0.89,       6069.78    ),
-    (       86.0, 5.69,      15720.84    ),
-    (       72.0, 1.14,     161000.69    ),
-    (       68.0, 1.87,      17260.15    ),
-    (       52.0, 0.27,      12036.46    ),
-    (       38.0, 3.44,       5088.63    ),
-    (       37.0, 4.37,      10447.39    ),
-    (       32.0, 1.78,       9437.76    ),
-    (       29.0, 3.45,        522.58    ),
-    (       28.0, 1.90,       6286.60    ),
-    (       27.0, 4.31,       6279.55    ),
-    (       27.0, 0.27,      12139.55    ),
-)
-_VSOP87_R1 = (
-    (103019.0, 1.107490, 6283.075850),
-    (  1721.0, 1.0644,  12566.1517  ),
-    (   702.0, 3.142,       0.0     ),
-    (    32.0, 1.02,    18849.23    ),
-    (    31.0, 2.84,     5507.55    ),
-    (    25.0, 1.32,     5223.69    ),
-    (    18.0, 1.42,     1577.34    ),
-    (    10.0, 5.91,    10977.08    ),
-    (     9.0, 1.42,     6275.96    ),
-    (     9.0, 0.27,     5486.78    ),
-)
-_VSOP87_R2 = (
-    (4359.0, 5.7846, 6283.0758),
-    ( 124.0, 5.579, 12566.152 ),
-    (  12.0, 3.14,      0.0   ),
-    (   9.0, 3.63,  77713.77  ),
-    (   6.0, 1.87,   5573.14  ),
-    (   3.0, 5.47,  18849.23  ),
-)
-_VSOP87_R3 = (
-    (145.0, 4.273, 6283.076),
-    (  7.0, 3.92, 12566.15 ),
-)
-_VSOP87_R4 = ((4.0, 2.56, 6283.08),)
+def load_ephemeris():
+    """
+    Skyfield timescale and DE440 bodies, loaded once (downloaded the first
+    time). Raises EphemerisUnavailable when the file can be neither found
+    nor downloaded.
+    """
+    if not _SKY:
+        directory = os.path.dirname(ephemeris_path())
+        try:
+            os.makedirs(directory, exist_ok=True)
+            loader = Loader(directory, verbose=False)
+            eph = loader(_EPHEMERIS_URL)
+        except Exception as exc:                            # network, disk, corrupt file
+            raise EphemerisUnavailable(
+                f"{_EPHEMERIS_FILE}: not found in {directory} and not downloadable "
+                f"from {_EPHEMERIS_URL} ({exc})") from exc
+        _SKY.update(ts=loader.timescale(), eph=eph,
+                    earth=eph["earth"], sun=eph["sun"], moon=eph["moon"])
+    return _SKY
 
+
+_sky = load_ephemeris
 
 # ==========================================================
 # MAIN ENGINE
@@ -526,11 +131,12 @@ _VSOP87_R4 = ((4.0, 2.56, 6283.08),)
 
 class MeeusEngine:
     """
-    Encapsulates all pure astronomical calculations, independent of the interface.
+    Encapsulates all astronomical calculations, independent of the interface.
 
-    All methods are class methods or static methods: no internal state is preserved.
-
-    Reference: Jean Meeus, *Astronomical Algorithms*, 2nd ed., Willmann-Bell, 1998.
+    All methods are class methods or static methods: no internal state is
+    preserved (the ephemeris is loaded once, on first use). The name is kept
+    for compatibility: the positions now come from JPL DE440 (Skyfield), and
+    the eclipse geometry still follows Meeus, chap. 54.
     """
 
     @staticmethod
@@ -555,126 +161,101 @@ class MeeusEngine:
         """Calculates T in Julian centuries since J2000.0."""
         return (cls.julian_day(dte) - 2451545.0) / 36525.0
 
+
     @staticmethod
     def delta_t(year):
         """
-        ΔT = TT − UT in seconds, for a decimal year.
-
-        The positions take dynamical time (TT) and the eclipse search returns
-        its instants in UT. From 2005 to 2026.75, ΔT is interpolated in the
-        values measured by USNO/IERS (69.2 s in 2026); before, the polynomials
-        of Espenak & Meeus (NASA) give it, up to a few hours in antiquity.
-        After the last measurement, a cubic continues the recent trend and
-        joins NASA's long-term parabola in 2050.
-        Outside the measured years (1955 on), the correction for the Moon's
-        secular acceleration of ELP-2000/82 (−25.858″/cy²) is applied, as in
-        NASA's canons.
+        ΔT = TT − UT in seconds, for a decimal year (Skyfield): UT1 measured
+        by the IERS since 1973, then its predictions; before, the spline of
+        Stephenson, Morrison & Hohenkerk (2016). About 69.1 s in 2026.
         """
-        obs = _DELTA_T_OBSERVED
-        y0, v0 = obs[-1]
-        if obs[0][0] <= year <= y0:
-            for (ya, va), (yb, vb) in zip(obs, obs[1:]):
-                if year <= yb:
-                    return va + (vb - va) * (year - ya) / (yb - ya)
-        if y0 < year < _DELTA_T_JOIN:
-            # cubic Hermite: recent trend at y0, slope of the parabola at the join
-            f  = MeeusEngine._delta_t_parabola
-            h  = _DELTA_T_JOIN - y0
-            v1 = f(_DELTA_T_JOIN)
-            m1 = f(_DELTA_T_JOIN + 0.5) - f(_DELTA_T_JOIN - 0.5)
-            s  = (year - y0) / h
-            return ((2*s**3 - 3*s**2 + 1) * v0 + (s**3 - 2*s**2 + s) * h * _DELTA_T_TREND
-                    + (3*s**2 - 2*s**3) * v1 + (s**3 - s**2) * h * m1)
-        for end, origin, scale, coefficients in _DELTA_T_POLYNOMIALS:
-            if year < end:
-                u = (year - origin) / scale
-                dt = 0.0
-                for c in reversed(coefficients):
-                    dt = dt * u + c
-                break
-        else:
-            return MeeusEngine._delta_t_parabola(year)
-        if not 1955 <= year <= y0:
-            dt -= 0.000012932 * (year - 1955.0) ** 2
-        return dt
+        return float(_sky()["ts"].J(year).delta_t)
+
+    # ──────────────────────────────────────────────────────────────────
+    # TIME AND APPARENT POSITIONS (JPL DE440)
+    # ──────────────────────────────────────────────────────────────────
 
     @staticmethod
-    def _delta_t_parabola(year):
-        """NASA's long-term ΔT (from 2050), with the secular acceleration correction."""
-        dt = -20.0 + 32.0 * ((year - 1820.0) / 100.0) ** 2
-        if year < 2150:
-            dt -= 0.5628 * (2150.0 - year)
-        return dt - 0.000012932 * (year - 1955.0) ** 2
+    def _time_ut(t):
+        """Skyfield Time of t, Julian centuries of UT since J2000.0 (number or array)."""
+        return _sky()["ts"].ut1_jd(2451545.0 + 36525.0 * t)
 
-    # ──────────────────────────────────────────────────────────────────
-    # SUN — short series (Meeus, chap. 25) — kept for compatibility
-    # ──────────────────────────────────────────────────────────────────
+    @staticmethod
+    def _time_tt(t):
+        """Skyfield Time of t, Julian centuries of TT since J2000.0 (number or array)."""
+        return _sky()["ts"].tt_jd(2451545.0 + 36525.0 * t)
+
+    @staticmethod
+    def _apparent_ecliptic(target, time):
+        """Apparent geocentric (longitude°, latitude°, Distance), true ecliptic and equinox of date."""
+        sky = _sky()
+        lat, lon, dist = sky["earth"].at(time).observe(sky[target]).apparent().ecliptic_latlon(epoch="date")
+        return lon.degrees, lat.degrees, dist
+
+    @classmethod
+    def _moon(cls, time):
+        lon, lat, dist = cls._apparent_ecliptic("moon", time)
+        km = dist.km
+        return lon, lat, km, np.degrees(np.arcsin(_EARTH_RADIUS_KM / km))
 
     @classmethod
     def sun_position(cls, t):
         """
-        Sun ecliptic longitude and distance — short series (~0.01°).
-        Kept for trajectory and event calculations.
+        Apparent ecliptic longitude (°, true equinox of date) and distance
+        (AU) of the Sun, DE440.
 
-        Reference: Meeus, chap. 25.
+        Args:
+            t (float | numpy.ndarray): Julian centuries of UT since J2000.0.
         """
-        l0 = cls.mod360(280.46646 + 36000.76983 * t)
-        m  = cls.mod360(357.52911 + 35999.05029 * t)
-        e  = 0.016708634 - 0.000042037 * t
-        c  = ((1.914602 - 0.004817*t)*math.sin(math.radians(m))
-              + (0.019993 - 0.000101*t)*math.sin(math.radians(2*m)))
-        l  = cls.mod360(l0 + c)
-        r  = 1.00014*(1 - e**2)/(1 + e*math.cos(math.radians(m + c)))
-        return l, r
+        lon, _, dist = cls._apparent_ecliptic("sun", cls._time_ut(t))
+        return lon, dist.au
+
+    @classmethod
+    def sun_position_tt(cls, t):
+        """sun_position() for t in Julian centuries of TT (eclipse search)."""
+        lon, _, dist = cls._apparent_ecliptic("sun", cls._time_tt(t))
+        return lon, dist.au
+
+    @classmethod
+    def moon_position(cls, t):
+        """
+        Apparent geocentric Moon, DE440.
+
+        Args:
+            t (float | numpy.ndarray): Julian centuries of UT since J2000.0.
+
+        Returns:
+            tuple: (longitude°, latitude°, horizontal parallax°)
+        """
+        lon, lat, _, parallax = cls._moon(cls._time_ut(t))
+        return lon, lat, parallax
+
+    @classmethod
+    def moon_position_tt(cls, t):
+        """
+        Apparent geocentric Moon for t in Julian centuries of TT.
+
+        Returns:
+            tuple: (longitude°, latitude°, distance_km, horizontal parallax°)
+        """
+        return cls._moon(cls._time_tt(t))
 
     @classmethod
     def equation_of_time(cls, t):
-        """Equation of Time in minutes (Meeus, chap. 28)."""
-        l0     = cls.mod360(280.46646 + 36000.76983 * t)
-        s_l, _ = cls.sun_position(t)
-        ra, _  = cls.ecliptic_to_equatorial(s_l, 0, t)
-        eot_deg = l0 - 0.0057183 - ra * 15.0
-        eot_deg = ((eot_deg + 180) % 360) - 180
-        return eot_deg * 4.0
+        """
+        Equation of Time in minutes (apparent − mean solar time): the
+        Greenwich hour angle of the apparent Sun (apparent sidereal time
+        minus its right ascension, DE440) against UT1.
+        """
+        sky  = _sky()
+        time = cls._time_ut(t)
+        ra, _, _ = sky["earth"].at(time).observe(sky["sun"]).apparent().radec(epoch="date")
+        ut_hours = ((time.ut1 + 0.5) % 1.0) * 24.0
+        return ((time.gast - ra.hours + 12.0 - ut_hours + 12.0) % 24.0 - 12.0) * 60.0
 
     # ──────────────────────────────────────────────────────────────────
-    # SUN — VSOP87 high precision (Meeus, chap. 32)
+    # NUTATION AND OBLIQUITY (coordinate conversions of the interface)
     # ──────────────────────────────────────────────────────────────────
-
-    @staticmethod
-    def _vsop87_series(table, tau):
-        """Evaluates a VSOP87 series: Σ A·cos(B + C·τ)."""
-        return sum(A * math.cos(B + C * tau) for A, B, C in table)
-
-    @classmethod
-    def sun_position_hp(cls, t):
-        """
-        Sun ecliptic longitude and distance — VSOP87 truncated (~1" arc).
-
-        Args:
-            t (float): Julian centuries since J2000.0.
-
-        Returns:
-            tuple[float, float]: (longitude degrees [0,360[, distance AU)
-
-        Reference: Meeus, chap. 32.
-        """
-        tau = t / 10.0
-        v   = cls._vsop87_series
-
-        L = (v(_VSOP87_L0, tau) + v(_VSOP87_L1, tau)*tau + v(_VSOP87_L2, tau)*tau**2
-             + v(_VSOP87_L3, tau)*tau**3 + v(_VSOP87_L4, tau)*tau**4
-             + v(_VSOP87_L5, tau)*tau**5) / 1e8
-        L = math.degrees(L)
-
-        r = (v(_VSOP87_R0, tau) + v(_VSOP87_R1, tau)*tau + v(_VSOP87_R2, tau)*tau**2
-             + v(_VSOP87_R3, tau)*tau**3 + v(_VSOP87_R4, tau)*tau**4) / 1e8
-
-        theta      = L + 180.0
-        theta     -= 0.005693 / r                           # aberration
-        theta     += cls._nutation_longitude(t)             # nutation
-
-        return cls.mod360(theta), r
 
     @staticmethod
     def _nutation(t):
@@ -703,95 +284,6 @@ class MeeusEngine:
         eps0 = 84381.406 - 46.836769*t - 0.0001831*t**2 + 0.00200340*t**3
         return math.radians(eps0 / 3600.0 + cls._nutation(t)[1])
 
-    # ──────────────────────────────────────────────────────────────────
-    # MOON — Meeus, chap. 47 (truncated ELP-2000/82, ~10" arc)
-    # ──────────────────────────────────────────────────────────────────
-
-    @classmethod
-    def _moon_base_series(cls, t):
-        """
-        Compute fundamental lunar arguments and the sums of the periodic
-        terms of Meeus Tables 47.A and 47.B, for moon_position_elp2000().
-
-        Returns:
-            tuple: (lp, f, mp, a1, a2, a3, d_r, m_r, mp_r, f_r, e, sl, sr, sb)
-                lp, f, mp, a1, a2, a3 : fundamental arguments in degrees
-                d_r, m_r, mp_r, f_r   : d, m, mp, f converted to radians
-                e                     : eccentricity correction factor
-                sl, sr, sb            : partial sums (before additive corrections)
-        """
-        t2, t3 = t*t, t*t*t
-
-        lp = cls.mod360(218.3164477 + 481267.88123421*t - 0.0015786*t2 + t3/538841.0    - t2**2/65194000.0)
-        d  = cls.mod360(297.8501921 + 445267.1114034 *t - 0.0018819*t2 + t3/545868.0    - t2**2/113065000.0)
-        m  = cls.mod360(357.5291092 + 35999.0502909  *t - 0.0001536*t2 + t3/24490000.0)
-        mp = cls.mod360(134.9633964 + 477198.8675055 *t + 0.0087414*t2 + t3/69699.0     - t2**2/14712000.0)
-        f  = cls.mod360(93.2720950  + 483202.0175233 *t - 0.0036539*t2 - t3/3526000.0   + t2**2/863310000.0)
-
-        a1 = cls.mod360(119.75 + 131.849*t)
-        a2 = cls.mod360(53.09  + 479264.290*t)
-        a3 = cls.mod360(313.45 + 481266.484*t)
-        e  = 1.0 - 0.002516*t - 0.0000074*t2
-
-        dr = math.radians
-        d_r, m_r, mp_r, f_r = dr(d), dr(m), dr(mp), dr(f)
-        sl = sr = sb = 0.0
-
-        for cD, cM, cMp, cF, amp in _MOON_LONGITUDE_TERMS:
-            if amp == 0: continue
-            ec = e**abs(cM) if cM else 1.0
-            sl += amp * ec * math.sin(cD*d_r + cM*m_r + cMp*mp_r + cF*f_r)
-
-        for cD, cM, cMp, cF, amp in _MOON_DISTANCE_TERMS:
-            if amp == 0: continue
-            ec = e**abs(cM) if cM else 1.0
-            sr += amp * ec * math.cos(cD*d_r + cM*m_r + cMp*mp_r + cF*f_r)
-
-        for cD, cM, cMp, cF, amp in _MOON_LATITUDE_TERMS:
-            if amp == 0: continue
-            ec = e**abs(cM) if cM else 1.0
-            sb += amp * ec * math.sin(cD*d_r + cM*m_r + cMp*mp_r + cF*f_r)
-
-        return lp, f, mp, a1, a2, a3, d_r, m_r, mp_r, f_r, e, sl, sr, sb
-
-    @classmethod
-    def moon_position(cls, t):
-        """
-        Moon position — Meeus, chap. 47 (~10" arc): moon_position_elp2000()
-        without the distance.
-
-        Returns:
-            tuple[float, float, float]: (longitude°, latitude°, parallax°)
-        """
-        lon, lat, _, parallax = cls.moon_position_elp2000(t)
-        return lon, lat, parallax
-
-    @classmethod
-    def moon_position_elp2000(cls, t):
-        """
-        Moon position — the complete periodic terms of Meeus, chap. 47
-        (Tables 47.A and 47.B), a truncation of the ELP-2000/82 theory:
-        ~10" arc in longitude, a few arcseconds in latitude.
-
-        Returns:
-            tuple[float, float, float, float]:
-                (longitude°, latitude°, distance_km, parallax°)
-
-        Reference: Meeus, chap. 47.
-        """
-        lp, f, mp, a1, a2, a3, d_r, m_r, mp_r, f_r, e, sl, sr, sb = cls._moon_base_series(t)
-        dr = math.radians
-
-        sl += 3958*math.sin(dr(a1)) + 1962*math.sin(dr(lp-f)) + 318*math.sin(dr(a2))
-        sb += (-2235*math.sin(dr(lp)) + 382*math.sin(dr(a3))
-               + 175*math.sin(dr(a1-f)) + 175*math.sin(dr(a1+f))
-               + 127*math.sin(dr(lp-mp)) - 115*math.sin(dr(lp+mp)))
-
-        lon      = cls.mod360(lp + sl/1_000_000.0)
-        lat      = sb / 1_000_000.0
-        dist_km  = 385000.56 + sr/1000.0
-        parallax = math.degrees(math.asin(6378.14/dist_km))
-        return lon, lat, dist_km, parallax
 
     # ──────────────────────────────────────────────────────────────────
     # APPARENT DIAMETERS AND ECLIPSE HELPERS
@@ -807,20 +299,11 @@ class MeeusEngine:
         """Moon apparent semi-diameter in degrees given geocentric distance in km."""
         return math.degrees(math.asin(1737.4 / dist_km))
 
-    @staticmethod
-    def _equatorial_xyz(lon_deg, lat_deg, r, eps):
-        """Rectangular equatorial coordinates of a point given in ecliptic coordinates (eps in rad)."""
-        lon, lat = math.radians(lon_deg), math.radians(lat_deg)
-        x = r * math.cos(lat) * math.cos(lon)
-        y = r * math.cos(lat) * math.sin(lon)
-        z = r * math.sin(lat)
-        return x, y*math.cos(eps) - z*math.sin(eps), y*math.sin(eps) + z*math.cos(eps)
-
     @classmethod
     def _shadow_axis(cls, jd):
         """
-        Besselian elements of the Moon's shadow at jd, from sun_position_hp()
-        and moon_position_elp2000().
+        Besselian elements of the Moon's shadow at jd (TT), from the apparent
+        DE440 positions of the Sun and the Moon (true equator of date).
 
         The fundamental plane goes through the Earth's centre, perpendicular to
         the shadow axis (the Sun–Moon line); x points east, y north, and lengths
@@ -834,12 +317,10 @@ class MeeusEngine:
                                  (l2 < 0: the umbra goes beyond it; l2 > 0: antumbra)
                 tan_f1, tan_f2 : slopes of the penumbral and umbral cones
         """
-        t = (jd - 2451545.0) / 36525.0
-        sun_lon, sun_au = cls.sun_position_hp(t)
-        moon_lon, moon_lat, moon_km, _ = cls.moon_position_elp2000(t)
-        eps  = cls._obliquity(t)                               # as in ecliptic_to_equatorial()
-        sun  = cls._equatorial_xyz(sun_lon, 0.0, sun_au * _AU_KM / _EARTH_RADIUS_KM, eps)
-        moon = cls._equatorial_xyz(moon_lon, moon_lat, moon_km / _EARTH_RADIUS_KM, eps)
+        sky   = _sky()
+        earth = sky["earth"].at(sky["ts"].tt_jd(jd))
+        sun, moon = (earth.observe(sky[b]).apparent().frame_xyz(true_equator_and_equinox_of_date).km
+                     / _EARTH_RADIUS_KM for b in ("sun", "moon"))
 
         gx, gy, gz = (s - m for s, m in zip(sun, moon))
         g    = math.sqrt(gx*gx + gy*gy + gz*gz)                # Sun–Moon distance
@@ -951,24 +432,24 @@ class MeeusEngine:
         The Moon's offset from the centre of the Earth's shadow at jd, with
         what sizes the shadow.
 
-        The centre of the shadow is the antisolar point of the apparent Sun
-        (sun_position_hp); the Moon gets the same nutation so that both
-        longitudes are apparent.
+        The centre of the shadow is the antisolar point of the apparent Sun;
+        both bodies are apparent DE440 positions.
 
         Returns:
             tuple: (x, y, sun_au, moon_km, moon_parallax)
                 x, y          : offset in degrees, x eastward along the ecliptic,
-                                y northward (the Moon's latitude)
+                                y northward (latitude from the antisolar point)
                 sun_au        : Sun distance, AU
                 moon_km       : Moon distance, km
                 moon_parallax : Moon's horizontal parallax, degrees
         """
-        t = (jd - 2451545.0) / 36525.0
-        sun_lon, sun_au = cls.sun_position_hp(t)
-        moon_lon, moon_lat, moon_km, moon_par = cls.moon_position_elp2000(t)
-        moon_lon += cls._nutation_longitude(t)
+        time = _sky()["ts"].tt_jd(jd)
+        sun_lon, sun_lat, sun_d = cls._apparent_ecliptic("sun", time)
+        moon_lon, moon_lat, moon_d = cls._apparent_ecliptic("moon", time)
+        moon_km  = moon_d.km
+        moon_par = math.degrees(math.asin(_EARTH_RADIUS_KM / moon_km))
         x = ((moon_lon - sun_lon) % 360.0 - 180.0) * math.cos(math.radians(moon_lat))
-        return x, moon_lat, sun_au, moon_km, moon_par
+        return x, moon_lat + sun_lat, sun_d.au, moon_km, moon_par
 
     @classmethod
     def _lunar_eclipse(cls, jd_fm):
@@ -1055,6 +536,7 @@ class MeeusEngine:
             'certainty':           'possible' if penumbral < _LUNAR_MAG_ACCURACY else 'certain',
         }
 
+
     # ──────────────────────────────────────────────────────────────────
     # COORDINATE CONVERSIONS
     # ──────────────────────────────────────────────────────────────────
@@ -1087,70 +569,91 @@ class MeeusEngine:
 
     @staticmethod
     def elevation_correction(h_true, parallax_deg):
-        """Atmospheric refraction + parallax correction (Meeus, chap. 16)."""
-        if h_true < -5.0:
-            return h_true - parallax_deg
-        r = (1.02 / math.tan(math.radians(
-            h_true + _REFRACTION_A / (h_true + _REFRACTION_B)))) / 60.0
-        return h_true + r - parallax_deg
+        """
+        Apparent altitude from the geocentric one: parallax in altitude
+        (π cos h, Meeus chap. 40), then the refraction at the topocentric
+        altitude (Sæmundsson, Meeus chap. 16).
+        """
+        h = h_true - math.degrees(math.asin(math.sin(math.radians(parallax_deg))
+                                             * math.cos(math.radians(h_true))))
+        if h < -5.0:
+            return h
+        return h + (1.02 / math.tan(math.radians(h + _REFRACTION_A / (h + _REFRACTION_B)))) / 60.0
+
 
     # ──────────────────────────────────────────────────────────────────
     # DAILY EVENTS
     # ──────────────────────────────────────────────────────────────────
 
     @classmethod
-    def find_events(cls, dte_ref, lat, lon, body="sun"):
+    def find_events(cls, dte_ref, lat, lon, body="sun", utc_offset=0):
         """
-        Detects daily events by minute-by-minute scanning.
-        Resolution: 1 minute.
+        Rises, sets, transit and twilights over the local day of dte_ref,
+        to the second (Skyfield almanac, DE440).
+
+        Rises and sets are those of the upper limb with the standard
+        refraction (34′), the Moon seen from the observer (its parallax);
+        the transit is the upper meridian transit; the twilights begin and
+        end when the Sun's geometric centre is 6, 12 or 18° below the
+        horizon.
+
+        Args:
+            dte_ref (datetime): instant of the day, UT (naive or aware).
+            lat, lon (float): degrees, east positive.
+            body (str): "sun" or "moon".
+            utc_offset (float): hours of the local time zone; the day searched
+                runs from local midnight to midnight.
 
         Returns:
             dict with keys: rise, set, transit,
                             dawn_civ, dusk_civ, dawn_naut, dusk_naut,
                             dawn_astro, dusk_astro  (sun only)
+            UT datetimes (tzinfo of dte_ref kept), None when it does not occur.
         """
-        events = {
-            'rise': None, 'set': None, 'transit': None,
-            'dawn_civ': None,  'dusk_civ': None,
-            'dawn_naut': None, 'dusk_naut': None,
-            'dawn_astro': None,'dusk_astro': None,
-        }
-        max_alt  = -90
-        prev_alt = None
-        start    = dte_ref.replace(hour=0, minute=0, second=0, microsecond=0)
+        events = dict.fromkeys(('rise', 'set', 'transit', 'dawn_civ', 'dusk_civ',
+                                'dawn_naut', 'dusk_naut', 'dawn_astro', 'dusk_astro'))
+        offset = timedelta(hours=utc_offset)
+        start  = (dte_ref + offset).replace(hour=0, minute=0, second=0, microsecond=0) - offset
+        t0 = cls._time_ut(cls.julian_century_j2000(start))
+        t1 = cls._time_ut(cls.julian_century_j2000(start + timedelta(days=1)))
+        sky      = _sky()
+        observer = sky["earth"] + wgs84.latlon(lat, lon)
+        target   = sky[body]
 
-        for mn in range(1440):
-            dt  = start + timedelta(minutes=mn)
-            jd  = cls.julian_day(dt)
-            t   = cls.julian_century_j2000(dt)
+        def first(times, crosses=None):
+            for i in range(len(times)):
+                if crosses is None or crosses[i]:
+                    return cls._jd_to_datetime(times[i].ut1, start)
+            return None
 
-            if body == "sun":
-                s_l, _ = cls.sun_position(t)
-                ra, dec = cls.ecliptic_to_equatorial(s_l, 0, t)
-                alt, _  = cls.equatorial_to_horizontal(jd, lat, lon, ra, dec)
-                alt_test = alt + _HORIZON_CORRECTION_SUN
-            else:
-                m_l, m_b, m_p = cls.moon_position(t)
-                ra, dec = cls.ecliptic_to_equatorial(m_l, m_b, t)
-                alt, _  = cls.equatorial_to_horizontal(jd, lat, lon, ra, dec)
-                alt_test = cls.elevation_correction(alt, m_p)
-
-            if alt_test > max_alt:
-                max_alt = alt_test; events['transit'] = dt
-
-            if prev_alt is not None:
-                if prev_alt < 0 and alt_test >= 0:   events['rise'] = dt
-                elif prev_alt > 0 and alt_test <= 0: events['set']  = dt
-                if body == "sun":
-                    if prev_alt < -6  and alt_test >= -6:  events['dawn_civ']  = dt
-                    elif prev_alt > -6  and alt_test <= -6:  events['dusk_civ']  = dt
-                    if prev_alt < -12 and alt_test >= -12: events['dawn_naut'] = dt
-                    elif prev_alt > -12 and alt_test <= -12: events['dusk_naut'] = dt
-                    if prev_alt < -18 and alt_test >= -18: events['dawn_astro'] = dt
-                    elif prev_alt > -18 and alt_test <= -18: events['dusk_astro'] = dt
-            prev_alt = alt_test
-
+        events['rise']    = first(*almanac.find_risings(observer, target, t0, t1))
+        events['set']     = first(*almanac.find_settings(observer, target, t0, t1))
+        events['transit'] = first(almanac.find_transits(observer, target, t0, t1))
+        if body == "sun":
+            for depth, name in _TWILIGHTS:
+                events['dawn_' + name] = first(*almanac.find_risings(
+                    observer, target, t0, t1, horizon_degrees=-depth))
+                events['dusk_' + name] = first(*almanac.find_settings(
+                    observer, target, t0, t1, horizon_degrees=-depth))
         return events
+
+    @classmethod
+    def altitudes(cls, dtes, lat, lon):
+        """
+        Altitudes of the Sun (geometric centre) and of the Moon (seen from the
+        observer, standard refraction) at the UT datetimes dtes, in one
+        vectorised DE440 computation.
+
+        Returns:
+            tuple[numpy.ndarray, numpy.ndarray]: (sun, moon) altitudes, degrees
+        """
+        sky  = _sky()
+        time = cls._time_ut(np.array([cls.julian_century_j2000(d) for d in dtes]))
+        here = (sky["earth"] + wgs84.latlon(lat, lon)).at(time)
+        sun_alt, _, _  = here.observe(sky["sun"]).apparent().altaz()
+        moon_alt, _, _ = here.observe(sky["moon"]).apparent().altaz(temperature_C=10.0,
+                                                                     pressure_mbar=1010.0)
+        return sun_alt.degrees, moon_alt.degrees
 
     # ──────────────────────────────────────────────────────────────────
     # PLANETS
@@ -1159,87 +662,38 @@ class MeeusEngine:
     @classmethod
     def planet_heliocentric(cls, t, name):
         """
-        Heliocentric ecliptic position of a planet from JPL's Keplerian
-        elements and rates (Standish, valid 1800–2050), solving Kepler's
-        equation.
+        Heliocentric position of a planet (DE440).
 
         Args:
-            t (float): Julian centuries since J2000.0.
-            name (str): "Venus", "Mars", "Jupiter" or "Saturn".
+            t (float | numpy.ndarray): Julian centuries since J2000.0.
+            name (str): "Venus", "Mars", "Jupiter", "Saturn" or "Earth".
 
         Returns:
-            tuple[float, float, float]: (x, y, z) in AU, mean ecliptic and
-            equinox of J2000 (x towards the vernal equinox).
+            tuple: (x, y, z) in AU, mean ecliptic and equinox of J2000
+            (x towards the vernal equinox); arrays when t is one.
         """
-        a, e, inc, L, peri, node = (v0 + v1*t for v0, v1 in zip(*_ORBITAL_ELEMENTS[name]))
-        M = math.radians((L - peri + 180.0) % 360.0 - 180.0)
-        E = M + e*math.sin(M)
-        for _ in range(50):
-            dE = (M - E + e*math.sin(E))/(1.0 - e*math.cos(E))
-            E += dE
-            if abs(dE) < 1e-10: break
-
-        xo = a*(math.cos(E) - e)
-        yo = a*math.sqrt(1.0 - e*e)*math.sin(E)
-        w, o, i = math.radians(peri - node), math.radians(node), math.radians(inc)
-        cw, sw, co, so, ci, si = (math.cos(w), math.sin(w), math.cos(o), math.sin(o),
-                                  math.cos(i), math.sin(i))
-        x = (cw*co - sw*so*ci)*xo - (sw*co + cw*so*ci)*yo
-        y = (cw*so + sw*co*ci)*xo + (cw*co*ci - sw*so)*yo
-        z = sw*si*xo + cw*si*yo
+        sky  = _sky()
+        time = cls._time_tt(t)
+        x, y, z = (sky["eph"][_PLANETS[name]].at(time) - sky["sun"].at(time)).frame_xyz(
+            ecliptic_J2000_frame).au
         return x, y, z
-
-    @staticmethod
-    def _precess_from_j2000(lon_deg, lat_deg, t):
-        """
-        Ecliptic coordinates from the mean ecliptic and equinox of J2000 to
-        those of the date (Meeus, chap. 21, rigorous method).
-        """
-        eta = math.radians((47.0029*t - 0.03302*t*t + 0.000060*t**3) / 3600.0)
-        pi0 = 174.876384 + (-869.8089*t + 0.03536*t*t) / 3600.0
-        p   = (5029.0966*t + 1.11113*t*t - 0.000006*t**3) / 3600.0
-        b0  = math.radians(lat_deg)
-        d   = math.radians(pi0 - lon_deg)
-        a_  = math.cos(eta)*math.cos(b0)*math.sin(d) - math.sin(eta)*math.sin(b0)
-        b_  = math.cos(b0)*math.cos(d)
-        c_  = math.cos(eta)*math.sin(b0) + math.sin(eta)*math.cos(b0)*math.sin(d)
-        return (p + pi0 - math.degrees(math.atan2(a_, b_))) % 360.0, math.degrees(math.asin(c_))
 
     @classmethod
     def planet_position(cls, t, name):
         """
-        Apparent geocentric planet position, true equator and equinox of date.
+        Apparent geocentric planet position (DE440), true equator and equinox
+        of date: light time, aberration and light deflection included.
 
-        The planet (JPL elements precessed to the date) is seen from the
-        Earth of VSOP87; both are taken at t − τ, the light time, which also
-        accounts for the aberration (Meeus, chap. 33). Precision 1800–2050:
-        ~1′ for Venus, ~3′ for Mars, ~10′ for Jupiter and Saturn.
+        Args:
+            t (float | numpy.ndarray): Julian centuries of UT since J2000.0.
 
         Returns:
-            tuple[float, float, float]: (RA hours, Dec degrees, distance AU)
+            tuple: (RA hours, Dec degrees, distance AU)
         """
-        tau = 0.0
-        for _ in range(2):                      # geometric, then light-time corrected
-            tt = t - tau / 36525.0
-            x, y, z = cls.planet_heliocentric(tt, name)
-            r = math.sqrt(x*x + y*y + z*z)
-            lon, lat = cls._precess_from_j2000(math.degrees(math.atan2(y, x)),
-                                               math.degrees(math.asin(z / r)), tt)
-            lon_r, lat_r = math.radians(lon), math.radians(lat)
-            s_lon, r_e = cls.sun_position_hp(tt)
-            e_lon = math.radians(s_lon - 180.0 + 0.005693 / r_e - cls._nutation_longitude(tt))
-            dx = r*math.cos(lat_r)*math.cos(lon_r) - r_e*math.cos(e_lon)
-            dy = r*math.cos(lat_r)*math.sin(lon_r) - r_e*math.sin(e_lon)
-            dz = r*math.sin(lat_r)
-            delta = math.sqrt(dx*dx + dy*dy + dz*dz)
-            if tau == 0.0:
-                dist = delta                    # true distance at t
-            tau = _LIGHT_TIME_DAYS_PER_AU * delta
-
-        ra, dec = cls.ecliptic_to_equatorial(
-            cls.mod360(math.degrees(math.atan2(dy, dx)) + cls._nutation_longitude(t)),
-            math.degrees(math.atan2(dz, math.sqrt(dx*dx + dy*dy))), t)
-        return ra, dec, dist
+        sky = _sky()
+        ra, dec, dist = sky["earth"].at(cls._time_ut(t)).observe(
+            sky["eph"][_PLANETS[name]]).apparent().radec(epoch="date")
+        return ra.hours, dec.degrees, dist.au
 
     # ──────────────────────────────────────────────────────────────────
     # ANGULAR SEPARATION, CONJUNCTIONS, ECLIPSES
@@ -1253,25 +707,36 @@ class MeeusEngine:
         cos_d = math.sin(d1)*math.sin(d2) + math.cos(d1)*math.cos(d2)*math.cos(ra1-ra2)
         return math.degrees(math.acos(max(-1.0, min(1.0, cos_d))))
 
+
     @classmethod
     def find_conjunctions(cls, dte_start, num_days=365):
         """
-        Searches for planetary conjunctions and oppositions (Meeus, chap. 36).
+        Searches for planetary conjunctions and oppositions, from one apparent
+        DE440 position a day (computed at once for the whole period).
 
         Returns:
             list[dict]: sorted by date, keys: date, type, bodies, separation, details
         """
         planets = ["Venus", "Mars", "Jupiter", "Saturn"]
         pairs   = [(a, b) for i, a in enumerate(planets) for b in planets[i+1:]]
+        days    = [dte_start + timedelta(days=day) for day in range(num_days)]
+        if not days:
+            return []
+        sky   = _sky()
+        earth = sky["earth"].at(cls._time_ut(np.array([cls.julian_century_j2000(d) for d in days])))
+
+        def track(target):
+            ra, dec, _ = earth.observe(target).apparent().radec(epoch="date")
+            return list(zip(ra.hours.tolist(), dec.degrees.tolist()))
+
+        sun    = track(sky["sun"])
+        tracks = {p: track(sky["eph"][_PLANETS[p]]) for p in planets}
         results = []
         prev_seps, prev_elongs = {}, {}
 
-        for day in range(num_days):
-            dte = dte_start + timedelta(days=day)
-            t   = cls.julian_century_j2000(dte)
-            s_l, _ = cls.sun_position(t)
-            s_ra, s_dec = cls.ecliptic_to_equatorial(s_l, 0, t)
-            positions = {p: cls.planet_position(t, p)[:2] for p in planets}
+        for day, dte in enumerate(days):
+            s_ra, s_dec = sun[day]
+            positions = {p: tracks[p][day] for p in planets}
 
             for a, b in pairs:
                 sep = cls.angular_separation(*positions[a], *positions[b])
@@ -1304,67 +769,31 @@ class MeeusEngine:
         return results
 
     @staticmethod
-    def _mean_phase_jde(k):
+    def _phases_between(jd0, jd1):
         """
-        Mean lunar phase of lunation k (Meeus, chap. 49, eq. 49.1): integer k
-        for a new moon, k + 0.25 / 0.5 / 0.75 for the next first quarter, full
-        moon and last quarter; k = 0 is the new moon of 2000 January 6.
+        True lunar phases between two instants (TT Julian Days), DE440: the
+        apparent Moon − Sun longitude difference reaching 0, 90, 180, 270°.
+
+        Returns:
+            tuple: (TT Julian Days, phase indices 0 new, 1 first quarter,
+                    2 full, 3 last quarter)
         """
-        T = k / 1236.85
-        return (_MEAN_NEW_MOON_JDE + _SYNODIC_MONTH * k
-                + 0.00015437*T**2 - 0.000000150*T**3 + 0.00000000073*T**4)
-
-    @classmethod
-    def _syzygy_jd(cls, k, hp=True):
-        """
-        Julian Day of the true phase k (see _mean_phase_jde): the instant the
-        Moon − Sun longitude difference reaches 360° × (k mod 1).
-
-        Secant iterations from the mean phase, which the true phase never
-        misses by more than ~15 h: whatever date a search starts from, each
-        lunation converges on its own new or full moon (~4 evaluations).
-
-        Args:
-            k (float): Lunation number (integer: new moon, + 0.5: full moon).
-            hp (bool): VSOP87 + ELP2000 if True, else the short series.
-        """
-        target = (k % 1.0) * 360.0
-        sun, moon = ((cls.sun_position_hp, cls.moon_position_elp2000) if hp
-                     else (cls.sun_position, cls.moon_position))
-
-        def offset(jd):                                     # degrees, in [-180, 180[
-            t = (jd - 2451545.0) / 36525.0
-            return (moon(t)[0] - sun(t)[0] - target + 180.0) % 360.0 - 180.0
-
-        jd0 = cls._mean_phase_jde(k)
-        f0  = offset(jd0)
-        jd1 = jd0 - f0 / _ELONGATION_RATE
-        for _ in range(10):
-            f1 = offset(jd1)
-            if f1 == f0:
-                break
-            jd0, f0, jd1 = jd1, f1, jd1 - f1 * (jd1 - jd0) / (f1 - f0)
-            if abs(jd1 - jd0) < 1e-6:                       # 0.1 s
-                break
-        return jd1
+        sky = _sky()
+        times, phases = almanac.find_discrete(sky["ts"].tt_jd(jd0), sky["ts"].tt_jd(jd1),
+                                              almanac.moon_phases(sky["eph"]))
+        return times.tt.tolist(), phases.tolist()
 
     @classmethod
     def _syzygies_from(cls, jd_start, phase, count):
         """
-        Julian Days of `count` successive true new moons (phase=0) or full
-        moons (phase=0.5), VSOP87 + ELP2000, from the first one at or after
-        jd_start.
+        TT Julian Days of `count` successive true new moons (phase=0) or full
+        moons (phase=0.5), DE440, from the first one at or after jd_start (TT).
         """
         if count <= 0:
             return []
-        # Lunation of the last mean phase at or before jd_start; its true
-        # phase can still fall after jd_start (they differ by up to ~15 h).
-        k  = math.floor((jd_start - _MEAN_NEW_MOON_JDE) / _SYNODIC_MONTH - phase) + phase
-        jd = cls._syzygy_jd(k)
-        while jd < jd_start:
-            k += 1
-            jd = cls._syzygy_jd(k)
-        return [jd] + [cls._syzygy_jd(k + i) for i in range(1, count)]
+        index = round(phase * 4) % 4
+        jds, phases = cls._phases_between(jd_start, jd_start + 29.9 * count + 1.0)
+        return [jd for jd, i in zip(jds, phases) if i == index][:count]
 
     @classmethod
     def _jd_to_datetime(cls, jd, ref):
@@ -1377,31 +806,31 @@ class MeeusEngine:
         """ΔT at the Julian Day jd, in days."""
         return cls.delta_t(2000.0 + (jd - 2451545.0) / 365.25) / 86400.0
 
+
     @classmethod
     def _tt_to_datetime(cls, jde, ref):
         """UT datetime of the instant jde, given in dynamical time (TT)."""
-        return cls._jd_to_datetime(jde - cls._delta_t_days(jde), ref)
+        return cls._jd_to_datetime(_sky()["ts"].tt_jd(jde).ut1, ref)
 
     @classmethod
-    def _find_syzygy(cls, dte_approx, target_phase=0, hp=False):
+    def _find_syzygy(cls, dte_approx, target_phase=0):
         """
-        True new moon (target_phase=0) or full moon (180) of the lunation whose
-        mean phase is nearest to dte_approx (90 and 270 give the quarters).
-        Short series by default, VSOP87 + ELP2000 with hp=True (~1 min).
+        True new moon (target_phase=0) or full moon (180) nearest to
+        dte_approx, DE440 (90 and 270 give the quarters), as a datetime in
+        dynamical time (TT) built on dte_approx.
         """
-        phase = (target_phase % 360.0) / 360.0
-        k = round((cls.julian_day(dte_approx) - _MEAN_NEW_MOON_JDE) / _SYNODIC_MONTH - phase) + phase
-        return cls._jd_to_datetime(cls._syzygy_jd(k, hp), dte_approx)
+        jd    = cls.julian_day(dte_approx)
+        index = round((target_phase % 360.0) / 90.0) % 4
+        jds, phases = cls._phases_between(jd - 16.0, jd + 16.0)
+        best = min((j for j, i in zip(jds, phases) if i == index), key=lambda j: abs(j - jd))
+        return cls._jd_to_datetime(best, dte_approx)
 
-    @classmethod
-    def _find_syzygy_hp(cls, dte_approx, target_phase=0):
-        """Same as _find_syzygy(), with VSOP87 + ELP2000."""
-        return cls._find_syzygy(dte_approx, target_phase, hp=True)
+    _find_syzygy_hp = _find_syzygy
 
     @classmethod
     def find_eclipses(cls, dte_start, num_months=12):
         """
-        Searches for solar and lunar eclipses using VSOP87 + ELP2000.
+        Searches for solar and lunar eclipses with the JPL DE440 ephemeris.
 
         Scans the num_months true new moons and num_months true full moons
         that follow dte_start, starting with the first ones at or after it
@@ -1444,7 +873,7 @@ class MeeusEngine:
                 certainty, moon_latitude, gamma, details, sub_type, magnitude,
                 umbral_magnitude, penumbral_magnitude, durations, duration_min.
 
-        Reference: Meeus, chap. 49 and 54.
+        Reference: Meeus, chap. 54 (eclipse rules); syzygies from DE440.
         """
         jd_start = cls.julian_day(dte_start)
         jd_start += cls._delta_t_days(jd_start)       # syzygies are in TT
@@ -1455,14 +884,14 @@ class MeeusEngine:
         # ── New moons: solar eclipses ──────────────────────────────────
         for jd_nm in cls._syzygies_from(jd_start, 0.0, num_months):
             t_nm = (jd_nm - 2451545.0) / 36525.0
-            _, b_nm, dist_moon_nm, _ = cls.moon_position_elp2000(t_nm)
+            _, b_nm, dist_moon_nm, _ = cls.moon_position_tt(t_nm)
             if abs(b_nm) >= 1.58:
                 continue
             eclipse = cls._solar_eclipse(jd_nm)
             if eclipse is None:                     # the penumbra misses the Earth
                 continue
 
-            _, r_sun_nm = cls.sun_position_hp(t_nm)
+            _, r_sun_nm = cls.sun_position_tt(t_nm)
             ratio     = cls._moon_semi_diameter(dist_moon_nm) / cls._sun_semi_diameter(r_sun_nm)
             sub_type  = eclipse['sub_type']
             certainty = eclipse['certainty']
@@ -1492,7 +921,7 @@ class MeeusEngine:
 
         # ── Full moons: lunar eclipses ─────────────────────────────────
         for jd_fm in cls._syzygies_from(jd_start, 0.5, num_months):
-            _, b_fm, _, _ = cls.moon_position_elp2000((jd_fm - 2451545.0) / 36525.0)
+            _, b_fm, _, _ = cls.moon_position_tt((jd_fm - 2451545.0) / 36525.0)
             if abs(b_fm) >= _LUNAR_LATITUDE_LIMIT:
                 continue
             eclipse = cls._lunar_eclipse(jd_fm)

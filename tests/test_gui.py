@@ -100,7 +100,7 @@ class TestCalculation:
     def test_cards_are_filled(self, window):
         assert window.sun_labels["ra"].text().startswith("14h")
         assert window.moon_labels["dist"].text().endswith("km")
-        assert window.sun_labels["rise"].text() == "06:56"
+        assert window.sun_labels["rise"].text() == "06:55"
         assert window._lbl_phase_name.text() == "Dernier quartier"
         assert "Cherbourg-en-Cotentin" in window._lbl_pos.text()
 
@@ -125,19 +125,19 @@ class TestCalculation:
 
     def test_data_cards(self, window):
         """Les valeurs vedettes en style cadran, nombres à la française."""
-        assert window.card_sun_rise.valeur.text() == "06:56"
+        assert window.card_sun_rise.valeur.text() == "06:55"
         assert window.card_sun_alt.unite.text() == "°"
         assert "," in window.card_moon_alt.valeur.text()
         assert window.card_moon_illum.detail.text() == "Dernier quartier"
 
     def test_timezone_shifts_local_times(self, window):
         window.offset_menu.setCurrentIndex(window.offset_menu.findData(2))
-        assert window.sun_labels["rise"].text() == "08:56"
+        assert window.sun_labels["rise"].text() == "08:55"
         assert "UTC+2" in window._sun_events_title.text()
 
     def test_twelve_hour_format(self, window):
         window._timefmt_combo.setCurrentIndex(window._timefmt_combo.findData("12h"))
-        assert window.sun_labels["rise"].text() == "6:56 AM"
+        assert window.sun_labels["rise"].text() == "6:55 AM"
 
     def test_hidden_charts_are_drawn_on_demand(self, window, qapp):
         window.tabs.setCurrentIndex(0)
@@ -346,7 +346,7 @@ class TestLiveAndExport:
         data = build_data_from_app(window)
         assert data["location"] == "Cherbourg-en-Cotentin"
         assert data["date"] == DTE
-        assert data["events"]["sun"]["rise"] == "06:56"
+        assert data["events"]["sun"]["rise"] == "06:55"
         path = generate_report_pdf(data, str(tmp_path / "report.pdf"))
         with open(path, "rb") as f:
             assert f.read(5) == b"%PDF-"

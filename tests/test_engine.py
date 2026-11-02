@@ -15,7 +15,7 @@ import pytest
 # Make root directory importable from tests/
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from engine import MeeusEngine
 
 
@@ -199,11 +199,16 @@ class TestElevationCorrection:
         assert r_low > r_high
 
     def test_below_horizon_minimal_correction(self):
-        """For h < -5°, only parallax is subtracted (no refraction)."""
+        """For h < -5°, only the parallax in altitude (π cos h) is subtracted."""
         h_in = -10.0
         p    = 0.95
         h_out = MeeusEngine.elevation_correction(h_in, p)
-        assert abs(h_out - (h_in - p)) < 0.001
+        expected = h_in - math.degrees(math.asin(math.sin(math.radians(p)) * math.cos(math.radians(h_in))))
+        assert abs(h_out - expected) < 0.001
+
+    def test_no_parallax_at_zenith(self):
+        """The parallax in altitude vanishes at the zenith (π cos 90° = 0)."""
+        assert abs(MeeusEngine.elevation_correction(90.0, 0.95) - 90.0) < 0.01
 
     def test_moon_parallax_decreases_altitude(self):
         """Moon's parallax (~0.95°) must lower corrected altitude."""
@@ -315,14 +320,13 @@ class TestPlanetHeliocentric:
     T = MeeusEngine.julian_century_j2000(datetime(2026, 11, 1))
 
     def test_radius_between_perihelion_and_aphelion(self):
-        """Heliocentric distance stays within a(1 - e) and a(1 + e)."""
-        from engine import _ORBITAL_ELEMENTS
-        for p in ("Venus", "Mars", "Jupiter", "Saturn"):
-            (a0, e0, *_), (a1, e1, *_) = _ORBITAL_ELEMENTS[p]
-            a, e = a0 + a1 * self.T, e0 + e1 * self.T
+        """Heliocentric distance stays between perihelion and aphelion (AU)."""
+        limits = {"Venus": (0.718, 0.729), "Mars": (1.381, 1.667), "Jupiter": (4.95, 5.46),
+                  "Saturn": (9.02, 10.12), "Earth": (0.983, 1.017)}
+        for p, (q, big_q) in limits.items():
             x, y, z = MeeusEngine.planet_heliocentric(self.T, p)
             r = math.sqrt(x * x + y * y + z * z)
-            assert a * (1 - e) - 1e-6 <= r <= a * (1 + e) + 1e-6, f"{p} : r = {r:.4f} AU"
+            assert q <= r <= big_q, f"{p} : r = {r:.4f} AU"
 
     def test_close_to_ecliptic_plane(self):
         """Inclinations are under 3.4°, so |z| ≤ r·sin(3.4°)."""
@@ -331,22 +335,23 @@ class TestPlanetHeliocentric:
             r = math.sqrt(x * x + y * y + z * z)
             assert abs(z) <= r * math.sin(math.radians(3.4)), p
 
-    # JPL Horizons, 2026-11-01 0h TT: apparent RA (°), Dec (°), distance (AU),
-    # tolerances in arcminutes and AU
+    # JPL Horizons, 2026-11-01 0h TT: apparent RA (°), Dec (°), distance (AU)
     HORIZONS = {
-        "Venus":   (202.52107, -14.66185, 0.27977162, 1.0, 0.001),
-        "Mars":    (141.56935,  16.76526, 1.43251662, 1.0, 0.001),
-        "Jupiter": (146.86244,  14.06424, 5.49965645, 6.0, 0.01),
-        "Saturn":  (  9.58801,   1.21125, 8.54788487, 6.0, 0.01),
+        "Venus":   (202.52107, -14.66185, 0.27977162),
+        "Mars":    (141.56935,  16.76526, 1.43251662),
+        "Jupiter": (146.86244,  14.06424, 5.49965645),
+        "Saturn":  (  9.58801,   1.21125, 8.54788487),
     }
 
     def test_matches_jpl_horizons(self):
-        """planet_position() against JPL Horizons (JPL elements + precession, light time)."""
-        for p, (ra, dec, dist, tol_arcmin, tol_au) in self.HORIZONS.items():
-            r, d, di = MeeusEngine.planet_position(self.T, p)
-            sep = MeeusEngine.angular_separation(r, d, ra / 15.0, dec) * 60.0
-            assert sep < tol_arcmin, f"{p} : {sep:.2f}′"
-            assert approx(di, dist, tol_au), f"{p} : dist = {di:.5f} AU"
+        """planet_position() (DE440, UT) within 1.2" and 1500 km of JPL Horizons."""
+        ut = datetime(2026, 11, 1) - timedelta(seconds=MeeusEngine.delta_t(2026.83))
+        t = MeeusEngine.julian_century_j2000(ut)
+        for p, (ra, dec, dist) in self.HORIZONS.items():
+            r, d, di = MeeusEngine.planet_position(t, p)
+            sep = MeeusEngine.angular_separation(r, d, ra / 15.0, dec) * 3600.0
+            assert sep < 1.2, f"{p} : {sep:.2f}\""
+            assert approx(di, dist, 1e-5), f"{p} : dist = {di:.7f} AU"
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -354,17 +359,19 @@ class TestPlanetHeliocentric:
 # ──────────────────────────────────────────────────────────────────────
 
 class TestMoonPositionHP:
-    """Verifies Moon precision against Meeus example 47.a."""
+    """moon_position() takes UT: the date of Meeus example 47.a, minus ΔT."""
 
-    def test_meeus_example_47a(self):
-        """April 12, 1992, 0h TD — Meeus p.342: λ = 133.162655°, β = −3.229126°."""
-        t = MeeusEngine.julian_century_j2000(datetime(1992, 4, 12))
-        lon, lat, par = MeeusEngine.moon_position(t)
-        # The full chap. 47 series reproduces the example to the last digit.
-        # A sign error on the evection term once left the longitude 1.7° off.
-        assert abs(lon - 133.162655) < 1e-4, f"Longitude : {lon:.6f}° (expected 133.162655°)"
-        assert abs(lat - (-3.229126)) < 1e-4, f"Latitude : {lat:.6f}° (expected -3.229126°)"
-        assert abs(par - 0.991990) < 1e-5, f"Parallax : {par:.6f}° (expected 0.991990°)"
+    def test_example_47a_in_ut(self):
+        """
+        April 12, 1992, 0h TT, given in UT: JPL Horizons gives the apparent
+        λ = 133.16671°, β = −3.22920°, distance 368437.7 km (Meeus's
+        truncated series: 133.16727° with nutation, 368409.7 km).
+        """
+        ut = datetime(1992, 4, 12) - timedelta(seconds=MeeusEngine.delta_t(1992.28))
+        lon, lat, par = MeeusEngine.moon_position(MeeusEngine.julian_century_j2000(ut))
+        assert abs(lon - 133.16671) < 3e-4, f"Longitude : {lon:.6f}°"
+        assert abs(lat - (-3.22920)) < 3e-4, f"Latitude : {lat:.6f}°"
+        assert abs(par - 0.991920) < 1e-5, f"Parallax : {par:.6f}°"
 
     def test_precision_improved(self):
         """New series is better than old (~1°) over several dates."""
@@ -497,3 +504,47 @@ class TestFindEclipses:
             assert 'certainty' in r
             assert 'moon_latitude' in r
             assert abs(r['moon_latitude']) < 1.58
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Rises, sets and twilights against the USNO (aa.usno.navy.mil/api/rstt)
+# ──────────────────────────────────────────────────────────────────────
+
+class TestFindEventsUSNO:
+    """
+    find_events() over the local day, against the times of the US Naval
+    Observatory (rounded to the minute, local time): within 45 s.
+    """
+
+    CASES = (
+        # (date, lat, lon, utc_offset, body, {event: "HH:MM" local})
+        ((2026, 11, 2), 48.8566, 2.3522, 1, "sun",
+         {"dawn_civ": "07:06", "rise": "07:39", "transit": "12:34", "set": "17:29", "dusk_civ": "18:02"}),
+        ((2026, 11, 2), 48.8566, 2.3522, 1, "moon", {"transit": "07:16", "set": "14:45"}),
+        ((2026, 11, 2), 34.0522, -118.2437, -8, "sun",
+         {"dawn_civ": "05:48", "rise": "06:14", "transit": "11:37", "set": "16:59", "dusk_civ": "17:25"}),
+        ((2026, 11, 2), 34.0522, -118.2437, -8, "moon", {"transit": "06:35", "set": "13:27"}),
+        ((2026, 6, 21), 48.8566, 2.3522, 2, "sun",
+         {"dawn_civ": "05:04", "rise": "05:47", "transit": "13:52", "set": "21:58", "dusk_civ": "22:41"}),
+        ((2026, 6, 21), 48.8566, 2.3522, 2, "moon", {"set": "01:23", "rise": "13:30", "transit": "19:41"}),
+    )
+
+    @pytest.mark.parametrize("ymd, lat, lon, tz, body, expected", CASES)
+    def test_against_usno(self, ymd, lat, lon, tz, body, expected):
+        local_noon = datetime(*ymd, 12)
+        events = MeeusEngine.find_events(local_noon - timedelta(hours=tz), lat, lon, body, utc_offset=tz)
+        for name, hhmm in expected.items():
+            ref = datetime(*ymd, *map(int, hhmm.split(":")))
+            got = events[name] + timedelta(hours=tz)
+            assert abs((got - ref).total_seconds()) <= 45, f"{body} {name}: {got:%H:%M:%S} (USNO {hhmm})"
+
+    def test_no_astronomical_night_in_june_in_paris(self):
+        """At 48.9° N on 21 June, the Sun never gets 18° below the horizon."""
+        events = MeeusEngine.find_events(datetime(2026, 6, 21, 10), 48.8566, 2.3522, "sun", utc_offset=2)
+        assert events["dawn_astro"] is None and events["dusk_astro"] is None
+
+    def test_local_day_far_from_greenwich(self):
+        """Los Angeles (UTC−8): the sunset at 16:59 local is 00:59 UT the next day."""
+        events = MeeusEngine.find_events(datetime(2026, 11, 2, 20), 34.0522, -118.2437, "sun",
+                                         utc_offset=-8)
+        assert events["set"].date() == datetime(2026, 11, 3).date()

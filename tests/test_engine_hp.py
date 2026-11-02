@@ -26,22 +26,22 @@ def approx(value, expected, tol):
 # 1. VSOP87 — Sun high precision
 # ===========================================================================
 
-class TestSunPositionHP:
-    """Tests for sun_position_hp (VSOP87 truncated)."""
+class TestSunPositionTT:
+    """Tests for sun_position_tt (VSOP87 truncated)."""
 
     def test_longitude_in_360(self):
         """Longitude always in [0, 360[."""
         for year in range(2000, 2030, 5):
             for m in (1, 4, 7, 10):
                 t = MeeusEngine.julian_century_j2000(datetime(year, m, 15))
-                l, _ = MeeusEngine.sun_position_hp(t)
+                l, _ = MeeusEngine.sun_position_tt(t)
                 assert 0 <= l < 360, f"L={l:.3f} out of range ({year}-{m})"
 
     def test_distance_realistic(self):
         """Earth-Sun distance in [0.980, 1.020] AU all year."""
         for m in range(1, 13):
             t = MeeusEngine.julian_century_j2000(datetime(2024, m, 15))
-            _, r = MeeusEngine.sun_position_hp(t)
+            _, r = MeeusEngine.sun_position_tt(t)
             assert 0.980 < r < 1.020, f"r={r:.5f} AU out of range (month {m})"
 
     def test_meeus_example_25a(self):
@@ -50,7 +50,7 @@ class TestSunPositionHP:
         VSOP87 longitude expected ~199.907°, distance ~0.9976 AU.
         """
         t = MeeusEngine.julian_century_j2000(datetime(1992, 10, 13))
-        l, r = MeeusEngine.sun_position_hp(t)
+        l, r = MeeusEngine.sun_position_tt(t)
         assert approx(l, 199.907, 0.5), f"L={l:.3f}° (expected ~199.907°)"
         assert approx(r, 0.9976,  0.005), f"r={r:.5f} AU"
 
@@ -58,8 +58,8 @@ class TestSunPositionHP:
         """Perihelion distance (Jan) < aphelion distance (Jul)."""
         t_jan = MeeusEngine.julian_century_j2000(datetime(2024, 1, 3))
         t_jul = MeeusEngine.julian_century_j2000(datetime(2024, 7, 5))
-        _, r_jan = MeeusEngine.sun_position_hp(t_jan)
-        _, r_jul = MeeusEngine.sun_position_hp(t_jul)
+        _, r_jan = MeeusEngine.sun_position_tt(t_jan)
+        _, r_jul = MeeusEngine.sun_position_tt(t_jul)
         assert r_jan < r_jul
         assert 0.981 < r_jan < 0.987, f"Perihelion r={r_jan:.5f} AU"
         assert 1.014 < r_jul < 1.020, f"Aphelion r={r_jul:.5f} AU"
@@ -69,7 +69,7 @@ class TestSunPositionHP:
         for year in (2020, 2024, 2025):
             for m in (3, 6, 9, 12):
                 t = MeeusEngine.julian_century_j2000(datetime(year, m, 21))
-                l_hp, _ = MeeusEngine.sun_position_hp(t)
+                l_hp, _ = MeeusEngine.sun_position_tt(t)
                 l_sc, _ = MeeusEngine.sun_position(t)
                 diff = abs((l_hp - l_sc + 180) % 360 - 180)
                 assert diff < 0.1, f"{year}-{m}: diff HP/SC = {diff:.4f}°"
@@ -77,14 +77,14 @@ class TestSunPositionHP:
     def test_j2000_longitude(self):
         """At J2000.0, geocentric Sun longitude ~280.46°."""
         t = MeeusEngine.julian_century_j2000(datetime(2000, 1, 1, 12))
-        l, _ = MeeusEngine.sun_position_hp(t)
+        l, _ = MeeusEngine.sun_position_tt(t)
         assert approx(l, 280.46, 1.0), f"L J2000 = {l:.3f}°"
 
     def test_long_term_coherence(self):
         """Over 50 years, HP and short series within 0.5°."""
         for year in range(1980, 2030, 10):
             t = MeeusEngine.julian_century_j2000(datetime(year, 6, 21))
-            l_hp, _ = MeeusEngine.sun_position_hp(t)
+            l_hp, _ = MeeusEngine.sun_position_tt(t)
             l_sc, _ = MeeusEngine.sun_position(t)
             diff = abs((l_hp - l_sc + 180) % 360 - 180)
             assert diff < 0.5, f"{year}: diff = {diff:.4f}°"
@@ -94,70 +94,67 @@ class TestSunPositionHP:
 # 2. ELP2000 — Moon high precision
 # ===========================================================================
 
-class TestMoonPositionELP2000:
-    """Tests for moon_position_elp2000."""
+class TestMoonPositionTT:
+    """Tests for moon_position_tt."""
 
     def test_returns_4_values(self):
         """Method must return (lon, lat, dist_km, parallax)."""
         t = MeeusEngine.julian_century_j2000(datetime(2024, 3, 25))
-        assert len(MeeusEngine.moon_position_elp2000(t)) == 4
+        assert len(MeeusEngine.moon_position_tt(t)) == 4
 
     def test_longitude_in_360(self):
         """Longitude always in [0, 360[."""
         for d in range(1, 29, 4):
             t = MeeusEngine.julian_century_j2000(datetime(2024, 6, d))
-            lon, _, _, _ = MeeusEngine.moon_position_elp2000(t)
+            lon, _, _, _ = MeeusEngine.moon_position_tt(t)
             assert 0 <= lon < 360
 
     def test_latitude_bounded(self):
         """Ecliptic latitude in [-7, 7]°."""
         for m in range(1, 13):
             t = MeeusEngine.julian_century_j2000(datetime(2024, m, 15))
-            _, lat, _, _ = MeeusEngine.moon_position_elp2000(t)
+            _, lat, _, _ = MeeusEngine.moon_position_tt(t)
             assert -7 <= lat <= 7, f"lat={lat:.3f}° out of range"
 
     def test_distance_realistic(self):
         """Geocentric distance between 356 000 and 407 000 km."""
         for m in range(1, 13):
             t = MeeusEngine.julian_century_j2000(datetime(2024, m, 15))
-            _, _, dist, _ = MeeusEngine.moon_position_elp2000(t)
+            _, _, dist, _ = MeeusEngine.moon_position_tt(t)
             assert 356000 <= dist <= 407000, f"dist={dist:.0f} km out of range"
 
     def test_parallax_realistic(self):
         """Horizontal equatorial parallax in [0.89°, 1.02°]."""
         for m in range(1, 13):
             t = MeeusEngine.julian_century_j2000(datetime(2024, m, 15))
-            _, _, _, par = MeeusEngine.moon_position_elp2000(t)
+            _, _, _, par = MeeusEngine.moon_position_tt(t)
             assert 0.89 <= par <= 1.02, f"parallax={par:.4f}° out of range"
 
     def test_meeus_example_47a(self):
         """
-        Meeus p.342 — April 12, 1992:
-        longitude 133.162655°, latitude -3.229126°.
+        April 12, 1992, 0h TT (Meeus example 47.a) against JPL Horizons:
+        apparent longitude 133.16671°, latitude −3.22920° (ecliptic of date).
         """
         t = MeeusEngine.julian_century_j2000(datetime(1992, 4, 12))
-        lon, lat, dist, par = MeeusEngine.moon_position_elp2000(t)
-        # Reproduced to the last digit. A wrong sign on the 1.27° evection term
-        # once put the longitude 1.7° off here, and terms counted twice the
-        # latitude 0.006° off.
-        assert approx(lon, 133.162655, 1e-4), f"lon={lon:.6f}° (ref 133.162655°)"
-        assert approx(lat, -3.229126, 1e-4), f"lat={lat:.6f}° (ref -3.229126°)"
-        assert approx(par, 0.991990, 1e-5), f"parallax={par:.6f}° (ref 0.991990°)"
+        lon, lat, dist, par = MeeusEngine.moon_position_tt(t)
+        assert approx(lon, 133.16671, 3e-4), f"lon={lon:.6f}° (ref 133.16671°)"
+        assert approx(lat, -3.22920, 3e-4), f"lat={lat:.6f}° (ref -3.22920°)"
+        assert approx(par, 0.991920, 1e-5), f"parallax={par:.6f}° (ref 0.991920°)"
 
     def test_distance_example_47a(self):
-        """Meeus example distance: 368409.7 km."""
+        """JPL Horizons: 368437.7 km (Meeus's truncated series: 368409.7 km)."""
         t = MeeusEngine.julian_century_j2000(datetime(1992, 4, 12))
-        _, _, dist, _ = MeeusEngine.moon_position_elp2000(t)
-        # Misaligned Table 47.A coefficients once put it 9 km off, and
-        # terms counted twice 16 km off.
-        assert approx(dist, 368409.7, 0.5), f"dist={dist:.1f} km (ref 368409.7)"
+        _, _, dist, _ = MeeusEngine.moon_position_tt(t)
+        assert approx(dist, 368437.7, 3.0), f"dist={dist:.1f} km (ref 368437.7)"
 
     def test_same_series_as_moon_position(self):
-        """moon_position() is moon_position_elp2000() without the distance."""
+        """moon_position(UT) is moon_position_tt(UT + ΔT) without the distance."""
         for m in range(1, 13):
             t = MeeusEngine.julian_century_j2000(datetime(2024, m, 15))
-            lon, lat, _, par = MeeusEngine.moon_position_elp2000(t)
-            assert MeeusEngine.moon_position(t) == (lon, lat, par)
+            t_tt = t + MeeusEngine.delta_t(2024 + (m - 0.5) / 12) / 86400.0 / 36525.0
+            lon, lat, _, par = MeeusEngine.moon_position_tt(t_tt)
+            for got, ref in zip(MeeusEngine.moon_position(t), (lon, lat, par)):
+                assert approx(got, ref, 1e-4)
 
 
 # ===========================================================================
@@ -188,8 +185,8 @@ class TestApparentDiameters:
         """Diameter ratio Moon/Sun must be in [0.88, 1.08] (physical)."""
         for m in range(1, 13):
             t = MeeusEngine.julian_century_j2000(datetime(2024, m, 15))
-            _, _, dist, _ = MeeusEngine.moon_position_elp2000(t)
-            _, r_sun      = MeeusEngine.sun_position_hp(t)
+            _, _, dist, _ = MeeusEngine.moon_position_tt(t)
+            _, r_sun      = MeeusEngine.sun_position_tt(t)
             ratio = MeeusEngine._moon_semi_diameter(dist) / MeeusEngine._sun_semi_diameter(r_sun)
             assert 0.88 <= ratio <= 1.08, f"ratio={ratio:.4f} out of range (month {m})"
 
@@ -370,7 +367,7 @@ class TestLunarEclipseCircumstances:
 
 
 # ===========================================================================
-# 4 ter. ΔT = TT − UT (Espenak & Meeus polynomials, USNO/IERS measurements)
+# 4 ter. ΔT = TT − UT (IERS measurements, Stephenson, Morrison & Hohenkerk 2016)
 # ===========================================================================
 
 class TestDeltaT:
@@ -380,17 +377,17 @@ class TestDeltaT:
         (2015, 67.64), (2020, 69.36), (2026, 69.11),
     ])
     def test_observed_values(self, year, observed):
-        """Within 0.5 s of the measured ΔT (NASA, table of observed values)."""
-        assert approx(MeeusEngine.delta_t(year), observed, 0.5)
+        """Within 0.5 s of the measured ΔT (1 s before atomic time, 1955)."""
+        assert approx(MeeusEngine.delta_t(year), observed, 1.0 if year < 1955 else 0.5)
 
     @pytest.mark.parametrize("year, table", [(0, 10580), (500, 5710), (1000, 1570), (1600, 120)])
     def test_historical_values(self, year, table):
-        """Within 1 % of the historical table (Morrison & Stephenson 2004)."""
-        assert abs(MeeusEngine.delta_t(year) - table) < 0.01 * abs(table) + 1
+        """Within 10 % of Morrison & Stephenson (2004), revised since by SMH 2016."""
+        assert abs(MeeusEngine.delta_t(year) - table) < 0.10 * abs(table) + 1
 
     def test_today(self):
         """69.2 s in 2026 (USNO), not the 75 s of the 2006 extrapolation."""
-        assert approx(MeeusEngine.delta_t(2026.5), 69.18, 0.05)
+        assert approx(MeeusEngine.delta_t(2026.5), 69.18, 0.1)
 
     def test_continuous(self):
         """No jump larger than 0.5 s where one polynomial hands over to the next."""
@@ -490,8 +487,8 @@ def _tt(dte):
 def _phase_offset(dte, target):
     """|Moon − Sun longitude − target| at dte (VSOP87 + ELP2000), degrees."""
     t = MeeusEngine.julian_century_j2000(dte)
-    s_l, _ = MeeusEngine.sun_position_hp(t)
-    m_l, _, _, _ = MeeusEngine.moon_position_elp2000(t)
+    s_l, _ = MeeusEngine.sun_position_tt(t)
+    m_l, _, _, _ = MeeusEngine.moon_position_tt(t)
     return abs((m_l - s_l - target + 180.0) % 360.0 - 180.0)
 
 

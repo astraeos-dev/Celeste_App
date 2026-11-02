@@ -52,3 +52,6 @@ htmlcov/
 # Éphémérides JPL/IMCCE (téléchargées à la demande) et PDF exportés
 *.bsp
 /*.pdf
+
+# ── Éphéméride JPL DE440 (32 Mo, téléchargée au premier lancement) ──
+data/*.bsp

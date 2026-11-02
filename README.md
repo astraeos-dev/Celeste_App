@@ -6,10 +6,10 @@
 ![PyQt6](https://img.shields.io/badge/UI-PyQt6-blueviolet)
 ![Matplotlib](https://img.shields.io/badge/Graphiques-Matplotlib-orange)
 ![Licence](https://img.shields.io/badge/Licence-MIT-green)
-![CI](https://github.com/Greg50100/Celeste_App/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/astraeos-dev/Celeste_App/actions/workflows/ci.yml/badge.svg)
 
-**Projet actif** · fait partie de la famille Ganymede : [site web](https://greg50100.github.io/personnal-site/) ·
-[application Android](https://github.com/Greg50100/Ganymede) · [Céleste pour Home Assistant](https://github.com/Greg50100/Celeste_HA)
+**Projet actif** · fait partie de la famille Ganymede : [site web](https://astraeos-dev.github.io/personnal-site/) ·
+[application Android](https://github.com/astraeos-dev/Ganymede) · [Céleste pour Home Assistant](https://github.com/astraeos-dev/Celeste_HA)
 
 ---
 
@@ -57,7 +57,7 @@ Prérequis : Python 3.10 ou plus récent, et pip. PyQt6 embarque Qt ; sur un Lin
 bibliothèques système (`sudo apt install libegl1 libxkbcommon0` sous Debian ou Ubuntu).
 
 ```bash
-git clone https://github.com/Greg50100/Celeste_App.git
+git clone https://github.com/astraeos-dev/Celeste_App.git
 cd Celeste_App
 pip install -r requirements.txt
 python main.py

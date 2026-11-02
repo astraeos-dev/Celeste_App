@@ -370,13 +370,14 @@ class TestLunarEclipseCircumstances:
 
 
 # ===========================================================================
-# 4 ter. ΔT = TT − UT (Espenak & Meeus polynomials)
+# 4 ter. ΔT = TT − UT (Espenak & Meeus polynomials, USNO/IERS measurements)
 # ===========================================================================
 
 class TestDeltaT:
 
     @pytest.mark.parametrize("year, observed", [
         (1900, -2.72), (1950, 29.15), (1980, 50.54), (2000, 63.83), (2005, 64.69),
+        (2015, 67.64), (2020, 69.36), (2026, 69.11),
     ])
     def test_observed_values(self, year, observed):
         """Within 0.5 s of the measured ΔT (NASA, table of observed values)."""
@@ -388,13 +389,13 @@ class TestDeltaT:
         assert abs(MeeusEngine.delta_t(year) - table) < 0.01 * abs(table) + 1
 
     def test_today(self):
-        """About 70 s in the 2020s (75 s with the 2006 extrapolation)."""
-        assert 65 < MeeusEngine.delta_t(2026.5) < 80
+        """69.2 s in 2026 (USNO), not the 75 s of the 2006 extrapolation."""
+        assert approx(MeeusEngine.delta_t(2026.5), 69.18, 0.05)
 
     def test_continuous(self):
         """No jump larger than 0.5 s where one polynomial hands over to the next."""
         for year in (-500, 500, 1600, 1700, 1800, 1860, 1900, 1920, 1941, 1961, 1986,
-                     2005, 2050, 2150):
+                     2005, 2026.75, 2050, 2150):
             jump = MeeusEngine.delta_t(year - 1e-9) - MeeusEngine.delta_t(year)
             assert abs(jump) < 0.5, f"{year}: {jump:+.3f} s"
 

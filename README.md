@@ -176,17 +176,17 @@ Moteur de calcul entièrement découplé : uniquement des méthodes de classe ou
 |---------|------|
 | `julian_day(dte)` | Jour julien (JJ) |
 | `julian_century_j2000(dte)` | T en siècles juliens depuis J2000,0 |
-| `delta_t(year)` | ΔT = TT − TU en secondes (polynômes d'Espenak et Meeus, NASA) |
+| `delta_t(year)` | ΔT = TT − TU en secondes (valeurs mesurées USNO/IERS 2005–2026, polynômes d'Espenak et Meeus sinon) |
 | `sun_position(t)` | Longitude écliptique et distance du Soleil — série courte (~0,01°) |
 | `sun_position_hp(t)` | Position du Soleil — VSOP87 tronquée (~1″) |
 | `moon_position(t)` | Longitude, latitude et parallaxe de la Lune — Meeus ch. 47, ELP-2000/82 tronquée (~10″) |
 | `moon_position_elp2000(t)` | Même calcul, avec la distance de la Lune |
-| `ecliptic_to_equatorial(l, b, t)` | Écliptique → équatorial (AD, Déc) |
+| `ecliptic_to_equatorial(l, b, t)` | Écliptique → équatorial (AD, Déc), obliquité vraie (IAU 2006 + nutation) |
 | `equatorial_to_horizontal(jd, lat, lon, ra, dec)` | Équatorial → horizontal (hauteur, azimut) |
 | `elevation_correction(h, p)` | Réfraction atmosphérique et parallaxe |
 | `find_events(dte, lat, lon, body)` | Lever, coucher, culmination, crépuscules |
-| `planet_heliocentric(t, name)` | Position héliocentrique écliptique (x, y, z en UA) |
-| `planet_position(t, name)` | Position géocentrique : AD, Déc et distance (Vénus, Mars, Jupiter, Saturne) |
+| `planet_heliocentric(t, name)` | Position héliocentrique écliptique J2000 (x, y, z en UA), éléments képlériens JPL |
+| `planet_position(t, name)` | Position géocentrique apparente : AD, Déc et distance (Vénus, Mars, Jupiter, Saturne) — ~1′ à quelques ′ |
 | `equation_of_time(t)` | Équation du temps en minutes |
 | `angular_separation(ra1, dec1, ra2, dec2)` | Séparation angulaire entre deux astres |
 | `find_conjunctions(dte_start, num_days)` | Prochaines conjonctions et oppositions |
@@ -238,6 +238,9 @@ Les tests de l'interface ouvrent la fenêtre hors écran (`QT_QPA_PLATFORM=offsc
   éclipses de Lune
 - **Fred Espenak et Jean Meeus**, *Five Millennium Canon of Solar Eclipses* et *Five Millennium Canon of Lunar
   Eclipses*, NASA — valeurs de référence des tests, et polynômes de ΔT (écart entre temps dynamique et temps universel)
+- **E. M. Standish (JPL)**, *Keplerian Elements for Approximate Positions of the Major Planets*
+  (ssd.jpl.nasa.gov/planets/approx_pos.html) — éléments des planètes, 1800–2050
+- **USNO / IERS** — valeurs mesurées de ΔT (maia.usno.navy.mil/ser7/deltat.data)
 
 ---
 

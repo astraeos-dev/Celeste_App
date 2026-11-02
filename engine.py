@@ -18,6 +18,12 @@ v3.3 additions:
                                 magnitudes, phase durations; greatest eclipse
   • delta_t(year)            — ΔT = TT − UT, so that eclipse instants are in UT
 
+v3.4 precision:
+  • delta_t(year)            — measured values (USNO/IERS) for 2005–2026
+  • planet_position()        — JPL Keplerian elements (Standish, 1800–2050),
+                                precession to the date, light time, aberration
+  • nutation (4 terms), IAU 2006 true obliquity, apparent sidereal time
+
 This module is completely independent from the graphical interface (MVC model).
 """
 
@@ -66,6 +72,8 @@ _LUNAR_MAG_ACCURACY   = 0.01      # accuracy of the magnitudes (vs NASA: ≤ 0.0
 # Each row: end of the range (decimal year), origin y0, scale s, coefficients
 # of the polynomial in u = (y − y0) / s. Outside the table: −20 + 32 u²,
 # u = (y − 1820) / 100, minus 0.5628 (2150 − y) until 2150.
+# From 2005 on, the 2006 extrapolation (75 s in 2026) is replaced by the
+# measured values below.
 _DELTA_T_POLYNOMIALS = (
     (-500, 1820, 100, (-20.0, 0.0, 32.0)),
     (500,     0, 100, (10583.6, -1014.41, 33.78311, -5.952053, -0.1798452, 0.022174192,
@@ -82,17 +90,38 @@ _DELTA_T_POLYNOMIALS = (
     (1961, 1950, 1, (29.07, 0.407, -1.0 / 233.0, 1.0 / 2547.0)),
     (1986, 1975, 1, (45.45, 1.067, -1.0 / 260.0, -1.0 / 718.0)),
     (2005, 2000, 1, (63.86, 0.3345, -0.060374, 0.0017275, 0.000651814, 0.00002373599)),
-    (2050, 2000, 1, (62.92, 0.32217, 0.005589)),
 )
 
-# Mean orbital elements at J2000.0 (Meeus, App. II)
-# Format: [L0 (°), L1 (°/century), a (AU), e0, e1, i (°), Ω (°), ω̃ (°)]
+# Measured ΔT (s) on January 1 of each year, from USNO/IERS
+# (maia.usno.navy.mil/ser7/deltat.data, last value 2026 October 1).
+# Interpolated linearly; after the last value, a cubic leaves it with the
+# recent trend and joins the long-term parabola in 2050.
+_DELTA_T_OBSERVED = (
+    (2005, 64.69), (2006, 64.85), (2007, 65.15), (2008, 65.46), (2009, 65.78),
+    (2010, 66.07), (2011, 66.32), (2012, 66.60), (2013, 66.91), (2014, 67.28),
+    (2015, 67.64), (2016, 68.10), (2017, 68.59), (2018, 68.97), (2019, 69.22),
+    (2020, 69.36), (2021, 69.36), (2022, 69.29), (2023, 69.20), (2024, 69.18),
+    (2025, 69.14), (2026, 69.11), (2026.75, 69.21),
+)
+_DELTA_T_TREND = 0.12             # s/year, 2025 October → 2026 October
+_DELTA_T_JOIN  = 2050.0           # year where the extrapolation meets the parabola
+
+# Keplerian elements and their rates per Julian century, mean ecliptic and
+# equinox of J2000, valid 1800–2050 (E. M. Standish, JPL — Table 1 of
+# ssd.jpl.nasa.gov/planets/approx_pos.html). Heliocentric errors: Venus 20",
+# Mars 40", Jupiter 400", Saturn 600" in longitude.
+# Format: ((a AU, e, I °, L °, ϖ °, Ω °), (rates per century, same order))
 _ORBITAL_ELEMENTS = {
-    "Venus":   [181.979801,  58517.8156760, 0.72333199,  0.00677323, -0.00004938,  3.39471,  76.68069, 131.53298],
-    "Mars":    [355.433275,  19140.2993313, 1.52366231,  0.09341233,  0.00011902,  1.85061,  49.57854, 336.04084],
-    "Jupiter": [ 34.351519,   3034.9056606, 5.20336301,  0.04839266, -0.00012880,  1.30530, 100.55615,  14.75385],
-    "Saturn":  [ 50.077444,   1222.1137943, 9.53707032,  0.05415060, -0.00036762,  2.48446, 113.71504,  92.43194],
+    "Venus":   ((0.72333566,  0.00677672, 3.39467605, 181.97909950, 131.60246718,  76.67984255),
+                (0.00000390, -0.00004107, -0.00078890, 58517.81538729, 0.00268329, -0.27769418)),
+    "Mars":    ((1.52371034,  0.09339410, 1.84969142,  -4.55343205, -23.94362959,  49.55953891),
+                (0.00001847,  0.00007882, -0.00813131, 19140.30268499, 0.44441088, -0.29257343)),
+    "Jupiter": ((5.20288700,  0.04838624, 1.30439695,  34.39644051,  14.72847983, 100.47390909),
+                (-0.00011607, -0.00013253, -0.00183714, 3034.74612775, 0.21252668,  0.20469106)),
+    "Saturn":  ((9.53667594,  0.05386179, 2.48599187,  49.95424423,  92.59887831, 113.66242448),
+                (-0.00125060, -0.00050991, 0.00193609, 1222.49362201, -0.41897216, -0.28867794)),
 }
+_LIGHT_TIME_DAYS_PER_AU = 0.0057755183
 
 # ==========================================================
 # MOON PERIODIC TABLES — Meeus chapter 47 (Tables 47.A and 47.B, complete)
@@ -529,15 +558,33 @@ class MeeusEngine:
     @staticmethod
     def delta_t(year):
         """
-        ΔT = TT − UT in seconds, for a decimal year (Espenak & Meeus, NASA).
+        ΔT = TT − UT in seconds, for a decimal year.
 
         The positions take dynamical time (TT) and the eclipse search returns
-        its instants in UT. ΔT is about 69 s in the 2020s (the 2005–2050
-        polynomial, an extrapolation from 2006, gives 75 s) and reaches a few
-        hours in antiquity.
-        Outside 1955–2005, the correction for the Moon's secular acceleration
-        of ELP-2000/82 (−25.858″/cy²) is applied, as in NASA's canons.
+        its instants in UT. From 2005 to 2026.75, ΔT is interpolated in the
+        values measured by USNO/IERS (69.2 s in 2026); before, the polynomials
+        of Espenak & Meeus (NASA) give it, up to a few hours in antiquity.
+        After the last measurement, a cubic continues the recent trend and
+        joins NASA's long-term parabola in 2050.
+        Outside the measured years (1955 on), the correction for the Moon's
+        secular acceleration of ELP-2000/82 (−25.858″/cy²) is applied, as in
+        NASA's canons.
         """
+        obs = _DELTA_T_OBSERVED
+        y0, v0 = obs[-1]
+        if obs[0][0] <= year <= y0:
+            for (ya, va), (yb, vb) in zip(obs, obs[1:]):
+                if year <= yb:
+                    return va + (vb - va) * (year - ya) / (yb - ya)
+        if y0 < year < _DELTA_T_JOIN:
+            # cubic Hermite: recent trend at y0, slope of the parabola at the join
+            f  = MeeusEngine._delta_t_parabola
+            h  = _DELTA_T_JOIN - y0
+            v1 = f(_DELTA_T_JOIN)
+            m1 = f(_DELTA_T_JOIN + 0.5) - f(_DELTA_T_JOIN - 0.5)
+            s  = (year - y0) / h
+            return ((2*s**3 - 3*s**2 + 1) * v0 + (s**3 - 2*s**2 + s) * h * _DELTA_T_TREND
+                    + (3*s**2 - 2*s**3) * v1 + (s**3 - s**2) * h * m1)
         for end, origin, scale, coefficients in _DELTA_T_POLYNOMIALS:
             if year < end:
                 u = (year - origin) / scale
@@ -546,12 +593,18 @@ class MeeusEngine:
                     dt = dt * u + c
                 break
         else:
-            dt = -20.0 + 32.0 * ((year - 1820.0) / 100.0) ** 2
-            if year < 2150:
-                dt -= 0.5628 * (2150.0 - year)
-        if not 1955 <= year <= 2005:
+            return MeeusEngine._delta_t_parabola(year)
+        if not 1955 <= year <= y0:
             dt -= 0.000012932 * (year - 1955.0) ** 2
         return dt
+
+    @staticmethod
+    def _delta_t_parabola(year):
+        """NASA's long-term ΔT (from 2050), with the secular acceleration correction."""
+        dt = -20.0 + 32.0 * ((year - 1820.0) / 100.0) ** 2
+        if year < 2150:
+            dt -= 0.5628 * (2150.0 - year)
+        return dt - 0.000012932 * (year - 1955.0) ** 2
 
     # ──────────────────────────────────────────────────────────────────
     # SUN — short series (Meeus, chap. 25) — kept for compatibility
@@ -624,10 +677,31 @@ class MeeusEngine:
         return cls.mod360(theta), r
 
     @staticmethod
-    def _nutation_longitude(t):
-        """Nutation in longitude Δψ, main term only (degrees)."""
-        omega = 125.04 - 1934.136 * t
-        return -0.00478 * math.sin(math.radians(omega))
+    def _nutation(t):
+        """
+        Nutation in longitude Δψ and in obliquity Δε (degrees): the four
+        main terms of IAU 1980 (Meeus, chap. 22), 0.5" and 0.1".
+        """
+        om = math.radians(125.04452 - 1934.136261 * t)      # Moon's node
+        ls = math.radians(2.0 * (280.4665 + 36000.7698 * t))   # 2 L (Sun)
+        lm = math.radians(2.0 * (218.3165 + 481267.8813 * t))  # 2 L′ (Moon)
+        d_psi = -17.20*math.sin(om) - 1.32*math.sin(ls) - 0.23*math.sin(lm) + 0.21*math.sin(2*om)
+        d_eps =   9.20*math.cos(om) + 0.57*math.cos(ls) + 0.10*math.cos(lm) - 0.09*math.cos(2*om)
+        return d_psi / 3600.0, d_eps / 3600.0
+
+    @classmethod
+    def _nutation_longitude(cls, t):
+        """Nutation in longitude Δψ (degrees)."""
+        return cls._nutation(t)[0]
+
+    @classmethod
+    def _obliquity(cls, t):
+        """
+        True obliquity of the ecliptic (radians): IAU 2006 mean obliquity
+        (Capitaine et al. 2003) plus the nutation in obliquity Δε.
+        """
+        eps0 = 84381.406 - 46.836769*t - 0.0001831*t**2 + 0.00200340*t**3
+        return math.radians(eps0 / 3600.0 + cls._nutation(t)[1])
 
     # ──────────────────────────────────────────────────────────────────
     # MOON — Meeus, chap. 47 (truncated ELP-2000/82, ~10" arc)
@@ -763,7 +837,7 @@ class MeeusEngine:
         t = (jd - 2451545.0) / 36525.0
         sun_lon, sun_au = cls.sun_position_hp(t)
         moon_lon, moon_lat, moon_km, _ = cls.moon_position_elp2000(t)
-        eps  = math.radians(23.4392911 - (46.815*t)/3600.0)   # as in ecliptic_to_equatorial()
+        eps  = cls._obliquity(t)                               # as in ecliptic_to_equatorial()
         sun  = cls._equatorial_xyz(sun_lon, 0.0, sun_au * _AU_KM / _EARTH_RADIUS_KM, eps)
         moon = cls._equatorial_xyz(moon_lon, moon_lat, moon_km / _EARTH_RADIUS_KM, eps)
 
@@ -987,8 +1061,8 @@ class MeeusEngine:
 
     @classmethod
     def ecliptic_to_equatorial(cls, l_deg, b_deg, t):
-        """Ecliptic → equatorial conversion (Meeus, chap. 13)."""
-        eps = math.radians(23.4392911 - (46.815*t)/3600.0)
+        """Ecliptic → equatorial conversion, true obliquity of date (Meeus, chap. 13)."""
+        eps = cls._obliquity(t)
         l, b = math.radians(l_deg), math.radians(b_deg)
         ra  = math.atan2(math.sin(l)*math.cos(eps) - math.tan(b)*math.sin(eps), math.cos(l))
         dec = math.asin(math.sin(b)*math.cos(eps) + math.cos(b)*math.sin(eps)*math.sin(l))
@@ -997,7 +1071,11 @@ class MeeusEngine:
     @classmethod
     def equatorial_to_horizontal(cls, jd, lat, lon, ra_h, dec_deg):
         """Equatorial → local horizontal conversion (Meeus, chap. 13)."""
-        theta0 = 280.46061837 + 360.98564736629*(jd - 2451545.0)
+        # apparent sidereal time at Greenwich (Meeus, chap. 12)
+        t      = (jd - 2451545.0) / 36525.0
+        theta0 = (280.46061837 + 360.98564736629*(jd - 2451545.0)
+                  + 0.000387933*t*t - t**3/38710000.0
+                  + cls._nutation_longitude(t) * math.cos(cls._obliquity(t)))
         lst    = cls.mod360(theta0 + lon)
         tau    = math.radians(lst - ra_h*15.0)
         phi, delta = math.radians(lat), math.radians(dec_deg)
@@ -1081,61 +1159,85 @@ class MeeusEngine:
     @classmethod
     def planet_heliocentric(cls, t, name):
         """
-        Heliocentric ecliptic position of a planet from its mean orbital
-        elements (Meeus, App. II), solving Kepler's equation.
+        Heliocentric ecliptic position of a planet from JPL's Keplerian
+        elements and rates (Standish, valid 1800–2050), solving Kepler's
+        equation.
 
         Args:
             t (float): Julian centuries since J2000.0.
             name (str): "Venus", "Mars", "Jupiter" or "Saturn".
 
         Returns:
-            tuple[float, float, float]: (x, y, z) in AU, ecliptic frame
-            (x towards the vernal equinox).
+            tuple[float, float, float]: (x, y, z) in AU, mean ecliptic and
+            equinox of J2000 (x towards the vernal equinox).
         """
-        L0, L1, a, e0, e1, i_deg, omega_deg, peri_deg = _ORBITAL_ELEMENTS[name]
-        L     = cls.mod360(L0 + L1*t)
-        e     = e0 + e1*t
-        i     = math.radians(i_deg)
-        omega = math.radians(omega_deg)
-        peri  = math.radians(peri_deg)
-
-        M = math.radians(cls.mod360(L - peri_deg))
-        E = M
+        a, e, inc, L, peri, node = (v0 + v1*t for v0, v1 in zip(*_ORBITAL_ELEMENTS[name]))
+        M = math.radians((L - peri + 180.0) % 360.0 - 180.0)
+        E = M + e*math.sin(M)
         for _ in range(50):
             dE = (M - E + e*math.sin(E))/(1.0 - e*math.cos(E))
             E += dE
             if abs(dE) < 1e-10: break
 
-        nu  = 2.0*math.atan2(math.sqrt(1+e)*math.sin(E/2), math.sqrt(1-e)*math.cos(E/2))
-        r   = a*(1.0 - e*math.cos(E))
-        lam = cls.mod360(math.degrees(peri + nu))
-        beta = math.degrees(math.asin(math.sin(i)*math.sin(math.radians(lam) - omega)))
+        xo = a*(math.cos(E) - e)
+        yo = a*math.sqrt(1.0 - e*e)*math.sin(E)
+        w, o, i = math.radians(peri - node), math.radians(node), math.radians(inc)
+        cw, sw, co, so, ci, si = (math.cos(w), math.sin(w), math.cos(o), math.sin(o),
+                                  math.cos(i), math.sin(i))
+        x = (cw*co - sw*so*ci)*xo - (sw*co + cw*so*ci)*yo
+        y = (cw*so + sw*co*ci)*xo + (cw*co*ci - sw*so)*yo
+        z = sw*si*xo + cw*si*yo
+        return x, y, z
 
-        lr, br = math.radians(lam), math.radians(beta)
-        xp = r*math.cos(br)*math.cos(lr)
-        yp = r*math.cos(br)*math.sin(lr)
-        zp = r*math.sin(br)
-        return xp, yp, zp
+    @staticmethod
+    def _precess_from_j2000(lon_deg, lat_deg, t):
+        """
+        Ecliptic coordinates from the mean ecliptic and equinox of J2000 to
+        those of the date (Meeus, chap. 21, rigorous method).
+        """
+        eta = math.radians((47.0029*t - 0.03302*t*t + 0.000060*t**3) / 3600.0)
+        pi0 = 174.876384 + (-869.8089*t + 0.03536*t*t) / 3600.0
+        p   = (5029.0966*t + 1.11113*t*t - 0.000006*t**3) / 3600.0
+        b0  = math.radians(lat_deg)
+        d   = math.radians(pi0 - lon_deg)
+        a_  = math.cos(eta)*math.cos(b0)*math.sin(d) - math.sin(eta)*math.sin(b0)
+        b_  = math.cos(b0)*math.cos(d)
+        c_  = math.cos(eta)*math.sin(b0) + math.sin(eta)*math.cos(b0)*math.sin(d)
+        return (p + pi0 - math.degrees(math.atan2(a_, b_))) % 360.0, math.degrees(math.asin(c_))
 
     @classmethod
     def planet_position(cls, t, name):
         """
-        Geocentric planet position in equatorial coordinates.
-        Precision: ~1-2° (Meeus, chap. 33 / App. II).
+        Apparent geocentric planet position, true equator and equinox of date.
+
+        The planet (JPL elements precessed to the date) is seen from the
+        Earth of VSOP87; both are taken at t − τ, the light time, which also
+        accounts for the aberration (Meeus, chap. 33). Precision 1800–2050:
+        ~1′ for Venus, ~3′ for Mars, ~10′ for Jupiter and Saturn.
 
         Returns:
             tuple[float, float, float]: (RA hours, Dec degrees, distance AU)
         """
-        xp, yp, zp = cls.planet_heliocentric(t, name)
+        tau = 0.0
+        for _ in range(2):                      # geometric, then light-time corrected
+            tt = t - tau / 36525.0
+            x, y, z = cls.planet_heliocentric(tt, name)
+            r = math.sqrt(x*x + y*y + z*z)
+            lon, lat = cls._precess_from_j2000(math.degrees(math.atan2(y, x)),
+                                               math.degrees(math.asin(z / r)), tt)
+            lon_r, lat_r = math.radians(lon), math.radians(lat)
+            s_lon, r_e = cls.sun_position_hp(tt)
+            e_lon = math.radians(s_lon - 180.0 + 0.005693 / r_e - cls._nutation_longitude(tt))
+            dx = r*math.cos(lat_r)*math.cos(lon_r) - r_e*math.cos(e_lon)
+            dy = r*math.cos(lat_r)*math.sin(lon_r) - r_e*math.sin(e_lon)
+            dz = r*math.sin(lat_r)
+            delta = math.sqrt(dx*dx + dy*dy + dz*dz)
+            if tau == 0.0:
+                dist = delta                    # true distance at t
+            tau = _LIGHT_TIME_DAYS_PER_AU * delta
 
-        ls, r_e = cls.sun_position(t)
-        ls_r = math.radians(cls.mod360(ls + 180.0))
-        xe, ye = r_e*math.cos(ls_r), r_e*math.sin(ls_r)
-
-        dx, dy, dz = xp-xe, yp-ye, zp
-        dist = math.sqrt(dx*dx + dy*dy + dz*dz)
         ra, dec = cls.ecliptic_to_equatorial(
-            cls.mod360(math.degrees(math.atan2(dy, dx))),
+            cls.mod360(math.degrees(math.atan2(dy, dx)) + cls._nutation_longitude(t)),
             math.degrees(math.atan2(dz, math.sqrt(dx*dx + dy*dy))), t)
         return ra, dec, dist
 

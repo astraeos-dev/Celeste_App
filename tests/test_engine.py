@@ -318,8 +318,8 @@ class TestPlanetHeliocentric:
         """Heliocentric distance stays within a(1 - e) and a(1 + e)."""
         from engine import _ORBITAL_ELEMENTS
         for p in ("Venus", "Mars", "Jupiter", "Saturn"):
-            _, _, a, e0, e1, *_ = _ORBITAL_ELEMENTS[p]
-            e = e0 + e1 * self.T
+            (a0, e0, *_), (a1, e1, *_) = _ORBITAL_ELEMENTS[p]
+            a, e = a0 + a1 * self.T, e0 + e1 * self.T
             x, y, z = MeeusEngine.planet_heliocentric(self.T, p)
             r = math.sqrt(x * x + y * y + z * z)
             assert a * (1 - e) - 1e-6 <= r <= a * (1 + e) + 1e-6, f"{p} : r = {r:.4f} AU"
@@ -331,15 +331,22 @@ class TestPlanetHeliocentric:
             r = math.sqrt(x * x + y * y + z * z)
             assert abs(z) <= r * math.sin(math.radians(3.4)), p
 
-    def test_geocentric_distance_consistent(self):
-        """planet_position() distance = |planet − Earth| from the same vectors."""
-        lon_sun, r_sun = MeeusEngine.sun_position(self.T)
-        a = math.radians(lon_sun + 180.0)
-        xe, ye = r_sun * math.cos(a), r_sun * math.sin(a)
-        for p in ("Venus", "Mars", "Jupiter", "Saturn"):
-            x, y, z = MeeusEngine.planet_heliocentric(self.T, p)
-            _, _, dist = MeeusEngine.planet_position(self.T, p)
-            assert approx(dist, math.sqrt((x - xe) ** 2 + (y - ye) ** 2 + z * z), 1e-9), p
+    # JPL Horizons, 2026-11-01 0h TT: apparent RA (°), Dec (°), distance (AU),
+    # tolerances in arcminutes and AU
+    HORIZONS = {
+        "Venus":   (202.52107, -14.66185, 0.27977162, 1.0, 0.001),
+        "Mars":    (141.56935,  16.76526, 1.43251662, 1.0, 0.001),
+        "Jupiter": (146.86244,  14.06424, 5.49965645, 6.0, 0.01),
+        "Saturn":  (  9.58801,   1.21125, 8.54788487, 6.0, 0.01),
+    }
+
+    def test_matches_jpl_horizons(self):
+        """planet_position() against JPL Horizons (JPL elements + precession, light time)."""
+        for p, (ra, dec, dist, tol_arcmin, tol_au) in self.HORIZONS.items():
+            r, d, di = MeeusEngine.planet_position(self.T, p)
+            sep = MeeusEngine.angular_separation(r, d, ra / 15.0, dec) * 60.0
+            assert sep < tol_arcmin, f"{p} : {sep:.2f}′"
+            assert approx(di, dist, tol_au), f"{p} : dist = {di:.5f} AU"
 
 
 # ──────────────────────────────────────────────────────────────────────

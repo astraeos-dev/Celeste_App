@@ -139,8 +139,8 @@ Moteur de calcul entièrement découplé : uniquement des méthodes de classe ou
 | `julian_century_j2000(dte)` | T en siècles juliens depuis J2000,0 |
 | `sun_position(t)` | Longitude écliptique et distance du Soleil — série courte (~0,01°) |
 | `sun_position_hp(t)` | Position du Soleil — VSOP87 tronquée (~1″) |
-| `moon_position(t)` | Longitude, latitude et parallaxe de la Lune — série de base (Meeus ch. 47) |
-| `moon_position_elp2000(t)` | Position de la Lune — séries ELP2000-82B étendues (~10″) |
+| `moon_position(t)` | Longitude, latitude et parallaxe de la Lune — Meeus ch. 47, ELP-2000/82 tronquée (~10″) |
+| `moon_position_elp2000(t)` | Même calcul, avec la distance de la Lune |
 | `ecliptic_to_equatorial(l, b, t)` | Écliptique → équatorial (AD, Déc) |
 | `equatorial_to_horizontal(jd, lat, lon, ra, dec)` | Équatorial → horizontal (hauteur, azimut) |
 | `elevation_correction(h, p)` | Réfraction atmosphérique et parallaxe |
@@ -190,7 +190,7 @@ Les tests de l'interface ouvrent la fenêtre hors écran (`QT_QPA_PLATFORM=offsc
   - Chapitre 25 — Position du Soleil (série courte, ±0,01°)
   - Chapitre 28 — Équation du temps
   - Chapitre 32 — Position du Soleil VSOP87 (~1″)
-  - Chapitre 47 — Position de la Lune (série de base ±0,01° + ELP2000-82B ±10″)
+  - Chapitre 47 — Position de la Lune (ELP-2000/82 tronquée, ~10″)
   - Chapitre 54 — Prévision des éclipses de Soleil
 
 ---
@@ -215,7 +215,7 @@ Les tests de l'interface ouvrent la fenêtre hors écran (`QT_QPA_PLATFORM=offsc
 - [x] **Système solaire** — positions de Vénus, Mars, Jupiter et Saturne
 - [x] **Éclipses de Soleil** — type, magnitude, durée de la phase centrale
 - [x] **Conjonctions et oppositions** — prochains événements planétaires
-- [x] **Précision de la Lune** — séries ELP2000-82B étendues (~10″)
+- [x] **Précision de la Lune** — termes complets du chapitre 47 de Meeus (ELP-2000/82 tronquée, ~10″)
 - [x] **Équation du temps**
 - [ ] **Planétaire 2D** — orbites animées
 - [ ] **Éclipses de Lune** — étendre la détection à la Lune

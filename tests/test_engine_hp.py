@@ -137,17 +137,27 @@ class TestMoonPositionELP2000:
         """
         t = MeeusEngine.julian_century_j2000(datetime(1992, 4, 12))
         lon, lat, dist, par = MeeusEngine.moon_position_elp2000(t)
-        # Within 0.01° (36"): a wrong sign on the 1.27° evection term shifts
-        # the longitude by up to 2.5°, and the eclipse times by hours.
-        assert approx(lon, 133.162655, 0.01), f"lon={lon:.4f}° (ref 133.162655°)"
-        assert approx(lat, -3.229126, 0.01), f"lat={lat:.4f}° (ref -3.229126°)"
-        assert 356000 <= dist <= 407000
+        # Reproduced to the last digit. A wrong sign on the 1.27° evection term
+        # once put the longitude 1.7° off here, and terms counted twice the
+        # latitude 0.006° off.
+        assert approx(lon, 133.162655, 1e-4), f"lon={lon:.6f}° (ref 133.162655°)"
+        assert approx(lat, -3.229126, 1e-4), f"lat={lat:.6f}° (ref -3.229126°)"
+        assert approx(par, 0.991990, 1e-5), f"parallax={par:.6f}° (ref 0.991990°)"
 
     def test_distance_example_47a(self):
-        """Meeus example distance ~368409 km, tolerance ±5000 km."""
+        """Meeus example distance: 368409.7 km."""
         t = MeeusEngine.julian_century_j2000(datetime(1992, 4, 12))
         _, _, dist, _ = MeeusEngine.moon_position_elp2000(t)
-        assert approx(dist, 368409, 5000), f"dist={dist:.0f} km (ref ~368409)"
+        # Misaligned Table 47.A coefficients once put it 9 km off, and
+        # terms counted twice 16 km off.
+        assert approx(dist, 368409.7, 0.5), f"dist={dist:.1f} km (ref 368409.7)"
+
+    def test_same_series_as_moon_position(self):
+        """moon_position() is moon_position_elp2000() without the distance."""
+        for m in range(1, 13):
+            t = MeeusEngine.julian_century_j2000(datetime(2024, m, 15))
+            lon, lat, _, par = MeeusEngine.moon_position_elp2000(t)
+            assert MeeusEngine.moon_position(t) == (lon, lat, par)
 
 
 # ===========================================================================
@@ -222,8 +232,8 @@ class TestSolarEclipseCircumstances:
         assert ec is not None, "eclipse not found"
         assert ec['sub_type'] == sub_type
         assert ec['certainty'] == 'certain'
-        assert approx(ec['gamma'], gamma, 0.02), f"γ = {ec['gamma']:+.4f} (NASA {gamma:+.4f})"
-        assert approx(ec['magnitude'], mag, 0.002), f"magnitude {ec['magnitude']:.4f} (NASA {mag})"
+        assert approx(ec['gamma'], gamma, 0.003), f"γ = {ec['gamma']:+.4f} (NASA {gamma:+.4f})"
+        assert approx(ec['magnitude'], mag, 0.001), f"magnitude {ec['magnitude']:.4f} (NASA {mag})"
         # 5 %, or the 0.1 min rounding for the shortest ones
         assert approx(ec['duration_min'] * 60, seconds, max(0.05 * seconds, 6)), \
             f"central phase {ec['duration_min']} min (NASA {seconds} s)"
@@ -234,14 +244,14 @@ class TestSolarEclipseCircumstances:
         assert ec is not None, "eclipse not found"
         assert ec['sub_type'] == 'partial'
         assert ec['duration_min'] is None
-        assert approx(ec['gamma'], gamma, 0.02), f"γ = {ec['gamma']:+.4f} (NASA {gamma:+.4f})"
-        assert approx(ec['magnitude'], mag, 0.03), f"magnitude {ec['magnitude']:.4f} (NASA {mag})"
+        assert approx(ec['gamma'], gamma, 0.003), f"γ = {ec['gamma']:+.4f} (NASA {gamma:+.4f})"
+        assert approx(ec['magnitude'], mag, 0.005), f"magnitude {ec['magnitude']:.4f} (NASA {mag})"
 
     def test_greatest_eclipse_time(self):
         """2027-08-02: greatest eclipse at 10:07:50 TD (the engine ignores ΔT ≈ 70 s)."""
         ec = _solar_eclipse_near(2027, 8, 2)
         nasa = MeeusEngine.julian_day(datetime(2027, 8, 2, 10, 7, 50))
-        assert abs(ec['jd'] - nasa) * 1440 < 5, "greatest eclipse more than 5 min off"
+        assert abs(ec['jd'] - nasa) * 1440 < 1, "greatest eclipse more than 1 min off"
 
     def test_no_eclipse_far_from_node(self):
         """New moon of 2026-11-09: Moon ~4.9° south of the ecliptic."""

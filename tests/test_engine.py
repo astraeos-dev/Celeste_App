@@ -355,9 +355,9 @@ class TestMoonPositionHP:
         lon, lat, par = MeeusEngine.moon_position(t)
         # The full chap. 47 series reproduces the example to the last digit.
         # A sign error on the evection term once left the longitude 1.7° off.
-        assert abs(lon - 133.162655) < 0.001, f"Longitude : {lon:.6f}° (expected 133.162655°)"
-        assert abs(lat - (-3.229126)) < 0.001, f"Latitude : {lat:.6f}° (expected -3.229126°)"
-        assert abs(par - 0.991990) < 0.001, f"Parallax : {par:.6f}° (expected 0.991990°)"
+        assert abs(lon - 133.162655) < 1e-4, f"Longitude : {lon:.6f}° (expected 133.162655°)"
+        assert abs(lat - (-3.229126)) < 1e-4, f"Latitude : {lat:.6f}° (expected -3.229126°)"
+        assert abs(par - 0.991990) < 1e-5, f"Parallax : {par:.6f}° (expected 0.991990°)"
 
     def test_precision_improved(self):
         """New series is better than old (~1°) over several dates."""

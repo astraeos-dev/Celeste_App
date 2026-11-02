@@ -7,7 +7,8 @@ daily events (sunrise, sunset, twilights).
 
 v3.1 additions:
   • sun_position_hp(t)       — VSOP87 truncated (~1" arc)
-  • moon_position_elp2000(t) — ELP2000-82B truncated (~10" arc)
+  • moon_position_elp2000(t) — Meeus chap. 47, truncated ELP-2000/82 (~10" arc),
+                                with the Moon's distance
   • find_eclipses()          — total/annular/hybrid type, diameter ratio,
                                 magnitude, central phase duration
 
@@ -41,7 +42,7 @@ _SUN_RADIUS      = _AU_KM * math.sin(math.radians(959.63 / 3600.0)) / _EARTH_RAD
 _MOON_RADIUS_PENUMBRA = 0.2725076                  # Moon radius for the penumbral cone
 _MOON_RADIUS_UMBRA    = 0.2722810                  # … and for the umbral cone
 _CENTRAL_LIMIT   = 0.9972     # |γ| under which the shadow axis meets the flattened Earth (Meeus, chap. 54)
-_GAMMA_ACCURACY  = 0.02       # accuracy of γ from the truncated series (vs NASA: ~0.005 typical, 0.018 worst seen)
+_GAMMA_ACCURACY  = 0.005      # accuracy of γ from the truncated series (vs NASA: ≤ 0.001, 1991–2031)
 _SIDEREAL_RATE   = 2.0 * math.pi * 1.00273790935 / 24.0   # Earth rotation, radians per hour
 
 # Mean orbital elements at J2000.0 (Meeus, App. II)
@@ -54,7 +55,7 @@ _ORBITAL_ELEMENTS = {
 }
 
 # ==========================================================
-# MOON PERIODIC TABLES — Meeus chapter 47 (base series)
+# MOON PERIODIC TABLES — Meeus chapter 47 (Tables 47.A and 47.B, complete)
 # ==========================================================
 
 _MOON_LONGITUDE_TERMS = (
@@ -156,25 +157,25 @@ _MOON_DISTANCE_TERMS = (
     ( 0,  1,  2,  0,      5751),
     ( 0,  2,  0,  0,         0),
     ( 2, -2, -1,  0,     -4950),
-    ( 2,  0,  1, -2,         0),
-    ( 2,  0,  0,  2,      4130),
-    ( 4, -1, -1,  0,         0),
-    ( 0,  0,  2,  2,     -3958),
-    ( 3,  0, -1,  0,         0),
-    ( 2,  1,  1,  0,      3258),
-    ( 4, -1, -2,  0,      2616),
-    ( 0,  2, -1,  0,     -1897),
-    ( 2,  2, -1,  0,     -2117),
-    ( 2,  1, -2,  0,      2354),
+    ( 2,  0,  1, -2,      4130),
+    ( 2,  0,  0,  2,         0),
+    ( 4, -1, -1,  0,     -3958),
+    ( 0,  0,  2,  2,         0),
+    ( 3,  0, -1,  0,      3258),
+    ( 2,  1,  1,  0,      2616),
+    ( 4, -1, -2,  0,     -1897),
+    ( 0,  2, -1,  0,     -2117),
+    ( 2,  2, -1,  0,      2354),
+    ( 2,  1, -2,  0,         0),
     ( 2, -1,  0, -2,         0),
-    ( 4,  0,  1,  0,         0),
-    ( 0,  0,  4,  0,     -1423),
-    ( 4, -1,  0,  0,     -1117),
-    ( 1,  0, -2,  0,     -1571),
-    ( 2,  1,  0, -2,     -1739),
-    ( 0,  0,  2, -2,         0),
+    ( 4,  0,  1,  0,     -1423),
+    ( 0,  0,  4,  0,     -1117),
+    ( 4, -1,  0,  0,     -1571),
+    ( 1,  0, -2,  0,     -1739),
+    ( 2,  1,  0, -2,         0),
+    ( 0,  0,  2, -2,     -4421),
     ( 1,  1,  1,  0,         0),
-    ( 3,  0, -2,  0,     -4421),
+    ( 3,  0, -2,  0,         0),
     ( 4,  0, -3,  0,         0),
     ( 2, -1,  2,  0,         0),
     ( 0,  2,  1,  0,      1165),
@@ -449,62 +450,6 @@ _VSOP87_R3 = (
 )
 _VSOP87_R4 = ((4.0, 2.56, 6283.08),)
 
-# ==========================================================
-# ELP2000-82B — Moon additional terms
-# ==========================================================
-
-_ELP2000_LON_ADD = (
-    ( 2, -2,  1,  0,   2390), ( 2,  0, -1, -2,  -2602),
-    ( 2, -1, -2,  0,   2236), ( 4, -1, -1,  0,   1215),
-    ( 0,  0,  2,  2,  -1110), ( 3,  0, -1,  0,   -892),
-    ( 2,  1,  1,  0,   -810), ( 4, -1, -2,  0,    759),
-    ( 0,  2, -1,  0,   -713), ( 2,  2, -1,  0,   -700),
-    ( 2,  1, -2,  0,    691), ( 2, -1,  0, -2,    596),
-    ( 4,  0,  1,  0,    549), ( 0,  0,  4,  0,    537),
-    ( 4, -1,  0,  0,    520), ( 1,  0, -2,  0,   -487),
-    ( 2,  1,  0, -2,   -399), ( 0,  0,  2, -2,   -381),
-    ( 1,  1,  1,  0,    351), ( 3,  0, -2,  0,   -340),
-    ( 4,  0, -3,  0,    330), ( 2, -1,  2,  0,    327),
-    ( 0,  2,  1,  0,   -323), ( 1,  1, -1,  0,    299),
-    ( 2,  0,  3,  0,    294),
-)
-_ELP2000_LAT_ADD = (
-    ( 0,  1, -2, -1,   -1870), ( 4,  0, -1, -1,   1828),
-    ( 0,  1,  0,  1,   -1794), ( 0,  0,  0,  3,  -1749),
-    ( 0,  1, -1,  1,   -1565), ( 1,  0,  0,  1,  -1491),
-    ( 0,  1,  1,  1,   -1475), ( 0,  1,  1, -1,  -1410),
-    ( 0,  1,  0, -1,   -1344), ( 1,  0,  0, -1,  -1335),
-    ( 0,  0,  3,  1,    1107), ( 4,  0,  0, -1,   1021),
-    ( 4,  0, -1,  1,     833), ( 0,  0,  1, -3,    777),
-    ( 4,  0, -2,  1,     671), ( 2,  0,  0, -3,    607),
-    ( 2,  0,  2, -1,     596), ( 2, -1,  1, -1,    491),
-    ( 2,  0, -2,  1,    -451), ( 0,  0,  3, -1,    439),
-    ( 2,  0,  2,  1,     422), ( 2,  0, -3, -1,    421),
-    ( 2,  1, -1,  1,    -366), ( 2,  1,  0,  1,   -351),
-    ( 4,  0,  0,  1,     331), ( 2, -1,  1,  1,    315),
-    ( 2, -2,  0, -1,     302), ( 0,  0,  1,  3,   -283),
-    ( 2,  1,  1, -1,    -229), ( 1,  1,  0, -1,    223),
-    ( 1,  1,  0,  1,     223), ( 0,  1, -2, -1,   -220),
-    ( 2,  1, -1, -1,    -220), ( 1,  0,  1,  1,   -185),
-    ( 2, -1, -2, -1,     181), ( 0,  1,  2,  1,   -177),
-    ( 4,  0, -2, -1,     176), ( 4, -1, -1, -1,    166),
-    ( 1,  0,  1, -1,    -164), ( 4,  0,  1, -1,    132),
-    ( 1,  0, -1, -1,    -119), ( 4, -1,  0, -1,    115),
-    ( 2, -2,  0,  1,     107),
-)
-_ELP2000_DIST_ADD = (
-    ( 2, -1, -2,  0,   10056), ( 1,  0,  1,  0,    6322),
-    ( 2, -2,  0,  0,   -9884), ( 0,  1,  2,  0,    5751),
-    ( 2, -2, -1,  0,   -4950), ( 2,  0,  0,  2,    4130),
-    ( 0,  0,  2,  2,   -3958), ( 2,  1,  1,  0,    3258),
-    ( 4, -1, -2,  0,    2616), ( 0,  2, -1,  0,   -1897),
-    ( 2,  2, -1,  0,   -2117), ( 2,  1, -2,  0,    2354),
-    ( 0,  0,  4,  0,   -1423), ( 4, -1,  0,  0,   -1117),
-    ( 1,  0, -2,  0,   -1571), ( 2,  1,  0, -2,   -1739),
-    ( 3,  0, -2,  0,   -4421), ( 0,  2,  1,  0,    1165),
-    ( 2,  0, -1, -2,    8752),
-)
-
 
 # ==========================================================
 # MAIN ENGINE
@@ -614,14 +559,14 @@ class MeeusEngine:
         return cls.mod360(theta), r
 
     # ──────────────────────────────────────────────────────────────────
-    # MOON — base series (Meeus, chap. 47)
+    # MOON — Meeus, chap. 47 (truncated ELP-2000/82, ~10" arc)
     # ──────────────────────────────────────────────────────────────────
 
     @classmethod
     def _moon_base_series(cls, t):
         """
-        Compute fundamental lunar arguments and base Meeus ch.47 series sums.
-        Shared by moon_position() and moon_position_elp2000().
+        Compute fundamental lunar arguments and the sums of the periodic
+        terms of Meeus Tables 47.A and 47.B, for moon_position_elp2000().
 
         Returns:
             tuple: (lp, f, mp, a1, a2, a3, d_r, m_r, mp_r, f_r, e, sl, sr, sb)
@@ -667,55 +612,30 @@ class MeeusEngine:
     @classmethod
     def moon_position(cls, t):
         """
-        Moon position — base series chap. 47 (~0.01°).
-        Kept for trajectory and event calculations.
+        Moon position — Meeus, chap. 47 (~10" arc): moon_position_elp2000()
+        without the distance.
 
         Returns:
             tuple[float, float, float]: (longitude°, latitude°, parallax°)
         """
-        lp, f, mp, a1, a2, a3, d_r, m_r, mp_r, f_r, e, sl, sr, sb = cls._moon_base_series(t)
-        dr = math.radians
-
-        sl += 3958*math.sin(dr(a1)) + 1962*math.sin(dr(lp-f)) + 318*math.sin(dr(a2))
-        sb += (-2235*math.sin(dr(lp)) + 382*math.sin(dr(a3))
-               + 175*math.sin(dr(a1-f)) + 175*math.sin(dr(a1+f))
-               + 127*math.sin(dr(lp-mp)) - 115*math.sin(dr(lp+mp)))
-
-        lon      = cls.mod360(lp + sl/1_000_000.0)
-        lat      = sb / 1_000_000.0
-        dist_km  = 385000.56 + sr/1000.0
-        parallax = math.degrees(math.asin(6378.14/dist_km))
+        lon, lat, _, parallax = cls.moon_position_elp2000(t)
         return lon, lat, parallax
-
-    # ──────────────────────────────────────────────────────────────────
-    # MOON — ELP2000-82B high precision (~10" arc)
-    # ──────────────────────────────────────────────────────────────────
 
     @classmethod
     def moon_position_elp2000(cls, t):
         """
-        Moon position — ELP2000-82B truncated (~10" arc).
+        Moon position — the complete periodic terms of Meeus, chap. 47
+        (Tables 47.A and 47.B), a truncation of the ELP-2000/82 theory:
+        ~10" arc in longitude, a few arcseconds in latitude.
 
         Returns:
             tuple[float, float, float, float]:
                 (longitude°, latitude°, distance_km, parallax°)
 
-        Reference: Meeus, chap. 47 + ELP2000-82B.
+        Reference: Meeus, chap. 47.
         """
         lp, f, mp, a1, a2, a3, d_r, m_r, mp_r, f_r, e, sl, sr, sb = cls._moon_base_series(t)
         dr = math.radians
-
-        # ELP2000 additional terms
-        for cD, cM, cMp, cF, amp in _ELP2000_LON_ADD:
-            ec = e**abs(cM) if cM else 1.0
-            sl += amp * ec * math.sin(cD*d_r + cM*m_r + cMp*mp_r + cF*f_r)
-        for cD, cM, cMp, cF, amp in _ELP2000_LAT_ADD:
-            ec = e**abs(cM) if cM else 1.0
-            sb += amp * ec * math.sin(cD*d_r + cM*m_r + cMp*mp_r + cF*f_r)
-        for cD, cM, cMp, cF, amp in _ELP2000_DIST_ADD:
-            if amp == 0: continue
-            ec = e**abs(cM) if cM else 1.0
-            sr += amp * ec * math.cos(cD*d_r + cM*m_r + cMp*mp_r + cF*f_r)
 
         sl += 3958*math.sin(dr(a1)) + 1962*math.sin(dr(lp-f)) + 318*math.sin(dr(a2))
         sb += (-2235*math.sin(dr(lp)) + 382*math.sin(dr(a3))

@@ -350,14 +350,14 @@ class TestMoonPositionHP:
     """Verifies Moon precision against Meeus example 47.a."""
 
     def test_meeus_example_47a(self):
-        """April 12, 1992, 0h TD — Meeus p.342."""
+        """April 12, 1992, 0h TD — Meeus p.342: λ = 133.162655°, β = −3.229126°."""
         t = MeeusEngine.julian_century_j2000(datetime(1992, 4, 12))
         lon, lat, par = MeeusEngine.moon_position(t)
-        # Latitude very precise; longitude and parallax improved over
-        # old simplified series (~1°).
-        assert abs(lon - 133.162) < 2.0, f"Longitude : {lon:.3f}° (expected ~133.162°)"
-        assert abs(lat - (-3.229)) < 0.15, f"Latitude : {lat:.3f}° (expected ~-3.229°)"
-        assert 0.89 <= par <= 1.03, f"Parallax : {par:.4f}° (out of bounds)"
+        # The full chap. 47 series reproduces the example to the last digit.
+        # A sign error on the evection term once left the longitude 1.7° off.
+        assert abs(lon - 133.162655) < 1e-4, f"Longitude : {lon:.6f}° (expected 133.162655°)"
+        assert abs(lat - (-3.229126)) < 1e-4, f"Latitude : {lat:.6f}° (expected -3.229126°)"
+        assert abs(par - 0.991990) < 1e-5, f"Parallax : {par:.6f}° (expected 0.991990°)"
 
     def test_precision_improved(self):
         """New series is better than old (~1°) over several dates."""

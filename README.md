@@ -171,7 +171,8 @@ Celeste_App/
 ├── locales/             # Traductions (fr.json est la référence)
 ├── fonts/               # Polices IBM Plex Sans, IBM Plex Mono et Astraeos Symboles (licence OFL)
 ├── assets/              # Symbole et icône Astræos (SVG), licence des icônes
-├── scripts/             # Scripts annexes (fiche haute précision Skyfield/INPOP)
+├── scripts/             # Construction de l'application, génération du catalogue d'étoiles, fiche haute précision
+├── celeste.spec         # Recette PyInstaller de l'application autonome
 ├── requirements.txt     # Dépendances d'exécution
 ├── requirements-dev.txt # Dépendances de développement (pytest)
 └── tests/               # Tests unitaires (moteur, graphiques, interface, thèmes, i18n, utilitaires)
@@ -239,6 +240,29 @@ affiché est redessiné ; les autres le sont quand on les ouvre.
 
 ---
 
+## Application autonome
+
+Céleste se construit en application autonome pour Windows, macOS et Linux avec [PyInstaller]. L'éphéméride JPL est
+incluse : l'application fonctionne hors ligne dès le premier lancement.
+
+- **Depuis GitHub** : onglet *Actions*, workflow « Build — application autonome », bouton *Run workflow* (ou pousser un
+  tag `v*`). Chaque système produit une archive `Celeste-<version>-<système>.zip` dans les artefacts du run.
+- **Sur sa machine** (construit pour le système en cours) :
+
+```bash
+pip install pyinstaller
+python scripts/build_exe.py
+```
+
+Le script place l'éphéméride dans `data/`, dessine les icônes depuis `assets/astraeos-icone.svg`, lance PyInstaller
+(`celeste.spec`), vérifie que l'application démarre (`--self-test`) et crée l'archive dans `dist/`. Les applications ne
+sont pas signées : au premier lancement, Windows (SmartScreen) et macOS (Gatekeeper : clic droit, *Ouvrir*) demandent
+une confirmation. Sous macOS, l'accès à la position est demandé à la première géolocalisation.
+
+[PyInstaller]: https://pyinstaller.org/
+
+---
+
 ## Dépendances
 
 | Paquet | Version min. | Rôle |
@@ -291,7 +315,7 @@ avec le projet (`fonts/`, `assets/`) : rien à installer.
 
 - [x] **Tests unitaires** — pytest sur le moteur, les graphiques, l'interface (hors écran), les thèmes, `utils.py` et
   `i18n.py` (7 fichiers, ~290 cas)
-- [ ] **Exécutable** — PyInstaller `.exe` (Windows) / `.app` (macOS)
+- [x] **Exécutable** — application autonome pour Windows, macOS et Linux (PyInstaller), éphéméride incluse
 
 ---
 

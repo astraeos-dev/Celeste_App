@@ -38,6 +38,7 @@ htmlcov/
 
 # ── PyInstaller (packaging exécutable) ───────────────────
 *.spec
+!celeste.spec
 /dist_exe/
 
 # ── Données utilisateur ───────────────────────────────────

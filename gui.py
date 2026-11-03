@@ -11,7 +11,7 @@ v3.3 — Interface au design system Astræos :
     Jauge, Onglets, SelecteurTheme ; une seule zone dorée par écran (le
     bouton Calculer), filets plutôt qu'ombres
   ★ Textes traduits (fr, en, es, de) ; nombres à la mode de la langue
-  ★ Raccourcis : F5 calculer, Ctrl+L temps réel, Ctrl+E export PDF
+  ★ Raccourcis : F5 calculer, Ctrl+L temps réel
 
 Architecture :
   - Barre latérale  : date, lieu, fuseau, favoris, actions, thème
@@ -33,16 +33,16 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError, available_timezones
 
 from PyQt6.QtCore import (
     QDate, QDateTime, QEvent, QLocale, QPointF, QRectF, QRegularExpression, QSize,
-    Qt, QTime, QTimer, QTimeZone, QUrl,
+    Qt, QTime, QTimer, QTimeZone,
 )
 from PyQt6.QtGui import (
-    QBrush, QColor, QDesktopServices, QFont, QFontDatabase, QKeySequence,
+    QBrush, QColor, QFont, QFontDatabase, QKeySequence,
     QPainter, QPainterPath, QPalette, QPen, QRegularExpressionValidator, QShortcut,
 )
 from PyQt6.QtPositioning import QGeoPositionInfo, QGeoPositionInfoSource
 from PyQt6.QtWidgets import (
     QAbstractItemView, QApplication, QButtonGroup, QCheckBox, QComboBox, QCompleter,
-    QDateTimeEdit, QDialog, QDialogButtonBox, QFileDialog, QFrame, QGridLayout,
+    QDateTimeEdit, QDialog, QDialogButtonBox, QFrame, QGridLayout,
     QHBoxLayout, QHeaderView, QInputDialog, QLabel, QLineEdit, QMainWindow,
     QMessageBox, QProgressBar, QPushButton, QScrollArea, QSizePolicy, QSlider,
     QStatusBar, QTabWidget, QTableWidget, QTableWidgetItem, QToolButton,
@@ -59,7 +59,7 @@ import icons  # noqa: E402
 import settings as prefs  # noqa: E402
 from config import APP_VERSION, FONT_MONO, FONT_SANS, THEME_NAMES, Config, mix  # noqa: E402
 from constellations import STAR_CONSTELLATION  # noqa: E402
-from engine import EPHEMERIS_YEARS, AstroEngine  # noqa: E402
+from engine import EPHEMERIS_YEARS, PLANETS, AstroEngine, constellation_names  # noqa: E402
 from i18n import (  # noqa: E402
     available_langs, get_lang, lang_name, resolve_lang, switch_lang, t, tf,
 )
@@ -78,7 +78,7 @@ _FONTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts")
 
 _AUTO_ZONE = "auto"           # fuseau déduit du lieu (timezonefinder)
 _GEOLOC_TIMEOUT_MS = 15000    # attente du service de localisation de l'appareil
-_PLANETS = ("Venus", "Mars", "Jupiter", "Saturn")
+_PLANETS = PLANETS        # Mercure à Neptune (engine.PLANETS)
 _QT_DATETIME_FORMAT = "dd/MM/yyyy HH:mm:ss"
 
 # Degrés décimaux, avec un point ou une virgule (49.6333 ou 49,6333)
@@ -864,6 +864,7 @@ class AstroApp(QMainWindow):
         self.sun_data            = {}
         self.moon_data           = {}
         self.sun_events          = {}
+        self.planet_events     = {}
         self.moon_events         = {}
         self.planets             = []
         self.visible_stars       = []
@@ -890,8 +891,7 @@ class AstroApp(QMainWindow):
 
         # Raccourcis, attachés à la fenêtre : ils survivent aux reconstructions
         for keys, slot in ((("F5", "Ctrl+Return"), self.calculate),
-                           (("Ctrl+L",), lambda: self.btn_live.toggle()),
-                           (("Ctrl+E",), self.export_pdf)):
+                           (("Ctrl+L",), lambda: self.btn_live.toggle())):
             for key in keys:
                 QShortcut(QKeySequence(key), self).activated.connect(slot)
 
@@ -1043,10 +1043,6 @@ class AstroApp(QMainWindow):
         self.btn_live.setToolTip(tf("side.live_tip", key="Ctrl+L"))
         self.btn_live.toggled.connect(self.toggle_live)
         lay.addWidget(self.btn_live)
-        btn_pdf = _bouton(t("side.export"), "export", "secondaire")
-        btn_pdf.setToolTip(tf("side.export_tip", key="Ctrl+E"))
-        btn_pdf.clicked.connect(self.export_pdf)
-        lay.addWidget(btn_pdf)
 
         lay.addStretch()
         self.theme_selector = SelecteurTheme(Config.THEME, self._on_theme_selected)
@@ -1259,8 +1255,9 @@ class AstroApp(QMainWindow):
         lay.setContentsMargins(0, 16, 0, 16)
         lay.setSpacing(16)
 
-        columns = ["col_planet", "col_ra", "col_dec", "col_alt", "col_az",
-                   "col_dist", "col_elong", "col_state"]
+        # la visibilité se lit à la couleur du nom (vive au-dessus de l'horizon)
+        columns = ["col_planet", "col_ra", "col_dec", "col_alt", "col_az", "col_dist",
+                   "col_elong", "col_rise", "col_transit", "col_set"]
         table = QTableWidget(len(_PLANETS), len(columns))
         table.setHorizontalHeaderLabels([t(f"planets.{c}") for c in columns])
         table.verticalHeader().setVisible(False)
@@ -1270,12 +1267,13 @@ class AstroApp(QMainWindow):
         table.setShowGrid(False)
         header = table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        header.setStretchLastSection(True)
         header.setDefaultAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         table.verticalHeader().setDefaultSectionSize(40)
+        table.setStyleSheet("QTableWidget::item { padding: 0 4px; }")
         mono = QFont()
         mono.setFamilies(list(_fonts["mono"]))
-        mono.setPixelSize(15)
+        mono.setPixelSize(13)
         mono.setWeight(QFont.Weight.Medium)
         self._planet_items = {}
         for r, name in enumerate(_PLANETS):
@@ -1290,7 +1288,7 @@ class AstroApp(QMainWindow):
                     bold.setPixelSize(15)
                     bold.setWeight(QFont.Weight.DemiBold)
                     item.setFont(bold)
-                elif col != "col_state":
+                else:
                     item.setFont(mono)
                 table.setItem(r, c, item)
                 items[col] = item
@@ -2009,42 +2007,6 @@ class AstroApp(QMainWindow):
         self.calculate()
 
     # ──────────────────────────────────────────────────────────────────────────
-    # EXPORT PDF
-    # ──────────────────────────────────────────────────────────────────────────
-
-    def export_pdf(self):
-        try:
-            from export_pdf import build_data_from_app, generate_report_pdf
-        except ImportError as exc:
-            QMessageBox.critical(self, t("pdf.title"), tf("pdf.error", detail=exc))
-            return
-        if not self._check_inputs():
-            self._warn_invalid_coords()
-            return
-        self.calculate()        # le rapport suit exactement les valeurs saisies
-        stamp = _utc_now().strftime("%Y%m%d_%H%M%S")
-        path, _ = QFileDialog.getSaveFileName(
-            self, t("pdf.dialog"),
-            os.path.join(os.path.expanduser("~"), f"celeste_{stamp}.pdf"),
-            t("pdf.filter"))
-        if not path:
-            return
-        if not path.lower().endswith(".pdf"):
-            path += ".pdf"
-        try:
-            generate_report_pdf(build_data_from_app(self), path)
-        except Exception as exc:
-            QMessageBox.critical(self, t("pdf.title"), tf("pdf.error", detail=exc))
-            return
-        box = QMessageBox(QMessageBox.Icon.Information, t("pdf.title"),
-                          tf("pdf.saved", path=path), parent=self)
-        open_btn = box.addButton(t("pdf.open"), QMessageBox.ButtonRole.ActionRole)
-        box.addButton(QMessageBox.StandardButton.Ok)
-        box.exec()
-        if box.clickedButton() is open_btn:
-            QDesktopServices.openUrl(QUrl.fromLocalFile(path))
-
-    # ──────────────────────────────────────────────────────────────────────────
     # CALCUL PRINCIPAL
     # ──────────────────────────────────────────────────────────────────────────
 
@@ -2105,6 +2067,8 @@ class AstroApp(QMainWindow):
         if key != self.last_cache_key:
             self.sun_events  = AstroEngine.find_events(dte, lat, lon, "sun", self._zone, elev)
             self.moon_events = AstroEngine.find_events(dte, lat, lon, "moon", self._zone, elev)
+            self.planet_events = {name: AstroEngine.find_events(dte, lat, lon, name, self._zone, elev)
+                                  for name in _PLANETS}
             self.hours, self.sun_altitudes, self.moon_altitudes = \
                 charts.sample_day(dte, lat, lon, elevation_m=elev, tz=self._zone)
             self._day_start = AstroEngine._local_day(dte, self._zone)[0]
@@ -2214,12 +2178,15 @@ class AstroApp(QMainWindow):
             items["col_dec"].setText(_dec(p["dec"]))
             items["col_alt"].setText(_dec(p["alt"]))
             items["col_az"].setText(_az(p["az"]))
-            items["col_dist"].setText(tf("units.au", value=_num(p["dist"], 4)))
+            items["col_dist"].setText(_num(p["dist"], 4))                 # UA dans l'en-tête
             items["col_elong"].setText(f"{_deg(p['elong'], 1)} {side}")
+            events = self.planet_events.get(p["name"], {})
+            for key in ("rise", "transit", "set"):
+                items[f"col_{key}"].setText(self._format_event(events.get(key)))
             up = p["alt"] > 0
-            items["col_state"].setText(t("common.visible" if up else "common.below_horizon"))
-            items["col_state"].setForeground(
-                QBrush(QColor(Config.LUNE if up else Config.ENCRE_ATTENUEE)))
+            name = items["col_planet"]
+            name.setForeground(QBrush(QColor(Config.ENCRE if up else Config.ENCRE_ATTENUEE)))
+            name.setToolTip(t("common.visible" if up else "common.below_horizon"))
 
     def _update_status(self):
         if self._lat is None:
@@ -2387,10 +2354,17 @@ class AstroApp(QMainWindow):
         if kind == "star":
             title = obj["name"]
             rows.append((t("detail.type"), t("detail.type_star")))
+            designation = obj.get("designation", "")
+            if designation and designation != obj["name"]:
+                rows.append((t("detail.designation"), designation))
             consts = STAR_CONSTELLATION.get(obj["name"], [])
             if consts:
                 rows.append((t("detail.constellation"),
                              ", ".join(t(f"constellations.{c}") for c in consts)))
+            elif designation and not designation.startswith("HR"):
+                latin = constellation_names().get(designation.split()[-1])
+                if latin:
+                    rows.append((t("detail.constellation"), latin))
             rows.append((t("detail.mag"), _num(obj["mag"], 2)))
         elif kind == "planet":
             title = f"{sym[obj['name']]} {_planet_name(obj['name'])}"
@@ -2474,8 +2448,9 @@ class AstroApp(QMainWindow):
             self._evt_layout.addWidget(_label(note, "legende", wrap=True))
         self._evt_layout.addSpacing(8)
 
-    def _event_card(self, symbole, accent, title, when, pills=(), details=()):
-        """Carte d'événement : symbole, titre, pastilles, date ; détails dessous."""
+    def _event_card(self, symbole, accent, title, when, pills=(), details=(), action=None):
+        """Carte d'événement : symbole, titre, pastilles, date ; détails dessous ;
+        *action* : (texte, fonction) d'un bouton à droite."""
         card = _card()
         card.setObjectName("card")
         card.setProperty("eventCard", True)
@@ -2490,6 +2465,11 @@ class AstroApp(QMainWindow):
             top.addWidget(_pastille(text, ton))
         top.addStretch()
         top.addWidget(_label(when, "donnee"))
+        if action:
+            btn = _bouton(action[0], "place", "secondaire", compact=True)
+            btn.setToolTip(t("eclipse_map.button_tip"))
+            btn.clicked.connect(action[1])
+            top.addWidget(btn)
         lay.addLayout(top)
         if details:
             lay.addWidget(_label("   ·   ".join(details), "legende", wrap=True))
@@ -2555,8 +2535,53 @@ class AstroApp(QMainWindow):
             self._event_card(SYMBOL["Sun"] if solar else SYMBOL["Moon"],
                              "or" if solar else "lune",
                              t("events.solar_eclipse" if solar else "events.lunar_eclipse"),
-                             when, pills, self._eclipse_details(ec))
+                             when, pills, self._eclipse_details(ec),
+                             (t("eclipse_map.button"), lambda _=False, e=ec: self._show_eclipse_map(e)))
         self._evt_layout.addStretch()
+
+    def _show_eclipse_map(self, ec):
+        """Fenêtre : l'éclipse projetée au sol (bande, ligne de centralité, partialité)."""
+        solar = ec["type"] == "solar"
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            if solar:
+                scene = AstroEngine.eclipse_map(ec["greatest"], "solar")
+            else:
+                durations = ec.get("durations") or {}
+                minutes = durations.get("partial") or durations.get("penumbral") or 120.0
+                scene = AstroEngine.eclipse_map(ec["greatest"], "lunar", half_span_hours=minutes / 120.0)
+        finally:
+            QApplication.restoreOverrideCursor()
+        sub_type = t(f"events.subtype_{ec['sub_type']}")
+        when = (ec["greatest"] + timedelta(seconds=30)).strftime("%d/%m/%Y %H:%M")
+        labels = {
+            "title": tf("eclipse_map.title", eclipse=t("events.solar_eclipse" if solar
+                                                       else "events.lunar_eclipse"),
+                        type=sub_type.lower(), date=f"{when} {t('chart.ut')}"),
+            "greatest": t("eclipse_map.greatest"), "observer": t("eclipse_map.observer"),
+            "central": t("eclipse_map.central"), "partial": t("eclipse_map.partial"),
+            "path": t("eclipse_map.path_annular" if ec["sub_type"] == "annular"
+                      else "eclipse_map.path_total"),
+            "moon_up": t("eclipse_map.moon_up"), "limits": t("eclipse_map.limits"),
+            "decimal": _locale().decimalPoint(),
+        }
+        dlg = QDialog(self)
+        dlg.setWindowTitle(t("eclipse_map.window_title"))
+        dlg.resize(1000, 640)
+        lay = QVBoxLayout(dlg)
+        fig = Figure(facecolor=Config.CIEL_100)
+        canvas = FigureCanvasQTAgg(fig)
+        lay.addWidget(canvas, stretch=1)
+        observer = (self._lat, self._lon) if self._lat is not None else None
+        charts.draw_eclipse_map(fig, scene, labels, observer)
+        lay.addWidget(_label(t("eclipse_map.note_solar" if solar else "eclipse_map.note_lunar"),
+                             "legende", wrap=True))
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        buttons.rejected.connect(dlg.reject)
+        lay.addWidget(buttons)
+        canvas.draw_idle()
+        self._eclipse_dialog = dlg
+        dlg.show()
 
     def _search_conjunctions_gui(self):
         """Recherche et affiche les conjonctions et oppositions sur 12 mois."""

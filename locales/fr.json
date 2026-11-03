@@ -31,8 +31,6 @@
     "calculate_tip": "Calculer pour la date et le lieu saisis ({key})",
     "live": "Suivre en temps réel",
     "live_tip": "Suivre l'heure actuelle, avec mise à jour automatique ({key})",
-    "export": "Exporter en PDF",
-    "export_tip": "Éphémérides du jour au format PDF ({key})",
     "lat_error": "Saisir une latitude entre −90 et 90",
     "lon_error": "Saisir une longitude entre −180 et 180"
   },
@@ -82,6 +80,22 @@
     "note_angular_ecliptic_sun": "Angles : longitude et latitude écliptiques vues du Soleil (J2000).",
     "note_angular_ecliptic_earth": "Angles : longitude et latitude écliptiques vues de la Terre (apparentes, équinoxe vrai de la date).",
     "note_observation": "Magnitude, angle au Soleil et constellation : vus de la Terre."
+  },
+  "eclipse_map": {
+    "button": "Carte",
+    "button_tip": "L'éclipse projetée au sol",
+    "window_title": "Éclipse projetée au sol",
+    "title": "{eclipse} {type} — maximum le {date}",
+    "greatest": "Maximum de l'éclipse",
+    "observer": "Lieu choisi",
+    "central": "Ligne de centralité",
+    "path_total": "Bande de totalité",
+    "path_annular": "Bande d'annularité",
+    "partial": "Partialité (magnitude maximale)",
+    "moon_up": "Lune levée au maximum",
+    "limits": "Limites au début et à la fin de la phase partielle",
+    "note_solar": "Bande : ombre (ou antiombre) de la Lune au sol, minute par minute ; courbes : magnitude maximale de la partialité, Soleil levé. Calcul JPL DE440, ellipsoïde WGS84.",
+    "note_lunar": "Zone claire : la Lune est levée au maximum de l'éclipse ; tirets : limite de la Lune levée au début et à la fin de la phase partielle (ou pénombrale)."
   },
   "status": {
     "stars_one": "{n} étoile visible",
@@ -176,12 +190,15 @@
     "neptune": "Neptune",
     "pluto": "Pluton",
     "col_planet": "Planète",
-    "col_ra": "Ascension droite",
+    "col_ra": "Asc. droite",
     "col_dec": "Déclinaison",
     "col_alt": "Hauteur",
     "col_az": "Azimut",
-    "col_dist": "Distance",
-    "col_elong": "Élongation",
+    "col_dist": "Distance (UA)",
+    "col_elong": "Élong.",
+    "col_rise": "Lever",
+    "col_transit": "Culm.",
+    "col_set": "Coucher",
     "col_state": "Visibilité",
     "orrery_inner": "Système solaire interne",
     "orrery_outer": "Système solaire externe",
@@ -228,6 +245,7 @@
     "type_sun": "Étoile (notre Soleil)",
     "type_moon": "Satellite naturel de la Terre",
     "constellation": "Constellation",
+    "designation": "Désignation",
     "mag": "Magnitude",
     "ra": "Ascension droite",
     "dec": "Déclinaison",
@@ -294,14 +312,6 @@
     "geoloc_ip": "Position approximative d'après l'adresse IP : {city}, {country} — souvent celle du fournisseur d'accès. Activez le service de localisation du système, ou saisissez vos coordonnées.",
     "geoloc_fail": "Position indéterminée.",
     "geoloc_network": "Impossible de joindre le service de géolocalisation. Vérifiez votre connexion.\n\nDétail : {detail}"
-  },
-  "pdf": {
-    "title": "Export PDF",
-    "dialog": "Enregistrer le rapport PDF",
-    "filter": "Fichiers PDF (*.pdf)",
-    "saved": "Rapport enregistré :\n{path}",
-    "open": "Ouvrir",
-    "error": "L'export PDF a échoué :\n{detail}"
   },
   "settings": {
     "time_format": "Format de l'heure",

@@ -29,6 +29,8 @@ def parse_args(argv):
         prog="main.py", description="Céleste — observatoire astronomique")
     parser.add_argument("--lang", help="langue de l'interface : auto, fr, en, es, de")
     parser.add_argument("--theme", help="thème : nuit, jour, observation")
+    parser.add_argument("--self-test", action="store_true",
+                        help="ouvre la fenêtre, calcule, puis quitte (vérifie un exécutable)")
     args, _qt_args = parser.parse_known_args(argv)
     return args
 
@@ -84,6 +86,14 @@ def main(argv=None):
         return 1
     window = AstroApp()
     window.show()
+    if args.self_test:
+        window.calculate()
+        from engine import AstroEngine
+        from config import APP_VERSION
+        AstroEngine.find_eclipses(window._dte, num_months=1)
+        print(f"Céleste {APP_VERSION} self-test OK: {window.tz_menu.currentText()}, "
+              f"{len(window.visible_stars)} stars")
+        return 0
 
     # Géolocalisation au démarrage si elle est activée dans les paramètres
     if prefs.get("auto_geoloc"):

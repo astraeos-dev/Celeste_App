@@ -27,6 +27,9 @@ v4.1:
     topocentric; ecliptic, equatorial or horizontal; angles and x, y, z
   • observations() — visual magnitude, angle with the Sun and constellation
     of the Sun, the Moon and the planets from Mercury to Pluto
+  • eclipse_map() — an eclipse projected on the ground: central line, path of
+    totality or annularity and zone of partiality of a solar eclipse; where
+    the Moon is up during a lunar eclipse
 
 The ephemeris (32 MB) is looked for in data/ next to this module, then in
 ~/.celeste (or $CELESTE_DATA), where it is downloaded from the JPL/NAIF
@@ -44,7 +47,7 @@ import numpy as np
 from skyfield import almanac
 from skyfield.api import Loader, Star, load_constellation_map, load_constellation_names, wgs84
 from skyfield.magnitudelib import planetary_magnitude
-from skyfield.framelib import ecliptic_frame, ecliptic_J2000_frame, true_equator_and_equinox_of_date
+from skyfield.framelib import ecliptic_frame, ecliptic_J2000_frame, itrs, true_equator_and_equinox_of_date
 
 # ==========================================================
 # CONSTANTS
@@ -65,6 +68,15 @@ _PLANETS = {"Mercury": "mercury", "Venus": "venus", "Mars": "mars barycenter",
             "Jupiter": "jupiter barycenter", "Saturn": "saturn barycenter",
             "Uranus": "uranus barycenter", "Neptune": "neptune barycenter",
             "Pluto": "pluto barycenter", "Earth": "earth"}
+
+# The planets of the interface (Pluto, a dwarf planet, only in the coordinates table)
+PLANETS = ("Mercury", "Venus", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune")
+
+# Eclipse projected on the ground: WGS84 ellipsoid, radii of the Sun and the Moon (km)
+_WGS84_A  = 6378.137
+_WGS84_B  = _WGS84_A * (1.0 - 1.0 / 298.257223563)
+_WGS84_E2 = 1.0 - (_WGS84_B / _WGS84_A) ** 2
+_SUN_RADIUS_KM, _MOON_RADIUS_KM = 696000.0, 1737.4
 
 # Visual magnitudes outside Skyfield's planetary models (Mallama & Hilton 2018):
 # Allen's Astrophysical Quantities (4th ed.), V(1,0) and phase coefficients
@@ -647,7 +659,7 @@ class AstroEngine:
         Args:
             dte_ref (datetime): instant of the day, UT (naive or aware).
             lat, lon (float): degrees, east positive.
-            body (str): "sun" or "moon".
+            body (str): "sun", "moon" or a planet name ("Venus"…).
             tz (float | tzinfo): local time zone, hours east of UT or a
                 zoneinfo.ZoneInfo (summer time included); the day searched
                 runs from local midnight to midnight.
@@ -666,12 +678,12 @@ class AstroEngine:
         t1 = cls._time_ut(cls.julian_century_j2000(end))
         sky      = _sky()
         observer = sky["earth"] + wgs84.latlon(lat, lon, elevation_m=elevation_m)
-        target   = sky[body]
+        target   = cls._target(body)
         horizon  = None                                 # Skyfield's standard horizon
         if elevation_m > 0:
             middle = cls._time_ut(cls.julian_century_j2000(start + (end - start) / 2))
             km = sky["earth"].at(middle).observe(target).distance().km
-            horizon = -(_HORIZON_REFRACTION + math.degrees(math.asin(_BODY_RADIUS_KM[body] / km))
+            horizon = -(_HORIZON_REFRACTION + math.degrees(math.asin(_BODY_RADIUS_KM.get(body, 0.0) / km))
                         + _HORIZON_DIP * math.sqrt(elevation_m))
 
         def first(times, crosses=None):
@@ -729,7 +741,8 @@ class AstroEngine:
         return alt.degrees, az.degrees
 
     @classmethod
-    def stars_horizontal(cls, t, lat, lon, ra_hours, dec_degrees, elevation_m=0.0):
+    def stars_horizontal(cls, t, lat, lon, ra_hours, dec_degrees, elevation_m=0.0,
+                         pm_ra_mas=None, pm_dec_mas=None):
         """
         Altitudes and azimuths (degrees, geometric) of stars given by their
         J2000 coordinates (ICRS): precession, nutation and aberration to the
@@ -740,13 +753,18 @@ class AstroEngine:
             t (float): Julian centuries of UT since J2000.0.
             ra_hours, dec_degrees (sequence): J2000 right ascensions (h) and
                 declinations (°).
+            pm_ra_mas, pm_dec_mas (sequence): proper motions (μα·cos δ, μδ),
+                milliseconds of arc a year (none by default).
 
         Returns:
             tuple[numpy.ndarray, numpy.ndarray]: (altitudes, azimuths)
         """
         sky   = _sky()
-        stars = Star(ra_hours=np.asarray(ra_hours, dtype=float),
-                     dec_degrees=np.asarray(dec_degrees, dtype=float))
+        ra = np.asarray(ra_hours, dtype=float)
+        motion = {} if pm_ra_mas is None else {
+            "ra_mas_per_year": np.asarray(pm_ra_mas, dtype=float),
+            "dec_mas_per_year": np.asarray(pm_dec_mas, dtype=float)}
+        stars = Star(ra_hours=ra, dec_degrees=np.asarray(dec_degrees, dtype=float), **motion)
         here  = (sky["earth"] + wgs84.latlon(lat, lon, elevation_m=elevation_m)).at(cls._time_ut(t))
         alt, az, _ = here.observe(stars).apparent().altaz()
         return alt.degrees, az.degrees
@@ -874,6 +892,145 @@ class AstroEngine:
                             "constellation": abbreviation, "constellation_name": name}
         return result
 
+    # ──────────────────────────────────────────────────────────────────
+    # ECLIPSE PROJECTED ON THE GROUND
+    # ──────────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _ellipsoid_hit(origin, direction):
+        """
+        First point where the lines origin + s·direction (s > 0, km, ITRS,
+        arrays of shape (3, n)) meet the WGS84 ellipsoid; NaN where they miss.
+        """
+        k = np.array([[1.0], [1.0], [_WGS84_A / _WGS84_B]])
+        o, d = origin * k, direction * k
+        a = (d * d).sum(0)
+        b = (o * d).sum(0)
+        c = (o * o).sum(0) - _WGS84_A ** 2
+        disc = b * b - a * c
+        with np.errstate(invalid="ignore"):
+            s = (-b - np.sqrt(disc)) / a
+        s = np.where((disc >= 0) & (s > 0), s, np.nan)
+        return origin + s * direction
+
+    @staticmethod
+    def _geodetic(xyz):
+        """Geodetic latitudes and longitudes (degrees) of points on the WGS84 ellipsoid (km)."""
+        x, y, z = xyz
+        lat = np.degrees(np.arctan2(z, (1.0 - _WGS84_E2) * np.hypot(x, y)))
+        return lat, np.degrees(np.arctan2(y, x))
+
+    @staticmethod
+    def _ellipsoid_points(lats, lons):
+        """ITRS positions (km) and upward normals of points of the WGS84 ellipsoid."""
+        phi, lam = np.radians(lats), np.radians(lons)
+        n = _WGS84_A / np.sqrt(1.0 - _WGS84_E2 * np.sin(phi) ** 2)
+        xyz = np.array([n * np.cos(phi) * np.cos(lam), n * np.cos(phi) * np.sin(lam),
+                        n * (1.0 - _WGS84_E2) * np.sin(phi)])
+        up = np.array([np.cos(phi) * np.cos(lam), np.cos(phi) * np.sin(lam), np.sin(phi)])
+        return xyz, up
+
+    @classmethod
+    def _sun_moon_itrs(cls, time):
+        """Apparent geocentric Sun and Moon in the Earth-fixed frame (ITRS), km, shape (3, n)."""
+        sky   = _sky()
+        earth = sky["earth"].at(time)
+        return tuple(earth.observe(sky[b]).apparent().frame_xyz(itrs).km for b in ("sun", "moon"))
+
+    @classmethod
+    def eclipse_map(cls, greatest, kind, half_span_hours=3.5, grid_step=1.5):
+        """
+        An eclipse projected on the ground, around its greatest instant (DE440,
+        WGS84 ellipsoid, Earth-fixed frame).
+
+        Solar eclipse:
+          • central  — central line: where the axis of the Moon's shadow meets
+            the ground, minute by minute (lat, lon arrays; NaN off the Earth);
+          • path     — footprints of the umbra (total) or antumbra (annular)
+            on the ground, minute by minute (list of (lats, lons) polygons);
+          • grid     — maximum magnitude reached at each point of a grid while
+            the Sun is up (lats, lons, 2D array; 0 outside the partiality);
+          • greatest — point of the central line at greatest eclipse, or the
+            point of the Earth nearest the axis for a partial eclipse.
+        Lunar eclipse:
+          • grid     — altitude of the Moon (degrees) at greatest eclipse, and
+            at the start and end of the partial phase (or of the penumbral one);
+          • greatest — point where the Moon is at the zenith at greatest eclipse.
+
+        Args:
+            greatest (datetime): instant of greatest eclipse, UT.
+            kind (str): "solar" or "lunar".
+            half_span_hours (float): solar: the shadow is followed from
+                greatest − half_span to greatest + half_span.
+            grid_step (float): degrees between the grid points.
+
+        Returns:
+            dict: the elements above, with "kind".
+        """
+        sky = _sky()
+        jd0 = cls.julian_day(greatest)
+        lats = np.arange(-90.0 + grid_step / 2, 90.0, grid_step)
+        lons = np.arange(-180.0 + grid_step / 2, 180.0, grid_step)
+        glat, glon = np.meshgrid(lats, lons, indexing="ij")
+        points, up = cls._ellipsoid_points(glat.ravel(), glon.ravel())
+
+        if kind == "lunar":
+            result = {"kind": "lunar", "lats": lats, "lons": lons}
+            for key, offset in (("at_greatest", 0.0), ("at_start", -1.0), ("at_end", 1.0)):
+                _sun, moon = cls._sun_moon_itrs(sky["ts"].ut1_jd(jd0 + offset * half_span_hours / 24.0))
+                v = moon[:, None] - points
+                alt = np.degrees(np.arcsin((v * up).sum(0) / np.linalg.norm(v, axis=0)))
+                result[key] = alt.reshape(glat.shape)
+            _sun, moon = cls._sun_moon_itrs(sky["ts"].ut1_jd(jd0))
+            result["greatest"] = tuple(float(v) for v in cls._geodetic(moon / np.linalg.norm(moon)
+                                                                     * _WGS84_A))
+            return result
+
+        # ── solar: the shadow followed minute by minute ───────────────────────
+        minutes = np.arange(-60.0 * half_span_hours, 60.0 * half_span_hours + 1.0)
+        sun, moon = cls._sun_moon_itrs(sky["ts"].ut1_jd(jd0 + minutes / 1440.0))
+        axis = moon - sun
+        axis /= np.linalg.norm(axis, axis=0)
+        central = cls._ellipsoid_hit(moon, axis)
+        c_lat, c_lon = cls._geodetic(central)
+
+        # umbra / antumbra: cone through the Moon's limb and the apex of the umbra
+        distance = np.linalg.norm(sun - moon, axis=0)
+        apex = moon + axis * (_MOON_RADIUS_KM * distance / (_SUN_RADIUS_KM - _MOON_RADIUS_KM))
+        u = np.cross(axis.T, [0.0, 0.0, 1.0]).T
+        u /= np.linalg.norm(u, axis=0)
+        w = np.cross(axis.T, u.T).T
+        path = []
+        for i in np.flatnonzero(~np.isnan(c_lat)):
+            angles = np.linspace(0.0, 2.0 * np.pi, 33)
+            limb = moon[:, i:i + 1] + _MOON_RADIUS_KM * (np.cos(angles) * u[:, i:i + 1]
+                                                          + np.sin(angles) * w[:, i:i + 1])
+            towards = apex[:, i:i + 1] - limb
+            ground = cls._ellipsoid_hit(limb, towards / np.linalg.norm(towards, axis=0))
+            if not np.isnan(ground).any():
+                path.append(cls._geodetic(ground))
+
+        # partiality: maximum magnitude while the Sun is up, every 4 minutes
+        best = np.zeros(points.shape[1])
+        for i in range(0, len(minutes), 4):
+            vs, vm = sun[:, i:i + 1] - points, moon[:, i:i + 1] - points
+            ds, dm = np.linalg.norm(vs, axis=0), np.linalg.norm(vm, axis=0)
+            rs, rm = np.arcsin(_SUN_RADIUS_KM / ds), np.arcsin(_MOON_RADIUS_KM / dm)
+            sep = np.arccos(np.clip((vs * vm).sum(0) / (ds * dm), -1.0, 1.0))
+            mag = np.clip((rs + rm - sep) / (2.0 * rs), 0.0, None)
+            mag[(vs * up).sum(0) <= 0.0] = 0.0                   # Sun below the horizon
+            best = np.maximum(best, mag)
+
+        middle = len(minutes) // 2
+        if np.isnan(c_lat[middle]):                              # partial: nearest point to the axis
+            k = int(np.argmax(best))
+            greatest_point = (float(glat.ravel()[k]), float(glon.ravel()[k]))
+        else:
+            greatest_point = (float(c_lat[middle]), float(c_lon[middle]))
+        return {"kind": "solar", "central": (c_lat, c_lon), "path": path,
+                "lats": lats, "lons": lons, "grid": best.reshape(glat.shape),
+                "greatest": greatest_point, "minutes": minutes}
+
     @classmethod
     def moon_phase(cls, t):
         """
@@ -955,7 +1112,7 @@ class AstroEngine:
         Returns:
             list[dict]: sorted by date, keys: date, type, bodies, separation, details
         """
-        planets = ["Venus", "Mars", "Jupiter", "Saturn"]
+        planets = list(PLANETS)
         pairs   = [(a, b) for i, a in enumerate(planets) for b in planets[i+1:]]
         days    = [dte_start + timedelta(days=day) for day in range(num_days)]
         if not days:
@@ -996,7 +1153,7 @@ class AstroEngine:
                         results.append({'date': dte-timedelta(days=1), 'type': 'conjunction',
                                         'bodies': (pname,'Sun'), 'separation': p1,
                                         'details': f"{pname} in solar conjunction: {p1:.1f}°"})
-                    if (pname in ("Mars","Jupiter","Saturn")
+                    if (pname not in ("Mercury", "Venus")
                             and p1 > p2 and p1 > elong and p1 > 175.0):
                         results.append({'date': dte-timedelta(days=1), 'type': 'opposition',
                                         'bodies': (pname,'Sun'), 'separation': p1,
@@ -1210,6 +1367,11 @@ def _new_moons(bucket):
 def _constellations():
     """IAU constellation boundaries and Latin names (data shipped with Skyfield)."""
     return load_constellation_map(), dict(load_constellation_names())
+
+
+def constellation_names():
+    """{IAU abbreviation: Latin name} of the 88 constellations."""
+    return _constellations()[1]
 
 
 def _constellation(position):

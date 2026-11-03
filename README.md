@@ -30,11 +30,12 @@ Jour et Observation), avec des graphiques interactifs et une carte du ciel.
   commune par OpenStreetMap ; à défaut, position approximative d'après l'adresse IP (ip-api.com), signalée comme telle
 - **Trajectoire sur 24 h** — courbes de hauteur sur un fond coloré selon le moment de la journée (jour, crépuscules, nuit),
   sur le jour local (heure locale en bas, TU en haut), info-bulle au survol
-- **Carte du ciel polaire** — zénith au centre, étoiles (ramenées à la date : précession, nutation, aberration) à la
-  taille de leur magnitude, constellations, planètes ;
+- **Carte du ciel polaire** — zénith au centre, 513 étoiles jusqu'à la magnitude 4 (Yale Bright Star Catalogue, ramenées
+  à la date : mouvement propre, précession, nutation, aberration) à la taille de leur magnitude, constellations, planètes ;
   info-bulle au survol et fiche détaillée au clic (constellation, magnitude, coordonnées)
-- **Planètes** — tableau de Vénus, Mars, Jupiter et Saturne (coordonnées, distance, élongation, visibilité) et système
-  solaire vu de dessus, en vue rapprochée et en vue d'ensemble
+- **Planètes** — Mercure, Vénus, Mars, Jupiter, Saturne, Uranus et Neptune : coordonnées, hauteur et azimut, distance,
+  élongation, heures de lever, de culmination et de coucher (nom atténué sous l'horizon) ; système solaire vu de dessus,
+  interne et externe
 - **Coordonnées** — Soleil, Lune, planètes de Mercure à Pluton et Terre, avec en même temps x, y, z et distance
   (héliocentriques, géocentriques ou topocentriques) et deux angles (équatoriaux ou horizontaux vus du lieu, écliptiques
   vus du Soleil ou de la Terre), magnitude, angle au Soleil et constellation ; angles au format des paramètres, ou en
@@ -43,16 +44,18 @@ Jour et Observation), avec des graphiques interactifs et une carte du ciel.
 - **Prévision des éclipses** — éclipses de Soleil (totale, annulaire, hybride, partielle ; magnitude, durée de la phase
   centrale) et de Lune (totale, partielle, pénombrale ; magnitudes d'ombre et de pénombre, durée de chaque phase), avec
   l'heure du maximum
+- **Éclipse projetée au sol** — bouton « Carte » de chaque éclipse : bande de totalité ou d'annularité, ligne de
+  centralité, magnitude maximale de la partialité et point du maximum (éclipses de Soleil) ; zone où la Lune est levée
+  (éclipses de Lune) ; sur un fond Natural Earth, avec le lieu choisi
 - **Conjonctions et oppositions** — prochains événements planétaires
 - **Équation du temps** — écart entre temps solaire vrai et temps solaire moyen
 - **Favoris** — enregistrement des lieux (37 villes préchargées)
 - **Fuseaux horaires** — conversion TU → heure locale par sélecteur UTC±N
-- **Export PDF** — éphémérides du jour
 - **Interface multilingue** — français, anglais, espagnol, allemand ; langue du système par défaut, changement immédiat
   dans les paramètres (ou `--lang`)
 - **Thèmes** — Nuit (sombre), Jour (clair) et Observation (rouge sur noir, pour garder la vision de nuit), choisis en bas
   de la barre latérale sans redémarrer (ou `--theme`)
-- **Raccourcis clavier** — `F5` calculer, `Ctrl+L` temps réel, `Ctrl+E` export PDF
+- **Raccourcis clavier** — `F5` calculer, `Ctrl+L` temps réel
 - **Réglages persistants** — thème, langue, format de l'heure, lieu de démarrage, magnitude limite, intervalle temps réel
   (`~/.celeste/settings.json`, hors du dépôt)
 
@@ -107,7 +110,6 @@ Changer la date recalcule tout au bout d'un instant.
 - **Calculer** (`F5`) — lance les calculs pour la date et le lieu saisis
 - **Suivre en temps réel** (`Ctrl+L`) — bouton à bascule : suit l'heure actuelle tant qu'il reste enfoncé (intervalle
   réglable dans les paramètres)
-- **Exporter en PDF** (`Ctrl+E`) — exporte les éphémérides du jour en PDF
 - **Nuit · Jour · Observation** — sélecteur de thème, en bas de la barre latérale
 
 **Événements :** les deux boutons de l'onglet cherchent les éclipses des 12 prochaines lunaisons et les conjonctions de
@@ -142,7 +144,7 @@ L'interface et les graphiques suivent le design system Astræos :
   des libellés sans capitales ; un contraste du texte d'au moins 4,5:1 dans les trois thèmes (vérifié par
   `tests/test_config.py`).
 
-L'export PDF garde sa propre mise en page. Polices IBM Plex (© IBM) et Astraeos Symboles (d'après Noto Sans Symbols)
+Polices IBM Plex (© IBM) et Astraeos Symboles (d'après Noto Sans Symbols)
 sous licence SIL Open Font License 1.1 ; icônes Material Design Icons (Pictogrammers) sous licence Apache 2.0 : voir
 `fonts/README.md` et `assets/README.md`.
 
@@ -163,13 +165,14 @@ Celeste_App/
 ├── icons.py             # Icônes Material Design (SVG) et symbole Astræos aux couleurs du thème
 ├── i18n.py              # Internationalisation — traductions par clé avec repli
 ├── settings.py          # Préférences persistantes (~/.celeste/settings.json)
-├── constellations.py    # Catalogue d'étoiles et tracés des constellations
-├── export_pdf.py        # Export PDF des éphémérides
+├── constellations.py    # Tracés des constellations et noms de leurs étoiles
+├── star_catalog.py      # 513 étoiles brillantes (Yale Bright Star Catalogue, magnitude < 4), généré
 ├── favorites_default.json # Lieux préchargés (36 villes), copiés dans ~/.celeste au premier enregistrement
 ├── locales/             # Traductions (fr.json est la référence)
 ├── fonts/               # Polices IBM Plex Sans, IBM Plex Mono et Astraeos Symboles (licence OFL)
 ├── assets/              # Symbole et icône Astræos (SVG), licence des icônes
-├── scripts/             # Scripts annexes (fiche haute précision Skyfield/INPOP)
+├── scripts/             # Construction de l'application, génération du catalogue d'étoiles, fiche haute précision
+├── celeste.spec         # Recette PyInstaller de l'application autonome
 ├── requirements.txt     # Dépendances d'exécution
 ├── requirements-dev.txt # Dépendances de développement (pytest)
 └── tests/               # Tests unitaires (moteur, graphiques, interface, thèmes, i18n, utilitaires)
@@ -197,14 +200,15 @@ est téléchargée depuis le serveur JPL/NAIF au premier lancement.
 | `ecliptic_to_equatorial(l, b, t)` | Écliptique → équatorial (AD, Déc), obliquité vraie (IAU 2006 + nutation) |
 | `equatorial_to_horizontal(jd, lat, lon, ra, dec)` | Équatorial → horizontal (hauteur, azimut), temps sidéral apparent |
 | `elevation_correction(h, p)` | Parallaxe en hauteur (π cos h), puis réfraction atmosphérique |
-| `find_events(dte, lat, lon, body, tz, elevation_m)` | Lever, coucher (bord supérieur), culmination, crépuscules sur le jour local (fuseau IANA, heure d'été comprise), à la seconde ; l'altitude abaisse l'horizon |
+| `find_events(dte, lat, lon, body, tz, elevation_m)` | Soleil, Lune ou planète : lever, coucher (bord supérieur), culmination, crépuscules sur le jour local (fuseau IANA, heure d'été comprise), à la seconde ; l'altitude abaisse l'horizon |
 | `horizontal(t, lat, lon, body, elevation_m, refraction)` | Hauteur et azimut topocentriques (vus du lieu, parallaxe comprise) |
 | `coordinates(t, body, center, frame, lat, lon)` | Coordonnées dans le système choisi : héliocentriques (géométriques, J2000) ou géo/topocentriques (apparentes, de la date) ; écliptiques, équatoriales ou horizontales ; angles et x, y, z |
+| `eclipse_map(greatest, kind)` | Éclipse projetée au sol : ligne de centralité, bande d'ombre, partialité (Soleil) ; Lune levée (Lune) |
 | `observations(t, bodies)` | Magnitude visuelle, angle au Soleil et constellation (UAI), vus de la Terre |
 | `moon_phase(t)` | Fraction éclairée de la Lune (%) et âge depuis la dernière nouvelle lune vraie |
 | `altitudes(dtes, lat, lon, elevation_m)` | Hauteurs du Soleil et de la Lune à une série d'instants, en un calcul vectorisé |
 | `planet_heliocentric(t, name)` | Position héliocentrique écliptique J2000 (x, y, z en UA), Terre comprise |
-| `planet_position(t, name)` | Position géocentrique apparente : AD, Déc et distance (Vénus, Mars, Jupiter, Saturne) |
+| `planet_position(t, name)` | Position géocentrique apparente : AD, Déc et distance (Mercure à Pluton) |
 | `equation_of_time(t)` | Équation du temps en minutes |
 | `angular_separation(ra1, dec1, ra2, dec2)` | Séparation angulaire entre deux astres |
 | `find_conjunctions(dte_start, num_days)` | Prochaines conjonctions et oppositions |
@@ -231,6 +235,31 @@ affiché est redessiné ; les autres le sont quand on les ouvre.
 - **Fred Espenak et Jean Meeus**, *Five Millennium Canon of Solar Eclipses* et *Five Millennium Canon of Lunar
   Eclipses*, NASA — valeurs de référence des tests d'éclipses
 - **JPL Horizons** et **USNO** (aa.usno.navy.mil) — valeurs de référence des tests de positions, levers et couchers
+- **D. Hoffleit et W. H. Warren** (1991), *Yale Bright Star Catalogue*, 5e éd. — étoiles de la carte du ciel (domaine public)
+- **Natural Earth** (naturalearthdata.com), terres au 1/110 000 000 — fond de carte des éclipses (domaine public)
+
+---
+
+## Application autonome
+
+Céleste se construit en application autonome pour Windows, macOS et Linux avec [PyInstaller]. L'éphéméride JPL est
+incluse : l'application fonctionne hors ligne dès le premier lancement.
+
+- **Depuis GitHub** : onglet *Actions*, workflow « Build — application autonome », bouton *Run workflow* (ou pousser un
+  tag `v*`). Chaque système produit une archive `Celeste-<version>-<système>.zip` dans les artefacts du run.
+- **Sur sa machine** (construit pour le système en cours) :
+
+```bash
+pip install pyinstaller
+python scripts/build_exe.py
+```
+
+Le script place l'éphéméride dans `data/`, dessine les icônes depuis `assets/astraeos-icone.svg`, lance PyInstaller
+(`celeste.spec`), vérifie que l'application démarre (`--self-test`) et crée l'archive dans `dist/`. Les applications ne
+sont pas signées : au premier lancement, Windows (SmartScreen) et macOS (Gatekeeper : clic droit, *Ouvrir*) demandent
+une confirmation. Sous macOS, l'accès à la position est demandé à la première géolocalisation.
+
+[PyInstaller]: https://pyinstaller.org/
 
 ---
 
@@ -240,7 +269,6 @@ affiché est redessiné ; les autres le sont quand on les ouvre.
 |--------|-------------|------|
 | [PyQt6](https://www.riverbankcomputing.com/software/pyqt/) | 6.5 | Interface graphique (Qt 6) |
 | [matplotlib](https://matplotlib.org/) | 3.10.8 | Graphiques astronomiques interactifs |
-| [reportlab](https://www.reportlab.com/) | 4.0 | Export PDF |
 | [Skyfield](https://rhodesmill.org/skyfield/) | 1.47 | Éphéméride JPL DE440, temps (TU1, ΔT), levers et couchers (installe NumPy) |
 | [timezonefinder](https://github.com/jannikmi/timezonefinder) | 6.5 | Fuseau IANA d'un lieu, hors ligne (mode « Automatique ») |
 | [tzdata](https://pypi.org/project/tzdata/) | — | Base des fuseaux IANA pour `zoneinfo` (indispensable sous Windows) |
@@ -277,7 +305,6 @@ avec le projet (`fonts/`, `assets/`) : rien à installer.
 - [x] Favoris — enregistrement des lieux (`~/.celeste/favorites.json`)
 - [x] Fuseaux horaires IANA, heure d'été comprise ; « Automatique » prend celui du lieu (timezonefinder)
 - [x] Altitude de l'observateur (abaissement de l'horizon), positions topocentriques, phase exacte de la Lune
-- [x] **Export** — éphémérides du jour en PDF
 - [x] **Interface multilingue** — FR / EN / ES / DE
 - [x] **Réglages persistants** — langue, thème, lieu, intervalle temps réel (`~/.celeste/settings.json`)
 - [ ] **Historique des calculs** — derniers calculs rechargeables en un clic
@@ -288,7 +315,7 @@ avec le projet (`fonts/`, `assets/`) : rien à installer.
 
 - [x] **Tests unitaires** — pytest sur le moteur, les graphiques, l'interface (hors écran), les thèmes, `utils.py` et
   `i18n.py` (7 fichiers, ~290 cas)
-- [ ] **Exécutable** — PyInstaller `.exe` (Windows) / `.app` (macOS)
+- [x] **Exécutable** — application autonome pour Windows, macOS et Linux (PyInstaller), éphéméride incluse
 
 ---
 

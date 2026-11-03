@@ -186,6 +186,17 @@ class TestSkyScene:
 # 3. Orrery
 # ──────────────────────────────────────────────────────────────────────
 
+def _distance_to_polyline(point, polyline):
+    """Distance from a point to the nearest segment of a polyline (plane)."""
+    px, py = point
+    best = float("inf")
+    for (ax, ay), (bx, by) in zip(polyline, polyline[1:]):
+        dx, dy = bx - ax, by - ay
+        k = max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / ((dx * dx + dy * dy) or 1.0)))
+        best = min(best, math.hypot(px - ax - k * dx, py - ay - k * dy))
+    return best
+
+
 class TestOrreryScene:
     def test_orbits_close_and_contain_the_planet(self):
         scene = charts.orrery_scene(AstroEngine.julian_century_j2000(DTE), samples=90)
@@ -196,7 +207,15 @@ class TestOrreryScene:
             # DE440 orbits are perturbed (Jupiter–Saturn): closed to 1 % of the radius
             gap = math.hypot(first[0] - last[0], first[1] - last[1])
             assert gap < 0.01 * math.hypot(*first), name
-            assert math.hypot(first[0] - body["x"], first[1] - body["y"]) < 1e-9, name
+            # the planet is on its orbit (from now, or shifted within the ephemeris
+            # for Uranus and Neptune): within 1 % of the radius of a sampled segment
+            radius = math.hypot(body["x"], body["y"])
+            assert _distance_to_polyline((body["x"], body["y"]), orbit) < 0.01 * radius, name
+
+    def test_seven_planets_and_long_orbits_within_the_ephemeris(self):
+        """Neptune (165 years) is traced within 1850–2149 instead of up to 2191."""
+        scene = charts.orrery_scene(AstroEngine.julian_century_j2000(DTE), samples=90)
+        assert list(scene["planets"]) == list(PLANET_LABELS)
 
     def test_earth_one_au_from_the_sun(self):
         scene = charts.orrery_scene(AstroEngine.julian_century_j2000(DTE), samples=12)
@@ -211,7 +230,7 @@ class TestOrreryScene:
 LABELS_TRAJ = {"title": "T", "xlabel": "Local", "ylabel": "Alt", "top_axis": "UT",
                "sun": "Sun", "moon": "Moon", "day": "Day", "civil": "Civil",
                "nautical": "Nautical", "astronomical": "Astro", "night": "Night"}
-PLANET_LABELS = {"Venus": "Venus", "Mars": "Mars", "Jupiter": "Jupiter", "Saturn": "Saturn"}
+PLANET_LABELS = {p: p for p in ("Mercury", "Venus", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune")}
 
 
 @pytest.mark.parametrize("theme", ["nuit", "jour", "observation"])

@@ -4,7 +4,7 @@ tests/test_gui.py — Tests de l'interface PyQt6 (sans écran)
 Construit la fenêtre de Céleste hors écran (QT_QPA_PLATFORM=offscreen) et
 la pilote : calcul, changement de langue et de thème (Nuit, Jour,
 Observation) sans redémarrer, favoris, recherche d'événements, info-bulles
-et fiches de la carte du ciel, temps réel, export PDF ; vérifie aussi deux
+et fiches de la carte du ciel, temps réel ; vérifie aussi deux
 règles du design Astræos (pas d'emoji, symboles suivis de U+FE0E).
 
 Les préférences et les favoris sont écrits dans un dossier temporaire : ceux
@@ -109,8 +109,10 @@ class TestCalculation:
 
     def test_planet_table(self, window):
         items = window._planet_items["Saturn"]
-        assert items["col_dist"].text().endswith("UA")
-        assert items["col_state"].text() == "Visible"
+        assert re.match(r"^\d+,\d{4}$", items["col_dist"].text())      # l'unité est dans l'en-tête
+        assert items["col_planet"].toolTip() == "Visible"
+        assert re.match(r"^\d\d:\d\d$", items["col_rise"].text())
+        assert window.planet_table.rowCount() == 7                         # Mercure à Neptune
 
     def test_invalid_latitude_is_flagged_without_dialog(self, window):
         """L'erreur s'affiche sous le champ (ChampSaisie), sans fenêtre."""
@@ -351,7 +353,7 @@ class TestSkyMapAndTrajectory:
 
 
 # ──────────────────────────────────────────────────────────────────────
-# 6. Temps réel et export PDF
+# 6. Temps réel
 # ──────────────────────────────────────────────────────────────────────
 
 class TestLiveAndExport:
@@ -362,16 +364,6 @@ class TestLiveAndExport:
         assert window._edit_datetime() != DTE
         window.btn_live.toggle()
         assert not window.live_mode and not window._live_timer.isActive()
-
-    def test_pdf_report(self, window, tmp_path):
-        from export_pdf import build_data_from_app, generate_report_pdf
-        data = build_data_from_app(window)
-        assert data["location"] == "Cherbourg-en-Cotentin"
-        assert data["date"] == DTE
-        assert data["events"]["sun"]["rise"] == "06:55"
-        path = generate_report_pdf(data, str(tmp_path / "report.pdf"))
-        with open(path, "rb") as f:
-            assert f.read(5) == b"%PDF-"
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -621,4 +613,19 @@ class TestUserFiles:
         window._save_favorites()
         assert json.loads((tmp_path / "user" / "favorites.json").read_text(encoding="utf-8")) == \
             window.favorites
+
+
+class TestEclipseMap:
+    def test_map_of_a_solar_eclipse(self, window, qapp):
+        """Le bouton « Carte » d'une éclipse ouvre sa projection au sol."""
+        from PyQt6.QtWidgets import QPushButton
+        window._search_eclipses_gui()
+        qapp.processEvents()
+        buttons = [b for b in window.findChildren(QPushButton) if b.text() == "Carte"]
+        assert buttons, "aucun bouton Carte"
+        buttons[0].click()
+        qapp.processEvents()
+        dlg = window._eclipse_dialog
+        assert dlg.isVisible() and dlg.windowTitle() == "Éclipse projetée au sol"
+        dlg.close()
 

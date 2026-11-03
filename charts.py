@@ -22,6 +22,7 @@ values and ``encre-attenuee`` for labels, the Sun in ``or`` and the Moon in
 """
 
 import logging
+import json
 import math
 
 import numpy as np
@@ -35,8 +36,9 @@ from matplotlib.patches import Circle, Patch
 from matplotlib.ticker import FuncFormatter, MultipleLocator
 
 from config import Config, FONT_SANS, mix
-from constellations import CONSTELLATIONS, STARS
-from engine import AstroEngine, _HORIZON_CORRECTION_SUN
+from constellations import CONSTELLATIONS
+from star_catalog import CATALOG
+from engine import EPHEMERIS_YEARS, AstroEngine, _HORIZON_CORRECTION_SUN
 
 # Astronomical symbols (Astraeos Symboles). Matplotlib never draws emoji, so
 # they go without the U+FE0E selector here.
@@ -334,28 +336,26 @@ def sky_scene(jd, lat, lon, mag_limit, sun, moon, planets):
         lines (at least one end above the horizon), sun, moon, planets;
         every object carries its map position "x", "y".
     """
-    # every catalogue star brought to the date at once (precession, nutation, aberration)
-    names = list(STARS)
+    # the 513 stars of the catalogue brought to the date at once (proper motion,
+    # precession, nutation, aberration); the stars of the figures by their name
     alts, azs = AstroEngine.stars_horizontal(
-        (jd - 2451545.0) / 36525.0, lat, lon,
-        [STARS[n][0] for n in names], [STARS[n][1] for n in names])
-    horizontal = {n: (float(a), float(z)) for n, a, z in zip(names, alts, azs)}
-
-    stars = []
-    for name, (ra, dec, mag) in STARS.items():
-        if mag > mag_limit:
-            continue
-        alt, az = horizontal[name]
-        if alt <= 0:
+        (jd - 2451545.0) / 36525.0, lat, lon, [c[1] for c in CATALOG], [c[2] for c in CATALOG],
+        pm_ra_mas=[c[4] for c in CATALOG], pm_dec_mas=[c[5] for c in CATALOG])
+    stars, horizontal = [], {}
+    for (designation, ra, dec, mag, _pm_ra, _pm_dec, name), alt, az in zip(CATALOG, alts, azs):
+        alt, az = float(alt), float(az)
+        if name:
+            horizontal[name] = (alt, az)
+        if mag > mag_limit or alt <= 0:
             continue
         x, y = sky_xy(alt, az)
-        stars.append({"kind": "star", "name": name, "alt": alt, "az": az,
-                      "ra": ra, "dec": dec, "mag": mag, "x": x, "y": y})
+        stars.append({"kind": "star", "name": name or designation, "designation": designation,
+                      "alt": alt, "az": az, "ra": ra, "dec": dec, "mag": mag, "x": x, "y": y})
 
     lines = []
     for edges in CONSTELLATIONS.values():
         for a, b in edges:
-            if a not in STARS or b not in STARS:
+            if a not in horizontal or b not in horizontal:
                 continue
             (alt1, az1), (alt2, az2) = horizontal[a], horizontal[b]
             if max(alt1, alt2) <= 0:
@@ -395,9 +395,30 @@ def hit_test(objects, x, y, radius=0.06):
     return best
 
 
-def _body_label(ax, x, y, text, color, size=SIZE_LEGENDE, weight=400, dx=8, dy=6):
+def _body_label(ax, x, y, text, color, size=SIZE_LEGENDE, weight=400, dx=8, dy=6,
+                ha="left", va="baseline"):
     ax.annotate(text, (x, y), xytext=(dx, dy), textcoords="offset points",
-                fontsize=size, fontweight=weight, color=color, zorder=8)
+                fontsize=size, fontweight=weight, color=color, zorder=8, ha=ha, va=va)
+
+
+def _label_box(ax, x, y, text, size, dx, dy, ha="left"):
+    """Approximate box (data units) of a label set (dx, dy) points from (x, y), bottom-aligned."""
+    bbox = ax.get_window_extent()
+    (x0, x1), (y0, y1) = ax.get_xlim(), ax.get_ylim()
+    ux, uy = bbox.width / (x1 - x0), bbox.height / (y1 - y0)          # pixels per data unit
+    px = ax.figure.dpi / 72.0                                          # pixels per point
+    width, height = 0.6 * size * px * len(text) / ux, 1.25 * size * px / uy
+    left = x + dx * px / ux - (width if ha == "right" else 0.0)
+    bottom = y + dy * px / uy
+    return left, bottom, left + width, bottom + height
+
+
+def _overlaps(a, b):
+    return not (a[2] < b[0] or b[2] < a[0] or a[3] < b[1] or b[3] < a[1])
+
+
+# Places tried for a planet's label: above right, below right, above left, below left
+_LABEL_PLACES = ((6, 3, "left"), (6, -14, "left"), (-6, 3, "right"), (-6, -14, "right"))
 
 
 def draw_sky_map(fig, scene, labels):
@@ -464,27 +485,42 @@ def draw_sky_map(fig, scene, labels):
                    color=[to_rgba(Config.ENCRE, min(1.0, max(0.45, 1.0 - s["mag"] / 7.0)))
                           for s in stars],
                    linewidths=0, zorder=4)
-        # Name the brightest stars, skipping a label that would sit on top of
-        # the label of a brighter neighbour (Orion's belt, Castor and Pollux)
+    # Planets first, each label at the first of four places free of the other
+    # labels and bodies; then the brightest stars, skipping a label that would
+    # sit on another one (Orion's belt, Castor and Pollux)
+    up = [p for p in scene["planets"] if p["alt"] > 0]
+    taken = [(b["x"] - 0.01, b["y"] - 0.01, b["x"] + 0.01, b["y"] + 0.01)
+             for b in up + [scene["sun"], scene["moon"]] if b["alt"] > 0]
+    for p in up:
+        ax.plot(p["x"], p["y"], "o", color=Config.ENCRE, markersize=4.5,
+                markeredgewidth=0, zorder=6)
+        text = f"{SYMBOL[p['name']]} {labels['planets'].get(p['name'], p['name'])}"
+        own = (p["x"] - 0.01, p["y"] - 0.01, p["x"] + 0.01, p["y"] + 0.01)
+        for dx, dy, ha in _LABEL_PLACES:
+            box = _label_box(ax, p["x"], p["y"], text, SIZE_LEGENDE, dx, dy, ha)
+            if not any(_overlaps(box, other) for other in taken if other != own):
+                break
+        else:
+            dx, dy, ha = _LABEL_PLACES[0]
+            box = _label_box(ax, p["x"], p["y"], text, SIZE_LEGENDE, dx, dy, ha)
+        taken.append(box)
+        _body_label(ax, p["x"], p["y"], text, Config.ENCRE, dx=dx, dy=dy, ha=ha, va="bottom")
+
+    if stars:
         labelled = []
         for s in sorted(stars, key=lambda s: s["mag"]):
             if s["mag"] >= 2.0:
                 break
             if any(math.hypot(s["x"] - x, s["y"] - y) < 0.07 for x, y in labelled):
                 continue
+            box = _label_box(ax, s["x"], s["y"], s["name"], SIZE_LEGENDE * 0.75, 4, 3)
+            if any(_overlaps(box, other) for other in taken):
+                continue
             labelled.append((s["x"], s["y"]))
+            taken.append(box)
             ax.annotate(s["name"], (s["x"], s["y"]), xytext=(4, 3),
                         textcoords="offset points", fontsize=SIZE_LEGENDE * 0.75,
-                        color=Config.ENCRE_ATTENUEE, zorder=5)
-
-    for p in scene["planets"]:
-        if p["alt"] <= 0:
-            continue
-        ax.plot(p["x"], p["y"], "o", color=Config.ENCRE, markersize=4.5,
-                markeredgewidth=0, zorder=6)
-        _body_label(ax, p["x"], p["y"],
-                    f"{SYMBOL[p['name']]} {labels['planets'].get(p['name'], p['name'])}",
-                    Config.ENCRE, dx=6, dy=4)
+                        color=Config.ENCRE_ATTENUEE, zorder=5, va="bottom")
 
     moon = scene["moon"]
     if moon["alt"] > 0:
@@ -510,9 +546,10 @@ def draw_sky_map(fig, scene, labels):
 # ──────────────────────────────────────────────────────────────────────────────
 
 # Sidereal periods (years), to trace one full orbit
-_PERIOD_YEARS = {"Venus": 0.61520, "Mars": 1.88085,
-                 "Jupiter": 11.8622, "Saturn": 29.4571}
-_PLANET_MARKER = {"Venus": 6, "Mars": 5, "Jupiter": 9, "Saturn": 8}
+_PERIOD_YEARS = {"Mercury": 0.24085, "Venus": 0.61520, "Mars": 1.88085,
+                 "Jupiter": 11.8622, "Saturn": 29.4571, "Uranus": 84.0205, "Neptune": 164.79}
+_PLANET_MARKER = {"Mercury": 5, "Venus": 6, "Mars": 5, "Jupiter": 9, "Saturn": 8,
+                  "Uranus": 7, "Neptune": 7}
 
 
 def orrery_scene(t, samples=180):
@@ -527,10 +564,16 @@ def orrery_scene(t, samples=180):
         dict: "earth" and "planets" ({name: ...}), each with "x", "y" (AU)
         and "orbit" (list of (x, y)).
     """
+    # an orbit is traced from now, or shifted back to stay within the ephemeris
+    # (Neptune takes 165 years: 2026 + 165 is past 2149)
+    first, last = ((year - 2000.0) / 100.0 for year in (EPHEMERIS_YEARS[0], EPHEMERIS_YEARS[1] + 1))
+
     def body(name, period_years):
         x, y, _ = AstroEngine.planet_heliocentric(t, name)
+        span = period_years / 100.0
+        start = max(first, min(t, last - span))
         ox, oy, _ = AstroEngine.planet_heliocentric(               # one orbit, at once
-            t + np.linspace(0.0, period_years / 100.0, samples + 1), name)
+            start + np.linspace(0.0, span, samples + 1), name)
         return {"x": float(x), "y": float(y), "orbit": list(zip(ox.tolist(), oy.tolist()))}
 
     planets = {name: body(name, period) for name, period in _PERIOD_YEARS.items()}
@@ -552,8 +595,8 @@ def draw_orrery(fig, scene, labels):
     fig.get_layout_engine().set(w_pad=0.16, h_pad=0.12, wspace=0.08)
     fig.patch.set_facecolor(Config.CIEL_100)
     panels = (
-        (fig.add_subplot(1, 2, 1), 1.8, ("Venus", "Mars"), labels["inner"]),
-        (fig.add_subplot(1, 2, 2), 10.6, ("Jupiter", "Saturn"), labels["outer"]),
+        (fig.add_subplot(1, 2, 1), 1.8, ("Mercury", "Venus", "Mars"), labels["inner"]),
+        (fig.add_subplot(1, 2, 2), 31.5, ("Jupiter", "Saturn", "Uranus", "Neptune"), labels["outer"]),
     )
     earth = scene["earth"]
     for ax, lim, named, title in panels:
@@ -596,3 +639,115 @@ def draw_orrery(fig, scene, labels):
                 text = labels["earth"] if name == "Earth" else labels["planets"][name]
                 _body_label(ax, body["x"], body["y"], f"{SYMBOL[name]} {text}", color,
                             dx=7, dy=6)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# ECLIPSE PROJECTED ON THE GROUND
+# ──────────────────────────────────────────────────────────────────────────────
+
+_WORLD_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "world_land.json")
+_world_rings = []
+
+
+def world_rings():
+    """Coastlines of the lands (Natural Earth 1:110m, public domain): list of (lons, lats)."""
+    if not _world_rings:
+        with open(_WORLD_FILE, encoding="utf-8") as f:
+            for ring in json.load(f)["rings"]:
+                lon, lat = zip(*ring)
+                _world_rings.append((np.array(lon), np.array(lat)))
+    return _world_rings
+
+
+def _wrapped(lons, lats):
+    """A small polygon (shadow footprint) across the 180° meridian, drawn on both sides of the map."""
+    lons, lats = np.asarray(lons), np.asarray(lats)
+    if np.ptp(lons) <= 180.0:
+        return [np.column_stack((lons, lats))]
+    east = np.where(lons < 0.0, lons + 360.0, lons)
+    return [np.column_stack((east, lats)), np.column_stack((east - 360.0, lats))]
+
+
+def _broken_line(lons, lats):
+    """A line with gaps where it leaves the Earth (NaN) or crosses the 180° meridian."""
+    lons, lats = np.array(lons, dtype=float), np.array(lats, dtype=float)
+    jump = np.flatnonzero(np.abs(np.diff(lons)) > 180.0) + 1
+    return np.insert(lons, jump, np.nan), np.insert(lats, jump, np.nan)
+
+
+def draw_eclipse_map(fig, scene, labels, observer=None):
+    """
+    World map of an eclipse projected on the ground (equirectangular).
+
+    Args:
+        fig: matplotlib Figure (cleared first).
+        scene (dict): from ``AstroEngine.eclipse_map``.
+        labels (dict): title, greatest, observer; solar: central, path,
+            partial; lunar: moon_up, limits.
+        observer (tuple | None): (lat, lon) of the place entered.
+    """
+    from matplotlib.collections import PolyCollection
+    from matplotlib.lines import Line2D
+
+    fig.clear()
+    fig.set_layout_engine("constrained")
+    fig.patch.set_facecolor(Config.CIEL_100)
+    ax = fig.add_subplot(1, 1, 1)
+    _style_axes(ax)
+    ax.set_facecolor(mix(Config.CIEL_000, Config.CIEL_100, 0.5))
+    ax.set_xlim(-180, 180)
+    ax.set_ylim(-90, 90)
+    ax.set_aspect("equal")
+    ax.xaxis.set_major_locator(MultipleLocator(60))
+    ax.yaxis.set_major_locator(MultipleLocator(30))
+    ax.xaxis.set_major_formatter(FuncFormatter(lambda v, _p: f"{int(v)}°"))
+    ax.yaxis.set_major_formatter(FuncFormatter(lambda v, _p: f"{int(v)}°"))
+    # Natural Earth already cuts the lands at ±180°: drawn as they are
+    land = [np.column_stack((lon, lat)) for lon, lat in world_rings()]
+    ax.add_collection(PolyCollection(land, facecolors=Config.CIEL_200, edgecolors=Config.ENCRE_ATTENUEE,
+                                     linewidths=0.3, zorder=1))
+    handles = []
+    if scene["kind"] == "solar":
+        levels = [0.001, 0.25, 0.5, 0.75]
+        ax.contourf(scene["lons"], scene["lats"], scene["grid"], levels=levels + [2.0],
+                    colors=[to_rgba(Config.OR, a) for a in (0.10, 0.18, 0.26, 0.34)], zorder=2)
+        lines = ax.contour(scene["lons"], scene["lats"], scene["grid"], levels=levels,
+                           colors=Config.OR, linewidths=0.7, zorder=3)
+        ax.clabel(lines, fmt=lambda v: f"{v:.2f}".replace(".", labels.get("decimal", ".")).rstrip("0")
+                  .rstrip(labels.get("decimal", ".")) if v > 0.01 else "0", fontsize=SIZE_LEGENDE * 0.8)
+        if scene["path"]:
+            path = [poly for lat, lon in scene["path"] for poly in _wrapped(lon, lat)]
+            ax.add_collection(PolyCollection(path, facecolors=to_rgba(Config.OR, 0.85),
+                                             edgecolors="none", zorder=4))
+            handles.append(Patch(color=to_rgba(Config.OR, 0.85), label=labels["path"]))
+        c_lat, c_lon = scene["central"]
+        if not np.all(np.isnan(c_lat)):
+            x, y = _broken_line(c_lon, c_lat)
+            ax.plot(x, y, color=Config.ENCRE, linewidth=0.9, zorder=5)
+            handles.append(Line2D([], [], color=Config.ENCRE, linewidth=0.9, label=labels["central"]))
+        handles.append(Patch(color=to_rgba(Config.OR, 0.26), label=labels["partial"]))
+    else:
+        ax.contourf(scene["lons"], scene["lats"], scene["at_greatest"], levels=[0.0, 90.0],
+                    colors=[to_rgba(Config.LUNE, 0.30)], zorder=2)
+        for key in ("at_start", "at_end"):
+            ax.contour(scene["lons"], scene["lats"], scene[key], levels=[0.0], colors=Config.LUNE,
+                       linewidths=0.9, linestyles="--", zorder=3)
+        handles.append(Patch(color=to_rgba(Config.LUNE, 0.30), label=labels["moon_up"]))
+        handles.append(Line2D([], [], color=Config.LUNE, linewidth=0.9, linestyle="--",
+                              label=labels["limits"]))
+    lat, lon = scene["greatest"]
+    ax.plot(lon, lat, "*", color=Config.ENCRE, markersize=11, markeredgecolor=Config.CIEL_100,
+            markeredgewidth=0.6, zorder=6)
+    handles.append(Line2D([], [], marker="*", linestyle="none", color=Config.ENCRE, markersize=10,
+                          label=labels["greatest"]))
+    if observer is not None:
+        ax.plot(observer[1], observer[0], "o", color=Config.LUNE, markersize=6,
+                markeredgecolor=Config.CIEL_100, markeredgewidth=1, zorder=7)
+        handles.append(Line2D([], [], marker="o", linestyle="none", color=Config.LUNE, markersize=6,
+                              label=labels["observer"]))
+    legend = ax.legend(handles=handles, loc="lower left", fontsize=SIZE_LEGENDE * 0.85,
+                       facecolor=Config.CIEL_100, edgecolor=Config.CIEL_200, labelcolor=Config.ENCRE,
+                       framealpha=0.92)
+    legend.set_zorder(10)
+    _title(fig, ax, labels["title"])
+    return ax

@@ -11,5 +11,9 @@
   "temp_unit": "C",
   "dist_unit": "km",
   "live_interval": 2000,
-  "mag_limit": 6.0
+  "mag_limit": 6.0,
+  "angle_format": "dms",
+  "coord_center": "geocentric",
+  "coord_frame": "equatorial",
+  "coord_repr": "angular"
 }

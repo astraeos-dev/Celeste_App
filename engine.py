@@ -23,6 +23,8 @@ v4.1:
   • horizontal(), moon_phase() — topocentric positions, exact phase
   • stars_horizontal() — J2000 catalogue stars brought to the date
     (precession, nutation, aberration) for the sky map
+  • coordinates() — any body in the chosen system: heliocentric, geocentric or
+    topocentric; ecliptic, equatorial or horizontal; angles and x, y, z
 
 The ephemeris (32 MB) is looked for in data/ next to this module, then in
 ~/.celeste (or $CELESTE_DATA), where it is downloaded from the JPL/NAIF
@@ -39,7 +41,7 @@ from datetime import timedelta, timezone
 import numpy as np
 from skyfield import almanac
 from skyfield.api import Loader, Star, wgs84
-from skyfield.framelib import ecliptic_J2000_frame, true_equator_and_equinox_of_date
+from skyfield.framelib import ecliptic_frame, ecliptic_J2000_frame, true_equator_and_equinox_of_date
 
 # ==========================================================
 # CONSTANTS
@@ -737,6 +739,67 @@ class AstroEngine:
         here  = (sky["earth"] + wgs84.latlon(lat, lon, elevation_m=elevation_m)).at(cls._time_ut(t))
         alt, az, _ = here.observe(stars).apparent().altaz()
         return alt.degrees, az.degrees
+
+    CENTERS = ("heliocentric", "geocentric", "topocentric")
+    FRAMES  = ("ecliptic", "equatorial", "horizontal")
+
+    @classmethod
+    def coordinates(cls, t, body, center="geocentric", frame="equatorial",
+                    lat=0.0, lon=0.0, elevation_m=0.0):
+        """
+        Coordinates of a body in the chosen system, as angles and as x, y, z.
+
+        Centres, following the ephemerides (JPL Horizons, Astronomical Almanac):
+          • heliocentric — geometric position from the Sun's centre, mean
+            ecliptic or equator and equinox of J2000;
+          • geocentric, topocentric — apparent position (light time,
+            aberration, deflection) from the Earth's centre or from the
+            observer, true ecliptic or equator and equinox of the date.
+        Frames: "ecliptic" (λ, β), "equatorial" (α, δ) or "horizontal"
+        (azimuth from the north through the east, altitude without refraction;
+        not for the heliocentric centre).
+
+        Args:
+            t (float): Julian centuries of UT since J2000.0.
+            body (str): "sun", "moon", "earth", "Venus", "Mars", "Jupiter" or "Saturn".
+            lat, lon, elevation_m: observer (topocentric centre, horizontal frame).
+
+        Returns:
+            dict | None: lon (°, [0, 360[: λ, α in degrees or azimuth), lat (°:
+            β, δ or altitude), dist (AU), x, y, z (AU: x towards the equinox, or
+            the north for the horizontal frame, z towards the pole or the
+            zenith); None when the body is the centre itself.
+        """
+        if center not in cls.CENTERS or frame not in cls.FRAMES:
+            raise ValueError(f"unknown system: {center}, {frame}")
+        if frame == "horizontal" and center == "heliocentric":
+            raise ValueError("no horizontal frame for heliocentric coordinates")
+        sky  = _sky()
+        time = cls._time_ut(t)
+        target = sky[body] if body in ("sun", "moon") else sky["eph"][_PLANETS[body.capitalize()]]
+        here = wgs84.latlon(lat, lon, elevation_m=elevation_m)
+        if center == "heliocentric":
+            if body == "sun":
+                return None
+            position = target.at(time) - sky["sun"].at(time)
+            reference = ecliptic_J2000_frame if frame == "ecliptic" else None   # None: ICRS
+        else:
+            if body == "earth":
+                return None
+            origin = sky["earth"] if center == "geocentric" else sky["earth"] + here
+            position = origin.at(time).observe(target).apparent()
+            reference = {"ecliptic": ecliptic_frame, "horizontal": here,
+                         "equatorial": true_equator_and_equinox_of_date}[frame]
+        if reference is None:
+            lat_, lon_, dist = position.radec()
+            lon_deg = lon_.hours * 15.0
+            x, y, z = position.position.au
+        else:
+            lat_, lon_, dist = position.frame_latlon(reference)
+            lon_deg = lon_.degrees
+            x, y, z = position.frame_xyz(reference).au
+        return {"lon": float(lon_deg) % 360.0, "lat": float(lat_.degrees), "dist": float(dist.au),
+                "x": float(x), "y": float(y), "z": float(z)}
 
     @classmethod
     def moon_phase(cls, t):

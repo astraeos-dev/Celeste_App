@@ -140,15 +140,31 @@ def _deg(value, decimals=2, signed=False):
     return f"{_num(value, decimals, signed)}°"
 
 
+def _angle_format():
+    """Format des angles choisi : « dms », « dm » ou « dd » (Formatters.ANGLE_FORMATS)."""
+    fmt = prefs.get("angle_format")
+    return fmt if fmt in Formatters.ANGLE_FORMATS else "dms"
+
+
+def _localized(text):
+    """Séparateur décimal de la langue et vrai signe moins."""
+    text = text.replace(".", _locale().decimalPoint())
+    return "−" + text[1:] if text.startswith("-") else text
+
+
 def _ra(hours):
-    """Ascension droite « 14h 28m 19,0s »."""
-    return Formatters.hms(hours).replace(".", _locale().decimalPoint())
+    """Ascension droite « 14h 28m 19,0s », « 14h 28,317m » ou « 14,47194h »."""
+    return _localized(Formatters.angle(hours % 24.0, _angle_format(), hours=True))
 
 
 def _dec(degrees):
-    """Déclinaison « −14° 38′ 49″ » (signe toujours écrit)."""
-    text = Formatters.dms(degrees).replace("'", "′").replace('"', "″")
-    return text.replace("-", "−") if text.startswith("-") else "+" + text
+    """Angle signé (déclinaison, latitude, hauteur) : « −14° 38′ 49″ », « +14° 38,82′ »…"""
+    return _localized(Formatters.angle(degrees, _angle_format(), signed=True))
+
+
+def _az(degrees):
+    """Angle de 0 à 360° (azimut, longitude) dans le format choisi."""
+    return _localized(Formatters.angle(degrees % 360.0, _angle_format()))
 
 
 def _fmt_offset(offset):
@@ -899,6 +915,7 @@ class AstroApp(QMainWindow):
         self._build_trajectories_tab()
         self._build_skymap_tab()
         self._build_planets_tab()
+        self._build_coordinates_tab()
         self._build_events_tab()
         self._build_settings_tab()
         self.tabs.currentChanged.connect(self._on_tab_changed)
@@ -1278,6 +1295,132 @@ class AstroApp(QMainWindow):
         lay.addWidget(card, stretch=1)
         self._chart_tabs[page] = "orrery"
         self.tabs.addTab(page, t("tabs.planets"))
+
+    # ── Onglet Coordonnées : système et format choisis ───────────────────────
+
+    _COORD_CHOICES = (
+        ("center", AstroEngine.CENTERS, "coord_center"),
+        ("frame", AstroEngine.FRAMES, "coord_frame"),
+        ("repr", ("angular", "cartesian"), "coord_repr"),
+        ("angle", Formatters.ANGLE_FORMATS, "angle_format"),
+    )
+
+    def _build_coordinates_tab(self):
+        page = QWidget()
+        page.setObjectName("page")
+        lay = QVBoxLayout(page)
+        lay.setContentsMargins(0, 16, 0, 16)
+        lay.setSpacing(16)
+
+        row = QHBoxLayout()
+        row.setSpacing(12)
+        self.coord_menus = {}
+        for key, options, pref in self._COORD_CHOICES:
+            menu = QComboBox()
+            for option in options:
+                menu.addItem(t(f"coordinates.{key}_{option}"), option)
+            menu.setCurrentIndex(max(0, menu.findData(prefs.get(pref))))
+            menu.currentIndexChanged.connect(lambda _i, k=key: self._on_coord_choice(k))
+            self.coord_menus[key] = menu
+            row.addWidget(ChampSaisie(t(f"coordinates.{key}"), menu), stretch=1)
+        lay.addLayout(row)
+
+        table = QTableWidget(2 + len(_PLANETS), 4)
+        table.verticalHeader().setVisible(False)
+        table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        table.setShowGrid(False)
+        header = table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        header.setDefaultAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        table.verticalHeader().setDefaultSectionSize(40)
+        mono = QFont()
+        mono.setFamilies(list(_fonts["mono"]))
+        mono.setPixelSize(15)
+        mono.setWeight(QFont.Weight.Medium)
+        for r in range(table.rowCount()):
+            for c in range(table.columnCount()):
+                item = QTableWidgetItem("—")
+                item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+                if c:
+                    item.setFont(mono)
+                table.setItem(r, c, item)
+        table.setFixedHeight(40 * table.rowCount() + header.sizeHint().height() + 4)
+        self.coord_table = table
+        lay.addWidget(table)
+        self._coord_note = _label("", "legende", wrap=True)
+        lay.addWidget(self._coord_note)
+        lay.addStretch(1)
+        self._coord_page = page
+        self._sync_coord_menus()
+        self.tabs.addTab(page, t("tabs.coordinates"))
+
+    def _coord_choice(self, key):
+        return self.coord_menus[key].currentData()
+
+    def _sync_coord_menus(self):
+        """Pas de repère horizontal vu du Soleil : l'option est grisée, l'écliptique la remplace."""
+        helio = self._coord_choice("center") == "heliocentric"
+        frames = self.coord_menus["frame"]
+        frames.model().item(frames.findData("horizontal")).setEnabled(not helio)
+        if helio and self._coord_choice("frame") == "horizontal":
+            frames.blockSignals(True)
+            frames.setCurrentIndex(frames.findData("ecliptic"))
+            frames.blockSignals(False)
+            prefs.set("coord_frame", "ecliptic")
+
+    def _on_coord_choice(self, key):
+        pref = dict((k, p) for k, _o, p in self._COORD_CHOICES)[key]
+        prefs.set(pref, self._coord_choice(key))
+        self._sync_coord_menus()
+        if key == "angle":                  # tous les angles affichés changent de format
+            self.calculate()
+        else:
+            self._refresh_coordinates()
+
+    def _coord_length(self, value, in_km):
+        if in_km:
+            return tf("units.km", value=_num(value * 149597870.7, 1))
+        return tf("units.au", value=_num(value, 8))
+
+    def _refresh_coordinates(self):
+        """Tableau des coordonnées, calculé quand son onglet est affiché."""
+        if self._lat is None or self.tabs.currentWidget() is not getattr(self, "_coord_page", None):
+            return
+        center, frame, rep = (self._coord_choice(k) for k in ("center", "frame", "repr"))
+        tc = AstroEngine.julian_century_j2000(self._dte)
+        if rep == "cartesian":
+            columns = ("col_x", "col_y", "col_z")
+        else:
+            columns = {"ecliptic": ("col_lon", "col_lat"), "equatorial": ("col_ra", "col_dec"),
+                       "horizontal": ("col_az", "col_alt")}[frame] + ("col_dist",)
+        self.coord_table.setHorizontalHeaderLabels(
+            [t("coordinates.col_body")] + [t(f"coordinates.{c}") for c in columns])
+        bodies = ["earth" if center == "heliocentric" else "sun", "moon", *_PLANETS]
+        names = {"sun": f"{charts.SYMBOL['Sun']} {t('chart.sun')}",
+                 "moon": f"{charts.SYMBOL['Moon']} {t('chart.moon')}",
+                 "earth": f"{charts.SYMBOL['Earth']} {t('coordinates.earth')}"}
+        for r, body in enumerate(bodies):
+            self.coord_table.item(r, 0).setText(names.get(body) or _planet_name(body, symbol=True))
+            c = AstroEngine.coordinates(tc, body, center, frame, self._lat, self._lon,
+                                        self._elevation())
+            in_km = body == "moon" and center != "heliocentric"
+            if c is None:
+                cells = ["—"] * 3
+            elif rep == "cartesian":
+                cells = [self._coord_length(c[k], in_km) for k in ("x", "y", "z")]
+            else:
+                first = _ra(c["lon"] / 15.0) if frame == "equatorial" else _az(c["lon"])
+                cells = [first, _dec(c["lat"]), self._coord_length(c["dist"], in_km)]
+            for col, text in enumerate(cells, start=1):
+                self.coord_table.item(r, col).setText(text)
+        notes = [t(f"coordinates.note_{'helio' if center == 'heliocentric' else 'apparent'}")]
+        if frame == "horizontal":
+            notes.append(t("coordinates.note_horizontal"))
+        elif rep == "cartesian":
+            notes.append(t("coordinates.note_axes"))
+        self._coord_note.setText(" ".join(notes))
 
     # ── Onglet 5 : événements ─────────────────────────────────────────────────
 
@@ -1945,6 +2088,7 @@ class AstroApp(QMainWindow):
         self._update_sun_card()
         self._update_moon_card()
         self._update_planet_table()
+        self._refresh_coordinates()
         self._update_status()
         self._dirty = {"traj", "sky", "orrery"}
         self._draw_visible_chart()
@@ -1986,8 +2130,8 @@ class AstroApp(QMainWindow):
         sd, lb, ev = self.sun_data, self.sun_labels, self.sun_events
         lb["ra"].setText(_ra(sd["ra"]))
         lb["dec"].setText(_dec(sd["dec"]))
-        lb["alt"].setText(_deg(sd["alt"], 2, signed=True))
-        lb["az"].setText(_deg(sd["az"], 2))
+        lb["alt"].setText(_dec(sd["alt"]))
+        lb["az"].setText(_az(sd["az"]))
         lb["eot"].setText(tf("units.minutes", value=_num(sd["eot"], 1, signed=True)))
         lb["dist"].setText(tf("units.au", value=_num(sd["dist"], 4)))
         for key in ("dawn_astro", "dawn_naut", "dawn_civ", "rise", "transit",
@@ -2003,8 +2147,8 @@ class AstroApp(QMainWindow):
         md, lb, ev = self.moon_data, self.moon_labels, self.moon_events
         lb["ra"].setText(_ra(md["ra"]))
         lb["dec"].setText(_dec(md["dec"]))
-        lb["alt"].setText(_deg(md["alt"], 2, signed=True))
-        lb["az"].setText(_deg(md["az"], 2))
+        lb["alt"].setText(_dec(md["alt"]))
+        lb["az"].setText(_az(md["az"]))
         lb["dist"].setText(tf("units.km", value=_num(md["dist"])))
         key = Formatters.PHASES[Formatters.phase_index(md["phase"])][0]
         self._phase_disc.set_phase(md["phase"], southern=(self._lat or 0) < 0)
@@ -2026,8 +2170,8 @@ class AstroApp(QMainWindow):
             side = t("coords.east") if p["east"] else t("coords.west")
             items["col_ra"].setText(_ra(p["ra"]))
             items["col_dec"].setText(_dec(p["dec"]))
-            items["col_alt"].setText(_deg(p["alt"], 2, signed=True))
-            items["col_az"].setText(_deg(p["az"], 2))
+            items["col_alt"].setText(_dec(p["alt"]))
+            items["col_az"].setText(_az(p["az"]))
             items["col_dist"].setText(tf("units.au", value=_num(p["dist"], 4)))
             items["col_elong"].setText(f"{_deg(p['elong'], 1)} {side}")
             up = p["alt"] > 0
@@ -2056,6 +2200,7 @@ class AstroApp(QMainWindow):
 
     def _on_tab_changed(self, _index):
         self._draw_visible_chart()
+        self._refresh_coordinates()
 
     def _draw_visible_chart(self):
         """Dessine le graphique de l'onglet affiché s'il n'est plus à jour : en
@@ -2225,8 +2370,8 @@ class AstroApp(QMainWindow):
         rows += [
             (t("detail.ra"), _ra(obj["ra"])),
             (t("detail.dec"), _dec(obj["dec"])),
-            (t("detail.alt"), _deg(obj["alt"], 2, signed=True)),
-            (t("detail.az"), _deg(obj["az"], 2)),
+            (t("detail.alt"), _dec(obj["alt"])),
+            (t("detail.az"), _az(obj["az"])),
         ]
         return title, rows
 

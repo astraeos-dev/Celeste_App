@@ -17,6 +17,7 @@ Lancer avec :  pytest tests/test_gui.py -v
 
 import io
 import json
+import re
 import os
 import sys
 from datetime import datetime
@@ -479,4 +480,49 @@ class TestGeolocation:
         window.geolocate()
         assert window.location_name == "Paris"
         assert "approximative" in window.statusBar().currentMessage()
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Onglet Coordonnées et format des angles
+# ──────────────────────────────────────────────────────────────────────
+
+class TestCoordinatesTab:
+    def _open(self, window):
+        window.tabs.setCurrentWidget(window._coord_page)
+
+    def _choose(self, window, key, value):
+        menu = window.coord_menus[key]
+        menu.setCurrentIndex(menu.findData(value))
+
+    def test_default_geocentric_equatorial(self, window):
+        self._open(window)
+        table = window.coord_table
+        assert table.horizontalHeaderItem(1).text() == "Ascension droite α"
+        assert table.item(0, 1).text() == window.sun_labels["ra"].text()
+        assert table.item(1, 3).text().endswith("km")             # la Lune en km
+
+    def test_heliocentric_shows_the_earth_and_greys_horizontal(self, window):
+        self._open(window)
+        self._choose(window, "frame", "horizontal")
+        self._choose(window, "center", "heliocentric")
+        assert window.coord_menus["frame"].currentData() == "ecliptic"
+        frames = window.coord_menus["frame"]
+        assert not frames.model().item(frames.findData("horizontal")).isEnabled()
+        assert window.coord_table.item(0, 0).text().endswith("Terre")
+        assert "J2000" in window._coord_note.text()
+
+    def test_cartesian_columns(self, window):
+        self._open(window)
+        self._choose(window, "repr", "cartesian")
+        assert [window.coord_table.horizontalHeaderItem(c).text() for c in (1, 2, 3)] == ["x", "y", "z"]
+        assert window.coord_table.item(2, 1).text().endswith("UA")
+
+    @pytest.mark.parametrize("fmt, pattern", [("dms", r"^\d+h \d\dm \d\d,\ds$"),
+                                              ("dm", r"^\d+h \d\d,\d{3}m$"),
+                                              ("dd", r"^\d+,\d{5}h$")])
+    def test_angle_format_applies_everywhere(self, window, fmt, pattern):
+        self._open(window)
+        self._choose(window, "angle", fmt)
+        assert re.match(pattern, window.sun_labels["ra"].text())
+        assert re.match(pattern, window.coord_table.item(0, 1).text())
 

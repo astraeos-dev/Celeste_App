@@ -14,6 +14,8 @@ import os
 # Make root directory importable from tests/
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import pytest
+
 from utils import Formatters
 
 
@@ -254,3 +256,32 @@ class TestLunarPhase:
     def test_full_string_full_moon(self):
         """Complete output string for Full Moon."""
         assert Formatters.lunar_phase(100.0, 180.0) == "100.0% 🌕 Full Moon"
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Angle formats chosen by the user
+# ──────────────────────────────────────────────────────────────────────
+
+class TestAngleFormats:
+    @pytest.mark.parametrize("fmt, degrees, signed_dec, hours", [
+        ("dms", "123° 45′ 07″", "-14° 38′ 49″", "8h 45m 12.3s"),
+        ("dm",  "123° 45.12′",  "-14° 38.82′",  "8h 45.205m"),
+        ("dd",  "123.75197°",   "-14.64700°",   "8.75342h"),
+    ])
+    def test_formats(self, fmt, degrees, signed_dec, hours):
+        assert Formatters.angle(123.75197, fmt) == degrees
+        assert Formatters.angle(-14.647, fmt, signed=True) == signed_dec
+        assert Formatters.angle(8.753417, fmt, hours=True) == hours
+
+    def test_plus_sign_when_signed(self):
+        assert Formatters.angle(14.647, "dd", signed=True) == "+14.64700°"
+
+    @pytest.mark.parametrize("fmt, expected", [("dms", "60° 00′ 00″"), ("dm", "60° 00.00′")])
+    def test_rounding_carries_over(self, fmt, expected):
+        assert Formatters.angle(59.99999999, fmt) == expected
+
+    def test_dms_matches_the_historical_formatters(self):
+        """The default format shows what hms() and dms() showed."""
+        assert Formatters.angle(14.4719, "dms", hours=True) == Formatters.hms(14.4719)
+        assert Formatters.angle(-14.647, "dms", signed=True) == \
+            Formatters.dms(-14.647).replace("'", "′").replace('"', "″")

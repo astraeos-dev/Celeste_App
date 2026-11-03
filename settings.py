@@ -46,6 +46,12 @@ _DEFAULTS = {
     # Affichage
     "live_interval":  2000,         # ms entre rafraîchissements temps réel
     "mag_limit":      6.0,          # magnitude limite pour les étoiles
+
+    # Coordonnées
+    "angle_format":   "dms",        # dms (dd° mm′ ss″) | dm (dd° mm,mm′) | dd (dd,ddddd°)
+    "coord_center":   "geocentric", # heliocentric | geocentric | topocentric
+    "coord_frame":    "equatorial", # ecliptic | equatorial | horizontal
+    "coord_repr":     "angular",    # angular | cartesian
 }
 
 # ── État interne ───────────────────────────────────────────────────────────────

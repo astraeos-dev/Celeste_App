@@ -672,3 +672,65 @@ def test_version_is_single_sourced():
     import engine
     from config import APP_VERSION
     assert f"v{APP_VERSION}" in engine.__doc__
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Coordinates in the chosen system (JPL Horizons, 2 November 2026 12h UT)
+# ──────────────────────────────────────────────────────────────────────
+
+class TestCoordinateSystems:
+    T = AstroEngine.julian_century_j2000(datetime(2026, 11, 2, 12))
+    PARIS = (48.8566, 2.3522)
+
+    def test_heliocentric_vectors(self):
+        """Geometric heliocentric vectors, ecliptic J2000 (Horizons VECTORS, no correction)."""
+        refs = {"Mars": (-0.3081280212458685, 1.565401835532534, 0.04036036724601148),
+                "Jupiter": (-3.674476851412720, 3.842965080361585, 0.06624793661325734)}
+        for body, ref in refs.items():
+            c = AstroEngine.coordinates(self.T, body, "heliocentric", "ecliptic")
+            for got, exp in zip((c["x"], c["y"], c["z"]), ref):
+                assert abs(got - exp) < 2e-6, body          # Jupiter: barycentre vs centre, 160 km
+
+    def test_geocentric_ecliptic_of_date(self):
+        """Apparent geocentric ecliptic longitude and latitude of date (Horizons quantity 31)."""
+        for body, (lon, lat) in {"Mars": (139.3734896, 1.6319487),
+                                 "Jupiter": (144.5028828, 0.6951914)}.items():
+            c = AstroEngine.coordinates(self.T, body, "geocentric", "ecliptic")
+            assert abs(c["lon"] - lon) * 3600 < 1 and abs(c["lat"] - lat) * 3600 < 1, body
+
+    def test_geocentric_equatorial_is_planet_position(self):
+        c = AstroEngine.coordinates(self.T, "Venus", "geocentric", "equatorial")
+        ra, dec, dist = AstroEngine.planet_position(self.T, "Venus")
+        assert approx(c["lon"], ra * 15.0, 1e-9) and approx(c["lat"], dec, 1e-9)
+        assert approx(c["dist"], dist, 1e-12)
+
+    def test_topocentric_horizontal_is_horizontal(self):
+        c = AstroEngine.coordinates(self.T, "moon", "topocentric", "horizontal", *self.PARIS)
+        alt, az = AstroEngine.horizontal(self.T, *self.PARIS, "moon")
+        assert approx(c["lat"], alt, 1e-9) and approx(c["lon"], az, 1e-9)
+
+    def test_parallax_separates_geocentric_and_topocentric_moon(self):
+        """Seen from Paris, the Moon is ~0.94° lower than from the Earth's centre."""
+        geo = AstroEngine.coordinates(self.T, "moon", "geocentric", "horizontal", *self.PARIS)
+        topo = AstroEngine.coordinates(self.T, "moon", "topocentric", "horizontal", *self.PARIS)
+        assert 0.8 < geo["lat"] - topo["lat"] < 1.0
+
+    @pytest.mark.parametrize("center, frame", [("heliocentric", "ecliptic"), ("geocentric", "equatorial"),
+                                               ("topocentric", "horizontal"), ("topocentric", "ecliptic")])
+    def test_cartesian_matches_the_angles(self, center, frame):
+        c = AstroEngine.coordinates(self.T, "Mars", center, frame, *self.PARIS)
+        lon, lat = math.radians(c["lon"]), math.radians(c["lat"])
+        expected = (c["dist"] * math.cos(lat) * math.cos(lon), c["dist"] * math.cos(lat) * math.sin(lon),
+                    c["dist"] * math.sin(lat))
+        for got, exp in zip((c["x"], c["y"], c["z"]), expected):
+            assert abs(got - exp) < 1e-9
+
+    def test_centre_has_no_coordinates(self):
+        assert AstroEngine.coordinates(self.T, "sun", "heliocentric", "ecliptic") is None
+        assert AstroEngine.coordinates(self.T, "earth", "geocentric", "equatorial") is None
+        assert AstroEngine.coordinates(self.T, "earth", "heliocentric", "ecliptic")["dist"] == \
+            pytest.approx(0.9923, abs=1e-3)
+
+    def test_no_horizontal_frame_from_the_sun(self):
+        with pytest.raises(ValueError):
+            AstroEngine.coordinates(self.T, "Mars", "heliocentric", "horizontal")

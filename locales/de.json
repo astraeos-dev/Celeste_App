@@ -55,6 +55,7 @@
     "ecliptic_from_sun": "Sonne",
     "ecliptic_from_earth": "Erde",
     "angle": "Winkelformat",
+    "angle_global": "Wie in den Einstellungen",
     "angle_dms": "dd° mm′ ss″",
     "angle_dm": "dd° mm,mm′",
     "angle_dd": "dd,ddddd°",
@@ -304,6 +305,8 @@
   },
   "settings": {
     "time_format": "Zeitformat",
+    "angle_format": "Winkelformat",
+    "angle_format_tip": "Winkelformat in der ganzen Anwendung; der Reiter Koordinaten kann ein eigenes haben",
     "time_24h": "24 Std.",
     "time_12h": "12 Std. (AM/PM)",
     "language": "Sprache der Oberfläche",

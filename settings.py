@@ -52,6 +52,7 @@ _DEFAULTS = {
     "coord_cartesian": "heliocentric",   # x, y, z : heliocentric | geocentric | topocentric
     "coord_angular":   "equatorial",     # angles : ecliptic | equatorial | horizontal
     "coord_ecliptic_from": "sun",        # angles écliptiques vus du : sun | earth
+    "coord_angle_format": "global",      # angles du tableau : global (paramètres) | dms | dm | dd
 }
 
 # ── État interne ───────────────────────────────────────────────────────────────

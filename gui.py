@@ -152,19 +152,20 @@ def _localized(text):
     return "−" + text[1:] if text.startswith("-") else text
 
 
-def _ra(hours):
-    """Ascension droite « 14h 28m 19,0s », « 14h 28,317m » ou « 14,47194h »."""
-    return _localized(Formatters.angle(hours % 24.0, _angle_format(), hours=True))
+def _ra(hours, fmt=None):
+    """Ascension droite « 14h 28m 19,0s », « 14h 28,317m » ou « 14,47194h »
+    (*fmt* : format imposé, sinon celui des paramètres)."""
+    return _localized(Formatters.angle(hours % 24.0, fmt or _angle_format(), hours=True))
 
 
-def _dec(degrees):
+def _dec(degrees, fmt=None):
     """Angle signé (déclinaison, latitude, hauteur) : « −14° 38′ 49″ », « +14° 38,82′ »…"""
-    return _localized(Formatters.angle(degrees, _angle_format(), signed=True))
+    return _localized(Formatters.angle(degrees, fmt or _angle_format(), signed=True))
 
 
-def _az(degrees):
+def _az(degrees, fmt=None):
     """Angle de 0 à 360° (azimut, longitude) dans le format choisi."""
-    return _localized(Formatters.angle(degrees % 360.0, _angle_format()))
+    return _localized(Formatters.angle(degrees % 360.0, fmt or _angle_format()))
 
 
 def _fmt_offset(offset):
@@ -1312,7 +1313,7 @@ class AstroApp(QMainWindow):
         ("cartesian", AstroEngine.CENTERS, "coord_cartesian"),
         ("angular", AstroEngine.FRAMES, "coord_angular"),
         ("ecliptic_from", ("sun", "earth"), "coord_ecliptic_from"),
-        ("angle", Formatters.ANGLE_FORMATS, "angle_format"),
+        ("angle", ("global",) + Formatters.ANGLE_FORMATS, "coord_angle_format"),
     )
     _COORD_COLUMNS = ("col_body", "col_x", "col_y", "col_z", "col_dist", "col_mag",
                       "col_sun_angle", "col_constellation", "angle1", "angle2")
@@ -1381,10 +1382,12 @@ class AstroApp(QMainWindow):
         pref = dict((k, p) for k, _o, p in self._COORD_CHOICES)[key]
         prefs.set(pref, self._coord_choice(key))
         self._sync_coord_menus()
-        if key == "angle":                  # tous les angles affichés changent de format
-            self.calculate()
-        else:
-            self._refresh_coordinates()
+        self._refresh_coordinates()
+
+    def _coord_angle_format(self):
+        """Format des angles du tableau : le sien, ou celui des paramètres (« global »)."""
+        fmt = self._coord_choice("angle")
+        return fmt if fmt in Formatters.ANGLE_FORMATS else _angle_format()
 
     @staticmethod
     def _body_label(body):
@@ -1414,6 +1417,7 @@ class AstroApp(QMainWindow):
         self.coord_table.setHorizontalHeaderLabels(heads + [t(f"coordinates.{c}") for c in angle_heads])
 
         tc, elev = AstroEngine.julian_century_j2000(self._dte), self._elevation()
+        fmt = self._coord_angle_format()
         seen = AstroEngine.observations(tc)
         for r, body in enumerate(AstroEngine.BODIES):
             xyz = AstroEngine.coordinates(tc, body, cartesian, "ecliptic", self._lat, self._lon, elev)
@@ -1431,9 +1435,9 @@ class AstroApp(QMainWindow):
             if ang is None:
                 cells += ["—", "—"]
             elif angular == "equatorial":
-                cells += [_ra(ang["lon"] / 15.0), _dec(ang["lat"])]
+                cells += [_ra(ang["lon"] / 15.0, fmt), _dec(ang["lat"], fmt)]
             else:
-                cells += [_az(ang["lon"]), _dec(ang["lat"])]
+                cells += [_az(ang["lon"], fmt), _dec(ang["lat"], fmt)]
             for c, text in enumerate(cells):
                 self.coord_table.item(r, c).setText(text)
             self.coord_table.item(r, 7).setToolTip(obs["constellation_name"] if obs else "")
@@ -1506,10 +1510,17 @@ class AstroApp(QMainWindow):
         self._timefmt_combo.setCurrentIndex(
             max(0, self._timefmt_combo.findData(prefs.get("time_format") or "24h")))
         self._timefmt_combo.currentIndexChanged.connect(self._on_timefmt_change)
+        self._anglefmt_combo = QComboBox()
+        for key in Formatters.ANGLE_FORMATS:
+            self._anglefmt_combo.addItem(t(f"coordinates.angle_{key}"), key)
+        self._anglefmt_combo.setCurrentIndex(max(0, self._anglefmt_combo.findData(_angle_format())))
+        self._anglefmt_combo.setToolTip(t("settings.angle_format_tip"))
+        self._anglefmt_combo.currentIndexChanged.connect(self._on_anglefmt_change)
         row = QHBoxLayout()
         row.setSpacing(16)
         row.addWidget(ChampSaisie(t("settings.language"), self._lang_combo), stretch=1)
         row.addWidget(ChampSaisie(t("settings.time_format"), self._timefmt_combo), stretch=1)
+        row.addWidget(ChampSaisie(t("settings.angle_format"), self._anglefmt_combo), stretch=1)
         box.addLayout(row)
         box.addWidget(_label(t("settings.theme_hint"), "legende", wrap=True))
 
@@ -1655,6 +1666,11 @@ class AstroApp(QMainWindow):
 
     def _on_timefmt_change(self, index):
         prefs.set("time_format", self._timefmt_combo.itemData(index))
+        self.calculate()
+
+    def _on_anglefmt_change(self, index):
+        """Format des angles de tout le logiciel (et du tableau des coordonnées s'il le suit)."""
+        prefs.set("angle_format", self._anglefmt_combo.itemData(index))
         self.calculate()
 
     def _mag_limit(self):

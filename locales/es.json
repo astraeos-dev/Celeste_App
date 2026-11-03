@@ -97,6 +97,15 @@
     "note_solar": "Franja: sombra (o antisombra) de la Luna en el suelo, minuto a minuto; curvas: magnitud máxima de la parcialidad, con el Sol sobre el horizonte. JPL DE440, elipsoide WGS84.",
     "note_lunar": "Zona clara: la Luna está sobre el horizonte en el máximo; trazos: límite de la Luna sobre el horizonte al principio y al final de la fase parcial (o penumbral)."
   },
+  "event_map": {
+    "button": "Mapa",
+    "button_tip": "Trayectoria de los astros entre las estrellas alrededor del evento",
+    "window_title": "Mapa del evento",
+    "title": "{event} — {date}",
+    "ecliptic": "Eclíptica",
+    "date_format": "%d/%m",
+    "note": "Coordenadas ecuatoriales de la fecha: norte arriba, este a la izquierda, como en el cielo. Puntos pequeños: posiciones a intervalos regulares, fechadas en tiempo universal; punto grande: posición en el instante del evento."
+  },
   "status": {
     "stars_one": "{n} estrella visible",
     "stars_many": "{n} estrellas visibles",
@@ -262,12 +271,11 @@
     "search_conjunctions": "Buscar conjunciones (12 meses)",
     "click_to_search": "Elija una búsqueda arriba: empieza en la fecha introducida en la barra lateral.",
     "eclipses_title": "Eclipses — 12 meses desde el {date}",
-    "conjunctions_title": "Conjunciones y oposiciones — 12 meses desde el {date}",
+    "conjunctions_title": "Conjunciones, oposiciones y elongaciones — 12 meses desde el {date}",
     "eclipse_count_one": "{n} eclipse encontrado",
     "eclipse_count_many": "{n} eclipses encontrados",
     "event_count_one": "{n} evento encontrado",
     "event_count_many": "{n} eventos encontrados",
-    "daily_note": "Búsqueda día a día: las fechas tienen una precisión de un día.",
     "no_eclipse": "Ningún eclipse en este periodo.",
     "no_conjunction": "Ninguna conjunción ni oposición en este periodo.",
     "solar_eclipse": "Eclipse de Sol",
@@ -292,7 +300,18 @@
     "duration_central": "Fase central {value} min",
     "duration_total": "Totalidad {value}",
     "duration_partial": "Fase parcial {value}",
-    "duration_penumbral": "Fase penumbral {value}"
+    "duration_penumbral": "Fase penumbral {value}",
+    "precise_note": "Instantes en tiempo universal, al minuto (efemérides JPL DE440, posiciones aparentes vistas desde el centro de la Tierra). Conjunción: misma longitud eclíptica; oposición: a 180° del Sol; máxima elongación: separación máxima del Sol.",
+    "conjunction_inferior": "{planet} en conjunción inferior con el Sol",
+    "conjunction_superior": "{planet} en conjunción superior con el Sol",
+    "greatest_elongation_east": "{planet} en su máxima elongación este (tarde)",
+    "greatest_elongation_west": "{planet} en su máxima elongación oeste (mañana)",
+    "north_of": "{a} al norte de {b}",
+    "south_of": "{a} al sur de {b}",
+    "transit": "Tránsito por delante del Sol",
+    "local_time": "Hora local {time} ({zone})",
+    "north_of_sun": "{a} al norte del Sol",
+    "south_of_sun": "{a} al sur del Sol"
   },
   "favs": {
     "save_title": "Añadir a favoritos",

@@ -97,6 +97,15 @@
     "note_solar": "Bande : ombre (ou antiombre) de la Lune au sol, minute par minute ; courbes : magnitude maximale de la partialité, Soleil levé. Calcul JPL DE440, ellipsoïde WGS84.",
     "note_lunar": "Zone claire : la Lune est levée au maximum de l'éclipse ; tirets : limite de la Lune levée au début et à la fin de la phase partielle (ou pénombrale)."
   },
+  "event_map": {
+    "button": "Carte",
+    "button_tip": "Trajet des astres parmi les étoiles autour de l'évènement",
+    "window_title": "Carte de l'évènement",
+    "title": "{event} — {date}",
+    "ecliptic": "Écliptique",
+    "date_format": "%d/%m",
+    "note": "Coordonnées équatoriales de la date : nord en haut, est à gauche, comme dans le ciel. Petits points : positions à intervalles réguliers, datées en temps universel ; gros point : position à l'instant de l'évènement."
+  },
   "status": {
     "stars_one": "{n} étoile visible",
     "stars_many": "{n} étoiles visibles",
@@ -262,12 +271,11 @@
     "search_conjunctions": "Rechercher les conjonctions (12 mois)",
     "click_to_search": "Choisissez une recherche ci-dessus : elle part de la date saisie dans la barre latérale.",
     "eclipses_title": "Éclipses — 12 mois à partir du {date}",
-    "conjunctions_title": "Conjonctions et oppositions — 12 mois à partir du {date}",
+    "conjunctions_title": "Conjonctions, oppositions et élongations — 12 mois à partir du {date}",
     "eclipse_count_one": "{n} éclipse trouvée",
     "eclipse_count_many": "{n} éclipses trouvées",
     "event_count_one": "{n} événement trouvé",
     "event_count_many": "{n} événements trouvés",
-    "daily_note": "Recherche jour par jour : les dates sont données à un jour près.",
     "no_eclipse": "Aucune éclipse sur cette période.",
     "no_conjunction": "Aucune conjonction ni opposition sur cette période.",
     "solar_eclipse": "Éclipse de Soleil",
@@ -292,7 +300,18 @@
     "duration_central": "Phase centrale {value} min",
     "duration_total": "Totalité {value}",
     "duration_partial": "Phase partielle {value}",
-    "duration_penumbral": "Phase pénombrale {value}"
+    "duration_penumbral": "Phase pénombrale {value}",
+    "precise_note": "Instants en temps universel, à la minute près (éphémérides JPL DE440, positions apparentes vues du centre de la Terre). Conjonction : même longitude écliptique ; opposition : à 180° du Soleil ; plus grande élongation : écart maximal au Soleil.",
+    "conjunction_inferior": "{planet} en conjonction inférieure avec le Soleil",
+    "conjunction_superior": "{planet} en conjonction supérieure avec le Soleil",
+    "greatest_elongation_east": "{planet} à sa plus grande élongation est (soir)",
+    "greatest_elongation_west": "{planet} à sa plus grande élongation ouest (matin)",
+    "north_of": "{a} au nord de {b}",
+    "south_of": "{a} au sud de {b}",
+    "transit": "Transit devant le Soleil",
+    "local_time": "Heure locale {time} ({zone})",
+    "north_of_sun": "{a} au nord du Soleil",
+    "south_of_sun": "{a} au sud du Soleil"
   },
   "favs": {
     "save_title": "Ajouter aux favoris",

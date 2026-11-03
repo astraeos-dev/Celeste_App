@@ -27,6 +27,8 @@ v4.1:
     topocentric; ecliptic, equatorial or horizontal; angles and x, y, z
   • observations() — visual magnitude, angle with the Sun and constellation
     of the Sun, the Moon and the planets from Mercury to Pluto
+  • find_conjunctions() — conjunctions (inferior, superior), oppositions and
+    greatest elongations to the minute; event_scene() for their maps
   • eclipse_map() — an eclipse projected on the ground: central line, path of
     totality or annularity and zone of partiality of a solar eclipse; where
     the Moon is up during a lunar eclipse
@@ -1104,64 +1106,185 @@ class AstroEngine:
 
 
     @classmethod
-    def find_conjunctions(cls, dte_start, num_days=365):
+    def _ecliptic_series(cls, jds, bodies):
+        """Apparent geocentric ecliptic (of date) longitude°, latitude°, distance AU at UT Julian Days."""
+        sky   = _sky()
+        earth = sky["earth"].at(sky["ts"].ut1_jd(jds))
+        series = {}
+        for name in bodies:
+            lat, lon, dist = earth.observe(cls._target(name)).apparent().ecliptic_latlon(epoch="date")
+            series[name] = (lon.degrees, lat.degrees, dist.au)
+        return series
+
+    @staticmethod
+    def _wrap180(angle):
+        return (np.asarray(angle) + 180.0) % 360.0 - 180.0
+
+    @staticmethod
+    def _ecliptic_separation(lon1, lat1, lon2, lat2):
+        """Angular distance (°) between two points given in ecliptic coordinates."""
+        l1, b1, l2, b2 = (np.radians(v) for v in (lon1, lat1, lon2, lat2))
+        c = np.sin(b1) * np.sin(b2) + np.cos(b1) * np.cos(b2) * np.cos(l1 - l2)
+        return np.degrees(np.arccos(np.clip(c, -1.0, 1.0)))
+
+    @classmethod
+    def find_conjunctions(cls, dte_start, num_days=365, max_separation=5.0):
         """
-        Searches for planetary conjunctions and oppositions, from one apparent
-        DE440 position a day (computed at once for the whole period).
+        Conjunctions and oppositions of the planets, and greatest elongations
+        of Mercury and Venus, to the minute (DE440, apparent positions).
+
+        Definitions of the almanacs: a conjunction is the instant two bodies
+        have the same geocentric ecliptic longitude (of date), an opposition
+        the instant a planet is 180° from the Sun in longitude, a greatest
+        elongation the maximum of the angle Sun–planet. A conjunction of
+        Mercury or Venus with the Sun is inferior (the planet nearer than the
+        Sun; a transit when it crosses the Sun's disc) or superior. Pairs of
+        planets are kept when they pass within max_separation degrees.
+
+        Found day by day, then refined hour by hour and interpolated.
 
         Returns:
-            list[dict]: sorted by date, keys: date, type, bodies, separation, details
+            list[dict]: sorted by date, keys: date (instant, UT, tzinfo of
+            dte_start), type ('conjunction' | 'opposition' |
+            'greatest_elongation'), bodies ((planet, other) — "Sun" for the
+            Sun), separation (°: distance between the bodies at the instant;
+            elongation for an opposition or a greatest elongation), kind
+            ('inferior' | 'superior' for Mercury and Venus with the Sun, else
+            None), transit (bool), side ('north' | 'south': the first body
+            relative to the second; 'east' | 'west' for an elongation),
+            details (text).
         """
-        planets = list(PLANETS)
-        pairs   = [(a, b) for i, a in enumerate(planets) for b in planets[i+1:]]
-        days    = [dte_start + timedelta(days=day) for day in range(num_days)]
-        if not days:
+        jd0  = cls.julian_day(dte_start)
+        days = jd0 + np.arange(num_days + 1, dtype=float)
+        bodies = ("sun",) + PLANETS
+        daily = cls._ecliptic_series(days, bodies)
+        wrap = cls._wrap180
+
+        # 1. day by day: brackets of the events
+        candidates = []                                  # (type, a, b, first sample, last sample)
+        def crossings(diff):
+            near = np.abs(diff) < 90.0
+            return np.flatnonzero((np.sign(diff[:-1]) != np.sign(diff[1:])) & near[:-1] & near[1:])
+        for k, a in enumerate(PLANETS):
+            d_sun = wrap(daily[a][0] - daily["sun"][0])
+            candidates += [("conjunction", a, "sun", i, i + 1) for i in crossings(d_sun)]
+            if a not in ("Mercury", "Venus"):
+                candidates += [("opposition", a, "sun", i, i + 1) for i in crossings(wrap(d_sun - 180.0))]
+            for b in PLANETS[k + 1:]:
+                candidates += [("conjunction", a, b, i, i + 1)
+                               for i in crossings(wrap(daily[a][0] - daily[b][0]))]
+        for a in ("Mercury", "Venus"):
+            e = cls._ecliptic_separation(daily[a][0], daily[a][1], daily["sun"][0], daily["sun"][1])
+            peaks = np.flatnonzero((e[1:-1] > e[:-2]) & (e[1:-1] >= e[2:])) + 1
+            candidates += [("greatest_elongation", a, "sun", i - 1, i + 1) for i in peaks]
+        if not candidates:
             return []
-        sky   = _sky()
-        earth = sky["earth"].at(cls._time_ut(np.array([cls.julian_century_j2000(d) for d in days])))
 
-        def track(target):
-            ra, dec, _ = earth.observe(target).apparent().radec(epoch="date")
-            return list(zip(ra.hours.tolist(), dec.degrees.tolist()))
+        # 2. hour by hour around each bracket, all in one computation
+        windows = [days[i] + np.arange(0.0, (j - i) * 24.0 + 1.0) / 24.0 for _t, _a, _b, i, j in candidates]
+        hourly = cls._ecliptic_series(np.concatenate(windows), bodies)
+        results, offset = [], 0
+        for (kind, a, b, _i, _j), window in zip(candidates, windows):
+            n = len(window)
+            la, ba, ra = (v[offset:offset + n] for v in hourly[a])
+            lb, bb, rb = (v[offset:offset + n] for v in hourly[b])
+            offset += n
+            if kind == "greatest_elongation":
+                e = cls._ecliptic_separation(la, ba, lb, bb)
+                m = int(np.clip(np.argmax(e), 1, n - 2))
+                y0, y1, y2 = e[m - 1], e[m], e[m + 1]
+                step = 0.5 * (y0 - y2) / (y0 - 2.0 * y1 + y2) if (y0 - 2.0 * y1 + y2) else 0.0
+                jd = window[m] + step / 24.0
+                value = float(y1 - 0.25 * (y0 - y2) * step)
+                side = "east" if wrap(la[m] - lb[m]) > 0 else "west"
+                results.append(dict(jd=jd, type=kind, bodies=(a, "Sun"), separation=value,
+                                    kind=None, transit=False, side=side))
+                continue
+            diff = wrap(la - lb - (180.0 if kind == "opposition" else 0.0))
+            idx = np.flatnonzero(np.sign(diff[:-1]) != np.sign(diff[1:]))
+            if not len(idx):
+                continue
+            h = int(idx[0])
+            f = float(diff[h] / (diff[h] - diff[h + 1]))          # fraction of the hour
+            at = lambda v: float(v[h] + f * (v[h + 1] - v[h]))
+            jd = window[h] + f / 24.0
+            separation = float(cls._ecliptic_separation(at(la), at(ba), at(lb), at(bb)))
+            if kind == "opposition":
+                results.append(dict(jd=jd, type=kind, bodies=(a, "Sun"), separation=separation,
+                                    kind=None, transit=False, side=None))
+            elif b == "sun":
+                inferior = a in ("Mercury", "Venus") and at(ra) < at(rb)
+                sun_radius = math.degrees(math.asin(696000.0 / (at(rb) * 149597870.7)))
+                results.append(dict(jd=jd, type=kind, bodies=(a, "Sun"), separation=separation,
+                                    kind=("inferior" if inferior else "superior") if a in ("Mercury", "Venus")
+                                    else None, transit=inferior and separation < sun_radius,
+                                    side="north" if at(ba) > at(bb) else "south"))
+            elif separation <= max_separation:
+                results.append(dict(jd=jd, type=kind, bodies=(a, b), separation=separation,
+                                    kind=None, transit=False, side="north" if at(ba) > at(bb) else "south"))
 
-        sun    = track(sky["sun"])
-        tracks = {p: track(sky["eph"][_PLANETS[p]]) for p in planets}
-        results = []
-        prev_seps, prev_elongs = {}, {}
-
-        for day, dte in enumerate(days):
-            s_ra, s_dec = sun[day]
-            positions = {p: tracks[p][day] for p in planets}
-
-            for a, b in pairs:
-                sep = cls.angular_separation(*positions[a], *positions[b])
-                key = (a, b)
-                if key in prev_seps and len(prev_seps[key]) >= 2:
-                    p2, p1 = prev_seps[key]
-                    if p1 < p2 and p1 < sep and p1 < 5.0:
-                        results.append({'date': dte-timedelta(days=1), 'type': 'conjunction',
-                                        'bodies': (a,b), 'separation': p1,
-                                        'details': f"{a} – {b} : {p1:.1f}°"})
-                prev_seps[key] = (prev_seps.get(key, (sep,))[-1], sep)
-
-            for pname in planets:
-                elong = cls.angular_separation(*positions[pname], s_ra, s_dec)
-                key   = pname
-                if key in prev_elongs and len(prev_elongs[key]) >= 2:
-                    p2, p1 = prev_elongs[key]
-                    if p1 < p2 and p1 < elong and p1 < 5.0:
-                        results.append({'date': dte-timedelta(days=1), 'type': 'conjunction',
-                                        'bodies': (pname,'Sun'), 'separation': p1,
-                                        'details': f"{pname} in solar conjunction: {p1:.1f}°"})
-                    if (pname not in ("Mercury", "Venus")
-                            and p1 > p2 and p1 > elong and p1 > 175.0):
-                        results.append({'date': dte-timedelta(days=1), 'type': 'opposition',
-                                        'bodies': (pname,'Sun'), 'separation': p1,
-                                        'details': f"{pname} in opposition: {p1:.1f}°"})
-                prev_elongs[key] = (prev_elongs.get(key, (elong,))[-1], elong)
-
-        results.sort(key=lambda r: r['date'])
+        for r in results:
+            r["date"] = cls._jd_to_datetime(r.pop("jd"), dte_start)
+            a, b = r["bodies"]
+            if r["type"] == "opposition":
+                r["details"] = f"{a} at opposition: {r['separation']:.1f}° from the Sun"
+            elif r["type"] == "greatest_elongation":
+                r["details"] = f"{a} at greatest elongation {r['side']}: {r['separation']:.1f}°"
+            else:
+                what = f"{r['kind']} conjunction" if r["kind"] else "conjunction"
+                r["details"] = f"{a} – {b} {what}: {r['separation']:.2f}° {r['side']}"
+        results.sort(key=lambda r: r["date"])
         return results
+
+    @classmethod
+    def event_scene(cls, event, star_catalog=()):
+        """
+        What the map of a conjunction, an opposition or a greatest elongation
+        shows: the apparent paths of its two bodies (RA, Dec of date) around
+        the event, their positions at the instant, the stars of star_catalog
+        in the field, and the ecliptic.
+
+        Args:
+            event (dict): from find_conjunctions().
+            star_catalog: (designation, RA h, Dec °, mag, pm RA, pm Dec, name) tuples.
+
+        Returns:
+            dict: type, bodies [(name, ra h array, dec ° array, ra h, dec °)],
+            days (offsets from the event), stars [(label, ra h, dec °, mag)],
+            ecliptic (ra h array, dec ° array), sun_radius (°).
+        """
+        a, b = event["bodies"]
+        slow = {"Jupiter", "Saturn", "Uranus", "Neptune"}
+        span = {"opposition": 80.0, "greatest_elongation": 25.0}.get(
+            event["type"], 40.0 if a in slow and b in slow else 12.0)
+        step = 0.5 if span <= 12.0 else 1.0
+        days = np.arange(-span, span + step / 2, step)
+        jd = cls.julian_day(event["date"])
+        sky = _sky()
+        time = sky["ts"].ut1_jd(jd + days)
+        instant = sky["ts"].ut1_jd(jd)
+        earth, earth_now = sky["earth"].at(time), sky["earth"].at(instant)
+        bodies = []
+        for name in (a, b):
+            target = cls._target("sun" if name == "Sun" else name)
+            ra, dec, _ = earth.observe(target).apparent().radec(epoch="date")
+            ra0, dec0, _ = earth_now.observe(target).apparent().radec(epoch="date")
+            bodies.append((name, ra.hours, dec.degrees, float(ra0.hours), float(dec0.degrees)))
+        sun_au = float(earth_now.observe(sky["sun"]).apparent().distance().au)
+        stars = []
+        if len(star_catalog):
+            cat = list(star_catalog)
+            positions = Star(ra_hours=np.array([c[1] for c in cat]), dec_degrees=np.array([c[2] for c in cat]),
+                             ra_mas_per_year=np.array([c[4] for c in cat], dtype=float),
+                             dec_mas_per_year=np.array([c[5] for c in cat], dtype=float))
+            ra, dec, _ = earth_now.observe(positions).apparent().radec(epoch="date")
+            stars = [(c[6] or c[0], float(r), float(d), c[3]) for c, r, d in zip(cat, ra.hours, dec.degrees)]
+        t = (jd - 2451545.0) / 36525.0
+        lon0 = float(cls._ecliptic_series(np.array([jd]), (a,))[a][0][0])
+        ecl = [cls.ecliptic_to_equatorial(lon0 + d, 0.0, t) for d in np.arange(-150.0, 151.0, 1.0)]
+        return {"type": event["type"], "bodies": bodies, "days": days, "stars": stars,
+                "ecliptic": (np.array([e[0] for e in ecl]), np.array([e[1] for e in ecl])),
+                "sun_radius": math.degrees(math.asin(696000.0 / (sun_au * 149597870.7)))}
 
     @staticmethod
     def _phases_between(jd0, jd1):

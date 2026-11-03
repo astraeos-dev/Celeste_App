@@ -15,8 +15,8 @@
 
 ## Présentation
 
-Céleste calcule en temps réel — ou pour n'importe quelle date — la position du Soleil, de la Lune et de quatre planètes
-(Vénus, Mars, Jupiter, Saturne), les événements du jour (lever, coucher, crépuscules), les phases de la Lune, les éclipses,
+Céleste calcule en temps réel — ou pour n'importe quelle date — la position du Soleil, de la Lune et des planètes
+(de Mercure à Neptune), les événements du jour (lever, coucher, crépuscules), les phases de la Lune, les éclipses,
 les conjonctions et les oppositions. Les résultats s'affichent dans une interface PyQt6 au design Astræos (thèmes Nuit,
 Jour et Observation), avec des graphiques interactifs et une carte du ciel.
 
@@ -47,7 +47,10 @@ Jour et Observation), avec des graphiques interactifs et une carte du ciel.
 - **Éclipse projetée au sol** — bouton « Carte » de chaque éclipse : bande de totalité ou d'annularité, ligne de
   centralité, magnitude maximale de la partialité et point du maximum (éclipses de Soleil) ; zone où la Lune est levée
   (éclipses de Lune) ; sur un fond Natural Earth, avec le lieu choisi
-- **Conjonctions et oppositions** — prochains événements planétaires
+- **Conjonctions, oppositions et élongations** — instant à la minute (en TU et à l'heure du lieu) des conjonctions
+  entre planètes (laquelle passe au nord de l'autre) et avec le Soleil (inférieure ou supérieure pour Mercure et Vénus,
+  avec les transits), des oppositions et des plus grandes élongations de Mercure et de Vénus (est le soir, ouest le
+  matin) ; bouton « Carte » : le trajet des astres parmi les étoiles autour de l'évènement
 - **Équation du temps** — écart entre temps solaire vrai et temps solaire moyen
 - **Favoris** — enregistrement des lieux (37 villes préchargées)
 - **Fuseaux horaires** — conversion TU → heure locale par sélecteur UTC±N
@@ -116,6 +119,12 @@ Changer la date recalcule tout au bout d'un instant.
 l'année à venir. Chaque éclipse indique son type, l'heure du maximum (en temps universel), les magnitudes et la durée
 des phases. Une éclipse pénombrale si faible que son existence tient à la précision du calcul (magnitude de pénombre
 inférieure à 0,01) est marquée « Incertaine ».
+
+Les conjonctions suivent la définition des almanachs : même longitude écliptique apparente vue du centre de la Terre
+(opposition : 180° du Soleil). Repérés jour par jour, les évènements sont affinés heure par heure puis interpolés :
+sur l'année 2026, leurs instants s'écartent d'au plus une seconde de ceux de JPL Horizons (une à trois minutes pour les
+plus grandes élongations, dont le maximum est très plat). La carte montre les trajets en coordonnées équatoriales de la
+date, nord en haut et est à gauche, avec les étoiles du catalogue, l'écliptique et des repères datés.
 
 **Graphiques :**
 
@@ -211,7 +220,8 @@ est téléchargée depuis le serveur JPL/NAIF au premier lancement.
 | `planet_position(t, name)` | Position géocentrique apparente : AD, Déc et distance (Mercure à Pluton) |
 | `equation_of_time(t)` | Équation du temps en minutes |
 | `angular_separation(ra1, dec1, ra2, dec2)` | Séparation angulaire entre deux astres |
-| `find_conjunctions(dte_start, num_days)` | Prochaines conjonctions et oppositions |
+| `find_conjunctions(dte_start, num_days, max_separation)` | Conjonctions (inférieure, supérieure, transit ; nord ou sud), oppositions et plus grandes élongations, à la minute |
+| `event_scene(event, star_catalog)` | Trajets des deux astres autour d'un évènement, étoiles du champ et écliptique (pour sa carte) |
 | `find_eclipses(dte_start, num_months)` | Éclipses de Soleil (éléments besséliens) et de Lune (ombre et pénombre de la Terre, règle de Danjon) : type, magnitudes, durées, heure du maximum en TU |
 
 [Skyfield]: https://rhodesmill.org/skyfield/
@@ -286,7 +296,7 @@ avec le projet (`fonts/`, `assets/`) : rien à installer.
 - [x] Crépuscules nautique (−12°) et astronomique (−18°)
 - [x] **Système solaire** — positions de Vénus, Mars, Jupiter et Saturne
 - [x] **Éclipses de Soleil** — type, magnitude, durée de la phase centrale
-- [x] **Conjonctions et oppositions** — prochains événements planétaires
+- [x] **Conjonctions et oppositions** — prochains événements planétaires, à la minute, avec leur carte
 - [x] **Précision** — éphéméride JPL DE440 (Skyfield) à la place des séries de Meeus ; levers et couchers à la seconde
 - [x] **Équation du temps**
 - [ ] **Planétaire 2D** — orbites animées

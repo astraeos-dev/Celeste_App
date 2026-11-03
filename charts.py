@@ -751,3 +751,140 @@ def draw_eclipse_map(fig, scene, labels, observer=None):
     legend.set_zorder(10)
     _title(fig, ax, labels["title"])
     return ax
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# CONJUNCTIONS, OPPOSITIONS, ELONGATIONS
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _tick_step(span_days):
+    """Days between two date ticks along the paths of an event map."""
+    for step in (2, 4, 5, 10, 20):
+        if span_days / step <= 8:
+            return step
+    return 30
+
+
+def draw_event_map(fig, scene, labels, date):
+    """
+    Star chart of a conjunction, an opposition or a greatest elongation: the
+    paths of the bodies among the stars around the instant (equatorial
+    coordinates of date, north up, east to the left, as seen in the sky).
+
+    Args:
+        fig: matplotlib Figure (cleared first).
+        scene (dict): from ``AstroEngine.event_scene``.
+        labels (dict): title, ecliptic, bodies ({"Venus": "Vénus", "Sun": "Soleil"}),
+            date_format (strftime of the date ticks, "%d/%m" by default), and
+            decimal (the decimal separator).
+        date (datetime): instant of the event, in the time zone of the ticks.
+    """
+    fig.clear()
+    fig.set_layout_engine("constrained")
+    fig.patch.set_facecolor(Config.CIEL_100)
+    ax = fig.add_subplot(1, 1, 1)
+    _style_axes(ax)
+    ax.set_facecolor(Config.CIEL_000)
+
+    shown = [b for b in scene["bodies"] if not (scene["type"] == "opposition" and b[0] == "Sun")]
+    ra0 = float(np.mean([b[3] for b in shown])) if len(shown) == 1 else None
+    if ra0 is None:                                   # centre between the bodies, across 0h
+        d = ((shown[1][3] - shown[0][3] + 12.0) % 24.0) - 12.0
+        ra0 = (shown[0][3] + d / 2.0) % 24.0
+    dec0 = float(np.mean([b[4] for b in shown]))
+    k = math.cos(math.radians(dec0))
+
+    def xy(ra, dec):
+        return -(((np.asarray(ra) - ra0 + 12.0) % 24.0) - 12.0) * 15.0 * k, np.asarray(dec)
+
+    xs, ys = [], []
+    for b in shown:
+        x, y = xy(b[1], b[2])
+        xs.append(x)
+        ys.append(y)
+    xs, ys = np.concatenate(xs), np.concatenate(ys)
+    half = max(3.0, 0.55 * max(np.ptp(xs), np.ptp(ys)) + 1.5)
+    cx, cy = 0.5 * (xs.min() + xs.max()), 0.5 * (ys.min() + ys.max())
+    x_lim, y_lim = (cx - half, cx + half), (cy - half, cy + half)   # x already grows westward
+    ax.set_xlim(*x_lim)
+    ax.set_ylim(*y_lim)
+    ax.set_aspect("equal")
+    ax.grid(False)
+
+    from matplotlib.ticker import FixedLocator
+
+    step = next(s for s in (1, 2, 5, 10, 15, 20, 30) if 2 * half / s <= 8)
+    ax.yaxis.set_major_locator(MultipleLocator(step))
+    ax.yaxis.set_major_formatter(FuncFormatter(lambda v, _p: f"{v:+.0f}°".replace("+0°", "0°")))
+    # right ascension: round values, about as far apart as the declination ticks
+    ra_step = next((m for m in (5, 10, 15, 20, 30, 60, 120, 180) if m >= step * 4.0 / k), 240) / 60.0
+    ra_ticks = np.arange(math.floor((ra0 - 12.0) / ra_step), math.ceil((ra0 + 12.0) / ra_step) + 1) * ra_step
+    tick_x = [float(xy(r % 24.0, 0.0)[0]) for r in ra_ticks]
+    keep = [(x, r % 24.0) for x, r in zip(tick_x, ra_ticks) if min(x_lim) <= x <= max(x_lim)]
+    ax.xaxis.set_major_locator(FixedLocator([x for x, _r in keep]))
+    names = {round(x, 6): f"{int(r + 1e-9)}h{int(round((r % 1.0) * 60.0)) % 60:02d}" for x, r in keep}
+    ax.xaxis.set_major_formatter(FuncFormatter(lambda v, _p: names.get(round(v, 6), "")))
+
+    # stars in the field, the brightest named
+    inside = []
+    for name, ra, dec, mag in scene["stars"]:
+        x, y = xy(ra, dec)
+        if min(x_lim) <= x <= max(x_lim) and y_lim[0] <= y <= y_lim[1]:
+            inside.append((name, float(x), float(y), mag))
+    if inside:
+        ax.scatter([s[1] for s in inside], [s[2] for s in inside],
+                   s=[star_marker_size(s[3]) for s in inside],
+                   color=[to_rgba(Config.ENCRE, min(1.0, max(0.45, 1.0 - s[3] / 7.0))) for s in inside],
+                   linewidths=0, zorder=2)
+        for name, x, y, mag in sorted(inside, key=lambda s: s[3])[:8]:
+            if mag < 3.5:
+                ax.annotate(name, (x, y), xytext=(4, 3), textcoords="offset points",
+                            fontsize=SIZE_LEGENDE * 0.75, color=Config.ENCRE_ATTENUEE, zorder=3)
+
+    ex, ey = xy(*scene["ecliptic"])
+    jumps = np.flatnonzero(np.abs(np.diff(ex)) > 90.0)
+    ex, ey = np.insert(ex.astype(float), jumps + 1, np.nan), np.insert(ey.astype(float), jumps + 1, np.nan)
+    ax.plot(ex, ey, color=Config.OR, linewidth=0.8, linestyle=(0, (5, 4)), alpha=0.6, zorder=1)
+    visible = np.flatnonzero((ex > min(x_lim)) & (ex < max(x_lim)) & (ey > y_lim[0]) & (ey < y_lim[1]))
+    if len(visible):
+        i = visible[min(len(visible) - 1, len(visible) // 8)]
+        ax.annotate(labels["ecliptic"], (ex[i], ey[i]), xytext=(0, -11), textcoords="offset points",
+                    fontsize=SIZE_LEGENDE * 0.8, color=Config.OR, alpha=0.8, ha="center", zorder=1)
+
+    days = np.asarray(scene["days"])
+    tick = _tick_step(days.max())
+    ticks = np.flatnonzero(np.isclose(np.mod(days, tick), 0.0) & (days != 0.0))
+    fmt = labels.get("date_format", "%d/%m")
+    palette = [Config.ENCRE, Config.LUNE]
+    at = [xy(b[3], b[4]) for b in shown]
+    highest = max(range(len(shown)), key=lambda n: float(at[n][1]))
+    min_gap = 0.09 * half                             # between two date labels
+    for n, (name, ra, dec, _ra_at, _dec_at) in enumerate(shown):
+        color = Config.OR if name == "Sun" else palette[n % 2]
+        x, y = xy(ra, dec)
+        above = n == highest
+        ax.plot(x, y, color=color, linewidth=1.1, alpha=0.75, zorder=4)
+        ax.scatter(x[ticks], y[ticks], s=9, color=color, linewidths=0, zorder=5)
+        if n == 0:                                    # dates along the first planet's path only
+            placed = [(float(at[0][0]), float(at[0][1]))]
+            for i in ticks:
+                if any(math.hypot(x[i] - u, y[i] - v) < min_gap for u, v in placed):
+                    continue
+                placed.append((float(x[i]), float(y[i])))
+                ax.annotate((date + timedelta(days=float(days[i]))).strftime(fmt), (x[i], y[i]),
+                            xytext=(0, 6 if above else -6), textcoords="offset points", ha="center",
+                            va="bottom" if above else "top", fontsize=SIZE_LEGENDE * 0.7,
+                            color=mix(color, Config.CIEL_100, 0.25), zorder=5)
+        px, py = (float(v) for v in at[n])
+        if name == "Sun":
+            ax.add_patch(Circle((px, py), scene["sun_radius"], color=Config.OR, zorder=6))
+            ax.plot(px, py, "o", color=Config.OR, markersize=9, alpha=0.35, markeredgewidth=0, zorder=6)
+        else:
+            ax.plot(px, py, "o", color=color, markersize=6.5, markeredgecolor=Config.CIEL_000,
+                    markeredgewidth=0.8, zorder=7)
+        _body_label(ax, px, py, f"{SYMBOL.get(name, '')} {labels['bodies'].get(name, name)}",
+                    color, size=SIZE_CORPS, weight=600, dx=9, dy=7 if above else -9,
+                    va="bottom" if above else "top")
+    _title(fig, ax, labels["title"])
+    return ax
+

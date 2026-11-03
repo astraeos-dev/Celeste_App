@@ -13,7 +13,7 @@
   "live_interval": 2000,
   "mag_limit": 6.0,
   "angle_format": "dms",
-  "coord_center": "geocentric",
-  "coord_frame": "equatorial",
-  "coord_repr": "angular"
+  "coord_cartesian": "heliocentric",
+  "coord_angular": "equatorial",
+  "coord_ecliptic_from": "sun"
 }

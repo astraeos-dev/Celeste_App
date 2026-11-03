@@ -739,6 +739,7 @@ QComboBox QAbstractItemView {{
 }}
 QComboBox QAbstractItemView::item {{ min-height: 30px; padding: 0 10px; }}
 QComboBox QAbstractItemView::item:disabled {{ color: {C.ENCRE_ATTENUEE}; }}
+QComboBox:disabled {{ color: {C.ENCRE_ATTENUEE}; }}
 
 QTabWidget::pane {{ border: none; border-top: 1px solid {C.CIEL_200}; top: -1px; background: {C.CIEL_000}; }}
 QTabBar::tab {{
@@ -1303,14 +1304,18 @@ class AstroApp(QMainWindow):
         self._chart_tabs[page] = "orrery"
         self.tabs.addTab(page, t("tabs.planets"))
 
-    # ── Onglet Coordonnées : système et format choisis ───────────────────────
+    # ── Onglet Coordonnées (comme le Solar System Calculator de Don Cross) ───
+    #    x, y, z et distance selon l'origine « cartésiennes » ; deux angles selon
+    #    le repère « angulaires » ; magnitude, angle avec le Soleil, constellation.
 
     _COORD_CHOICES = (
-        ("center", AstroEngine.CENTERS, "coord_center"),
-        ("frame", AstroEngine.FRAMES, "coord_frame"),
-        ("repr", ("angular", "cartesian"), "coord_repr"),
+        ("cartesian", AstroEngine.CENTERS, "coord_cartesian"),
+        ("angular", AstroEngine.FRAMES, "coord_angular"),
+        ("ecliptic_from", ("sun", "earth"), "coord_ecliptic_from"),
         ("angle", Formatters.ANGLE_FORMATS, "angle_format"),
     )
+    _COORD_COLUMNS = ("col_body", "col_x", "col_y", "col_z", "col_dist", "col_mag",
+                      "col_sun_angle", "col_constellation", "angle1", "angle2")
 
     def _build_coordinates_tab(self):
         page = QWidget()
@@ -1332,28 +1337,30 @@ class AstroApp(QMainWindow):
             row.addWidget(ChampSaisie(t(f"coordinates.{key}"), menu), stretch=1)
         lay.addLayout(row)
 
-        table = QTableWidget(2 + len(_PLANETS), 4)
+        table = QTableWidget(len(AstroEngine.BODIES), len(self._COORD_COLUMNS))
         table.verticalHeader().setVisible(False)
         table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         table.setShowGrid(False)
         header = table.horizontalHeader()
-        header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        header.setStretchLastSection(True)
         header.setDefaultAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        table.verticalHeader().setDefaultSectionSize(40)
+        table.verticalHeader().setDefaultSectionSize(36)
+        table.setStyleSheet("QTableWidget::item { padding: 0 4px; }")
         mono = QFont()
         mono.setFamilies(list(_fonts["mono"]))
-        mono.setPixelSize(15)
+        mono.setPixelSize(13)
         mono.setWeight(QFont.Weight.Medium)
-        for r in range(table.rowCount()):
-            for c in range(table.columnCount()):
+        for r, body in enumerate(AstroEngine.BODIES):
+            for c, col in enumerate(self._COORD_COLUMNS):
                 item = QTableWidgetItem("—")
                 item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-                if c:
+                if col not in ("col_body", "col_constellation"):
                     item.setFont(mono)
                 table.setItem(r, c, item)
-        table.setFixedHeight(40 * table.rowCount() + header.sizeHint().height() + 4)
+        table.setFixedHeight(36 * table.rowCount() + header.sizeHint().height() + 4)
         self.coord_table = table
         lay.addWidget(table)
         self._coord_note = _label("", "legende", wrap=True)
@@ -1367,15 +1374,8 @@ class AstroApp(QMainWindow):
         return self.coord_menus[key].currentData()
 
     def _sync_coord_menus(self):
-        """Pas de repère horizontal vu du Soleil : l'option est grisée, l'écliptique la remplace."""
-        helio = self._coord_choice("center") == "heliocentric"
-        frames = self.coord_menus["frame"]
-        frames.model().item(frames.findData("horizontal")).setEnabled(not helio)
-        if helio and self._coord_choice("frame") == "horizontal":
-            frames.blockSignals(True)
-            frames.setCurrentIndex(frames.findData("ecliptic"))
-            frames.blockSignals(False)
-            prefs.set("coord_frame", "ecliptic")
+        """Le choix Soleil / Terre ne vaut que pour les coordonnées écliptiques."""
+        self.coord_menus["ecliptic_from"].setEnabled(self._coord_choice("angular") == "ecliptic")
 
     def _on_coord_choice(self, key):
         pref = dict((k, p) for k, _o, p in self._COORD_CHOICES)[key]
@@ -1386,48 +1386,61 @@ class AstroApp(QMainWindow):
         else:
             self._refresh_coordinates()
 
-    def _coord_length(self, value, in_km):
-        if in_km:
-            return tf("units.km", value=_num(value * 149597870.7, 1))
-        return tf("units.au", value=_num(value, 8))
+    @staticmethod
+    def _body_label(body):
+        if body in ("sun", "moon"):
+            return f"{charts.SYMBOL[body.capitalize()]} {t(f'chart.{body}')}"
+        if body == "earth":
+            return f"{charts.SYMBOL['Earth']} {t('coordinates.earth')}"
+        symbol = charts.SYMBOL.get(body)
+        name = t(f"planets.{body.lower()}")
+        return f"{symbol} {name}" if symbol else name
 
     def _refresh_coordinates(self):
         """Tableau des coordonnées, calculé quand son onglet est affiché."""
         if self._lat is None or self.tabs.currentWidget() is not getattr(self, "_coord_page", None):
             return
-        center, frame, rep = (self._coord_choice(k) for k in ("center", "frame", "repr"))
-        tc = AstroEngine.julian_century_j2000(self._dte)
-        if rep == "cartesian":
-            columns = ("col_x", "col_y", "col_z")
+        cartesian, angular, from_body = (self._coord_choice(k)
+                                         for k in ("cartesian", "angular", "ecliptic_from"))
+        # (origine, repère) des angles : équatoriales et horizontales vues du lieu,
+        # écliptiques vues du Soleil ou de la Terre
+        if angular == "ecliptic":
+            angle_system = ("heliocentric" if from_body == "sun" else "geocentric", "ecliptic")
         else:
-            columns = {"ecliptic": ("col_lon", "col_lat"), "equatorial": ("col_ra", "col_dec"),
-                       "horizontal": ("col_az", "col_alt")}[frame] + ("col_dist",)
-        self.coord_table.setHorizontalHeaderLabels(
-            [t("coordinates.col_body")] + [t(f"coordinates.{c}") for c in columns])
-        bodies = ["earth" if center == "heliocentric" else "sun", "moon", *_PLANETS]
-        names = {"sun": f"{charts.SYMBOL['Sun']} {t('chart.sun')}",
-                 "moon": f"{charts.SYMBOL['Moon']} {t('chart.moon')}",
-                 "earth": f"{charts.SYMBOL['Earth']} {t('coordinates.earth')}"}
-        for r, body in enumerate(bodies):
-            self.coord_table.item(r, 0).setText(names.get(body) or _planet_name(body, symbol=True))
-            c = AstroEngine.coordinates(tc, body, center, frame, self._lat, self._lon,
-                                        self._elevation())
-            in_km = body == "moon" and center != "heliocentric"
-            if c is None:
-                cells = ["—"] * 3
-            elif rep == "cartesian":
-                cells = [self._coord_length(c[k], in_km) for k in ("x", "y", "z")]
+            angle_system = ("topocentric", angular)
+        angle_heads = {"ecliptic": ("col_lon", "col_lat"), "equatorial": ("col_ra", "col_dec"),
+                       "horizontal": ("col_az", "col_alt")}[angular]
+        heads = [t(f"coordinates.{c}") for c in self._COORD_COLUMNS[:-2]]
+        self.coord_table.setHorizontalHeaderLabels(heads + [t(f"coordinates.{c}") for c in angle_heads])
+
+        tc, elev = AstroEngine.julian_century_j2000(self._dte), self._elevation()
+        seen = AstroEngine.observations(tc)
+        for r, body in enumerate(AstroEngine.BODIES):
+            xyz = AstroEngine.coordinates(tc, body, cartesian, "ecliptic", self._lat, self._lon, elev)
+            ang = AstroEngine.coordinates(tc, body, *angle_system, self._lat, self._lon, elev)
+            obs = seen[body]
+            cells = [self._body_label(body)]
+            cells += (["—"] * 4 if xyz is None else
+                      [_num(xyz[k], 7) for k in ("x", "y", "z")] + [_num(xyz["dist"], 7)])
+            if obs is None:
+                cells += ["—"] * 3
             else:
-                first = _ra(c["lon"] / 15.0) if frame == "equatorial" else _az(c["lon"])
-                cells = [first, _dec(c["lat"]), self._coord_length(c["dist"], in_km)]
-            for col, text in enumerate(cells, start=1):
-                self.coord_table.item(r, col).setText(text)
-        notes = [t(f"coordinates.note_{'helio' if center == 'heliocentric' else 'apparent'}")]
-        if frame == "horizontal":
-            notes.append(t("coordinates.note_horizontal"))
-        elif rep == "cartesian":
-            notes.append(t("coordinates.note_axes"))
-        self._coord_note.setText(" ".join(notes))
+                cells += [_num(obs["mag"], 2, signed=True),
+                          "—" if obs["elongation"] is None else _deg(obs["elongation"], 1),
+                          obs["constellation"]]
+            if ang is None:
+                cells += ["—", "—"]
+            elif angular == "equatorial":
+                cells += [_ra(ang["lon"] / 15.0), _dec(ang["lat"])]
+            else:
+                cells += [_az(ang["lon"]), _dec(ang["lat"])]
+            for c, text in enumerate(cells):
+                self.coord_table.item(r, c).setText(text)
+            self.coord_table.item(r, 7).setToolTip(obs["constellation_name"] if obs else "")
+        self._coord_note.setText(" ".join((
+            t(f"coordinates.note_cartesian_{cartesian}"),
+            t(f"coordinates.note_angular_{angular if angular != 'ecliptic' else 'ecliptic_' + from_body}"),
+            t("coordinates.note_observation"))))
 
     # ── Onglet 5 : événements ─────────────────────────────────────────────────
 

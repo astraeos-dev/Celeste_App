@@ -734,3 +734,45 @@ class TestCoordinateSystems:
     def test_no_horizontal_frame_from_the_sun(self):
         with pytest.raises(ValueError):
             AstroEngine.coordinates(self.T, "Mars", "heliocentric", "horizontal")
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Magnitude, angle with the Sun, constellation (JPL Horizons, 2 Nov 2026 12h UT)
+# ──────────────────────────────────────────────────────────────────────
+
+class TestObservations:
+    # Horizons quantities 9 (APmag), 23 (S-O-T elongation) and 29 (constellation)
+    HORIZONS = {
+        "sun":     (-26.759, None,     "Lib"),
+        "moon":    (-9.870,  81.7051,  "Leo"),
+        "Mercury": (4.581,   4.9327,   "Lib"),
+        "Venus":   (-4.277,  15.2075,  "Vir"),
+        "Mars":    (0.867,   80.7079,  "Leo"),
+        "Jupiter": (-2.011,  75.5758,  "Leo"),
+        "Saturn":  (0.469,   149.0110, "Cet"),
+        "Uranus":  (5.609,   155.4561, "Tau"),
+        "Neptune": (7.695,   141.9531, "Psc"),
+        "Pluto":   (14.590,  83.0822,  "Cap"),
+    }
+    # Mercury, 165° from full phase behind the Sun: the magnitude models part (0.12)
+    MAG_TOLERANCE = {"Mercury": 0.15}
+
+    def test_against_horizons(self):
+        seen = AstroEngine.observations(AstroEngine.julian_century_j2000(datetime(2026, 11, 2, 12)))
+        assert seen["earth"] is None
+        for body, (mag, elongation, constellation) in self.HORIZONS.items():
+            o = seen[body]
+            assert abs(o["mag"] - mag) < self.MAG_TOLERANCE.get(body, 0.05), f"{body}: {o['mag']:.3f}"
+            if elongation is None:
+                assert o["elongation"] is None
+            else:
+                assert abs(o["elongation"] - elongation) < 0.01, body
+            assert o["constellation"] == constellation, body
+        assert seen["Pluto"]["constellation_name"] == "Capricornus"
+
+    def test_every_body_of_the_table(self):
+        t = AstroEngine.julian_century_j2000(datetime(2026, 11, 2, 12))
+        for body in AstroEngine.BODIES:
+            c = AstroEngine.coordinates(t, body, "heliocentric", "ecliptic")
+            assert (c is None) == (body == "sun"), body
+        assert 29.0 < AstroEngine.coordinates(t, "Pluto", "heliocentric", "ecliptic")["dist"] < 50.0

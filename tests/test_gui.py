@@ -487,12 +487,26 @@ class TestGeolocation:
 # ──────────────────────────────────────────────────────────────────────
 
 class TestCoordinatesTab:
+    """Onglet comme le Solar System Calculator : x, y, z et angles en même temps."""
+
+    BODIES = ["Soleil", "Lune", "Mercure", "Vénus", "Terre", "Mars", "Jupiter", "Saturne",
+              "Uranus", "Neptune", "Pluton"]
+
     def _open(self, window):
         window.tabs.setCurrentWidget(window._coord_page)
 
     def _choose(self, window, key, value):
         menu = window.coord_menus[key]
         menu.setCurrentIndex(menu.findData(value))
+
+    def _row(self, window, name):
+        table = window.coord_table
+        r = next(r for r in range(table.rowCount()) if table.item(r, 0).text().endswith(name))
+        return [table.item(r, c).text() for c in range(table.columnCount())]
+
+    def _headers(self, window):
+        table = window.coord_table
+        return [table.horizontalHeaderItem(c).text() for c in range(table.columnCount())]
 
     def test_short_lists_show_every_choice(self, window, qapp):
         """Listes en mode liste : aucun choix caché derrière des flèches de défilement."""
@@ -506,28 +520,45 @@ class TestCoordinatesTab:
             assert not view.verticalScrollBar().isVisible()
             menu.hidePopup()
 
-    def test_default_geocentric_equatorial(self, window):
+    def test_default_heliocentric_and_equatorial(self, window):
+        """Par défaut, comme cosinekitty.com : x, y, z héliocentriques, angles équatoriaux."""
         self._open(window)
-        table = window.coord_table
-        assert table.horizontalHeaderItem(1).text() == "Ascension droite α"
-        assert table.item(0, 1).text() == window.sun_labels["ra"].text()
-        assert table.item(1, 3).text().endswith("km")             # la Lune en km
+        assert self._headers(window) == [
+            "Astre", "x (UA)", "y (UA)", "z (UA)", "Distance (UA)", "Mag.",
+            "Angle Soleil", "Const.", "Ascension droite α", "Déclinaison δ"]
+        rows = [window.coord_table.item(r, 0).text() for r in range(window.coord_table.rowCount())]
+        assert [r.split(" ", 1)[-1] for r in rows] == self.BODIES
+        sun, earth = self._row(window, "Soleil"), self._row(window, "Terre")
+        assert sun[1:5] == ["—"] * 4                      # le Soleil est l'origine
+        assert sun[5].startswith("−26,7") and sun[7] == "Lib"
+        assert earth[1] != "—" and earth[5:] == ["—"] * 5   # la Terre : x, y, z seulement
+        assert sun[8].endswith("s")                           # ascension droite en h m s
 
-    def test_heliocentric_shows_the_earth_and_greys_horizontal(self, window):
+    def test_cartesian_and_angular_are_independent(self, window):
+        """Changer l'origine cartésienne ne change pas les angles, et inversement."""
         self._open(window)
-        self._choose(window, "frame", "horizontal")
-        self._choose(window, "center", "heliocentric")
-        assert window.coord_menus["frame"].currentData() == "ecliptic"
-        frames = window.coord_menus["frame"]
-        assert not frames.model().item(frames.findData("horizontal")).isEnabled()
-        assert window.coord_table.item(0, 0).text().endswith("Terre")
-        assert "J2000" in window._coord_note.text()
+        before = self._row(window, "Mars")
+        self._choose(window, "cartesian", "geocentric")
+        after = self._row(window, "Mars")
+        assert after[1:5] != before[1:5] and after[8:] == before[8:]
+        assert self._row(window, "Terre")[1:5] == ["—"] * 4
+        self._choose(window, "angular", "horizontal")
+        assert self._headers(window)[8:] == ["Azimut", "Hauteur"]
+        assert self._row(window, "Mars")[1:5] == after[1:5]
 
-    def test_cartesian_columns(self, window):
+    def test_ecliptic_from_the_sun_or_the_earth(self, window):
         self._open(window)
-        self._choose(window, "repr", "cartesian")
-        assert [window.coord_table.horizontalHeaderItem(c).text() for c in (1, 2, 3)] == ["x", "y", "z"]
-        assert window.coord_table.item(2, 1).text().endswith("UA")
+        assert not window.coord_menus["ecliptic_from"].isEnabled()
+        self._choose(window, "angular", "ecliptic")
+        assert window.coord_menus["ecliptic_from"].isEnabled()
+        assert self._headers(window)[8:] == ["Longitude λ", "Latitude β"]
+        assert self._row(window, "Soleil")[8:] == ["—", "—"]   # vu du Soleil
+        assert self._row(window, "Terre")[8] != "—"
+        assert "vues du Soleil" in window._coord_note.text()
+        self._choose(window, "ecliptic_from", "earth")
+        assert self._row(window, "Terre")[8:] == ["—", "—"]    # vu de la Terre
+        assert self._row(window, "Soleil")[8] != "—"
+        assert "vues de la Terre" in window._coord_note.text()
 
     @pytest.mark.parametrize("fmt, pattern", [("dms", r"^\d+h \d\dm \d\d,\ds$"),
                                               ("dm", r"^\d+h \d\d,\d{3}m$"),
@@ -536,5 +567,4 @@ class TestCoordinatesTab:
         self._open(window)
         self._choose(window, "angle", fmt)
         assert re.match(pattern, window.sun_labels["ra"].text())
-        assert re.match(pattern, window.coord_table.item(0, 1).text())
-
+        assert re.match(pattern, self._row(window, "Vénus")[8])

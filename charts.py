@@ -40,8 +40,9 @@ from engine import AstroEngine, _HORIZON_CORRECTION_SUN
 
 # Astronomical symbols (Astraeos Symboles). Matplotlib never draws emoji, so
 # they go without the U+FE0E selector here.
-SYMBOL = {"Sun": "☉", "Moon": "☽", "Earth": "⊕", "Venus": "♀",
-          "Mars": "♂", "Jupiter": "♃", "Saturn": "♄", "vernal": "♈"}
+SYMBOL = {"Sun": "☉", "Moon": "☽", "Earth": "⊕", "Mercury": "☿", "Venus": "♀",
+          "Mars": "♂", "Jupiter": "♃", "Saturn": "♄", "Uranus": "♅", "Neptune": "♆",
+          "Pluto": "♇", "vernal": "♈"}
 
 # Text sizes of the design system (px) converted to points at the figures'
 # 100 dpi: legende 13 px, corps 15 px, sous-titre 17 px.

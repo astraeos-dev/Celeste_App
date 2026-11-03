@@ -35,9 +35,10 @@ Jour et Observation), avec des graphiques interactifs et une carte du ciel.
   info-bulle au survol et fiche détaillée au clic (constellation, magnitude, coordonnées)
 - **Planètes** — tableau de Vénus, Mars, Jupiter et Saturne (coordonnées, distance, élongation, visibilité) et système
   solaire vu de dessus, en vue rapprochée et en vue d'ensemble
-- **Coordonnées** — Soleil (ou Terre), Lune et planètes dans le système choisi : origine héliocentrique,
-  géocentrique ou topocentrique ; repère écliptique, équatorial ou horizontal ; angles ou x, y, z ; angles affichés
-  en dd° mm′ ss″, dd° mm,mm′ ou dd,ddddd° (format appliqué à toute l'application)
+- **Coordonnées** — comme le *Solar System Calculator* de Don Cross (cosinekitty.com) : Soleil, Lune, planètes de
+  Mercure à Pluton et Terre, avec en même temps x, y, z et distance (héliocentriques, géocentriques ou topocentriques) et
+  deux angles (équatoriaux ou horizontaux vus du lieu, écliptiques vus du Soleil ou de la Terre), magnitude, angle au
+  Soleil et constellation ; angles en dd° mm′ ss″, dd° mm,mm′ ou dd,ddddd° (format appliqué à toute l'application)
 - **Prévision des éclipses** — éclipses de Soleil (totale, annulaire, hybride, partielle ; magnitude, durée de la phase
   centrale) et de Lune (totale, partielle, pénombrale ; magnitudes d'ombre et de pénombre, durée de chaque phase), avec
   l'heure du maximum
@@ -199,6 +200,7 @@ est téléchargée depuis le serveur JPL/NAIF au premier lancement.
 | `find_events(dte, lat, lon, body, tz, elevation_m)` | Lever, coucher (bord supérieur), culmination, crépuscules sur le jour local (fuseau IANA, heure d'été comprise), à la seconde ; l'altitude abaisse l'horizon |
 | `horizontal(t, lat, lon, body, elevation_m, refraction)` | Hauteur et azimut topocentriques (vus du lieu, parallaxe comprise) |
 | `coordinates(t, body, center, frame, lat, lon)` | Coordonnées dans le système choisi : héliocentriques (géométriques, J2000) ou géo/topocentriques (apparentes, de la date) ; écliptiques, équatoriales ou horizontales ; angles et x, y, z |
+| `observations(t, bodies)` | Magnitude visuelle, angle au Soleil et constellation (UAI), vus de la Terre |
 | `moon_phase(t)` | Fraction éclairée de la Lune (%) et âge depuis la dernière nouvelle lune vraie |
 | `altitudes(dtes, lat, lon, elevation_m)` | Hauteurs du Soleil et de la Lune à une série d'instants, en un calcul vectorisé |
 | `planet_heliocentric(t, name)` | Position héliocentrique écliptique J2000 (x, y, z en UA), Terre comprise |

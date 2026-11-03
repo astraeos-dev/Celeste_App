@@ -49,9 +49,9 @@ _DEFAULTS = {
 
     # Coordonnées
     "angle_format":   "dms",        # dms (dd° mm′ ss″) | dm (dd° mm,mm′) | dd (dd,ddddd°)
-    "coord_center":   "geocentric", # heliocentric | geocentric | topocentric
-    "coord_frame":    "equatorial", # ecliptic | equatorial | horizontal
-    "coord_repr":     "angular",    # angular | cartesian
+    "coord_cartesian": "heliocentric",   # x, y, z : heliocentric | geocentric | topocentric
+    "coord_angular":   "equatorial",     # angles : ecliptic | equatorial | horizontal
+    "coord_ecliptic_from": "sun",        # angles écliptiques vus du : sun | earth
 }
 
 # ── État interne ───────────────────────────────────────────────────────────────

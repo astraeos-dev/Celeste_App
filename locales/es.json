@@ -81,6 +81,22 @@
     "note_angular_ecliptic_earth": "Ángulos: longitud y latitud eclípticas vistas desde la Tierra (aparentes, equinoccio verdadero de la fecha).",
     "note_observation": "Magnitud, ángulo con el Sol y constelación: vistos desde la Tierra."
   },
+  "eclipse_map": {
+    "button": "Mapa",
+    "button_tip": "El eclipse proyectado sobre el suelo",
+    "window_title": "Eclipse proyectado sobre el suelo",
+    "title": "{eclipse} {type} — máximo el {date}",
+    "greatest": "Máximo del eclipse",
+    "observer": "Lugar elegido",
+    "central": "Línea central",
+    "path_total": "Franja de totalidad",
+    "path_annular": "Franja de anularidad",
+    "partial": "Parcialidad (magnitud máxima)",
+    "moon_up": "Luna sobre el horizonte en el máximo",
+    "limits": "Límites al principio y al final de la fase parcial",
+    "note_solar": "Franja: sombra (o antisombra) de la Luna en el suelo, minuto a minuto; curvas: magnitud máxima de la parcialidad, con el Sol sobre el horizonte. JPL DE440, elipsoide WGS84.",
+    "note_lunar": "Zona clara: la Luna está sobre el horizonte en el máximo; trazos: límite de la Luna sobre el horizonte al principio y al final de la fase parcial (o penumbral)."
+  },
   "status": {
     "stars_one": "{n} estrella visible",
     "stars_many": "{n} estrellas visibles",

@@ -81,6 +81,22 @@
     "note_angular_ecliptic_earth": "Winkel: ekliptikale Länge und Breite von der Erde gesehen (scheinbar, wahres Äquinoktium des Datums).",
     "note_observation": "Helligkeit, Winkel zur Sonne und Sternbild: von der Erde gesehen."
   },
+  "eclipse_map": {
+    "button": "Karte",
+    "button_tip": "Die Finsternis auf den Boden projiziert",
+    "window_title": "Finsternis auf den Boden projiziert",
+    "title": "{eclipse} {type} — Maximum am {date}",
+    "greatest": "Maximum der Finsternis",
+    "observer": "Gewählter Ort",
+    "central": "Zentrallinie",
+    "path_total": "Totalitätszone",
+    "path_annular": "Ringförmigkeitszone",
+    "partial": "Partialität (maximale Größe)",
+    "moon_up": "Mond über dem Horizont im Maximum",
+    "limits": "Grenzen zu Beginn und am Ende der partiellen Phase",
+    "note_solar": "Band: Kern- (oder Gegen-)schatten des Mondes am Boden, Minute für Minute; Kurven: maximale Größe der Partialität bei Sonne über dem Horizont. JPL DE440, WGS84-Ellipsoid.",
+    "note_lunar": "Helle Zone: Mond im Maximum über dem Horizont; Striche: Grenze des Mondes über dem Horizont zu Beginn und am Ende der partiellen (oder Halbschatten-)Phase."
+  },
   "status": {
     "stars_one": "{n} Stern sichtbar",
     "stars_many": "{n} Sterne sichtbar",

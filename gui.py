@@ -2448,8 +2448,9 @@ class AstroApp(QMainWindow):
             self._evt_layout.addWidget(_label(note, "legende", wrap=True))
         self._evt_layout.addSpacing(8)
 
-    def _event_card(self, symbole, accent, title, when, pills=(), details=()):
-        """Carte d'événement : symbole, titre, pastilles, date ; détails dessous."""
+    def _event_card(self, symbole, accent, title, when, pills=(), details=(), action=None):
+        """Carte d'événement : symbole, titre, pastilles, date ; détails dessous ;
+        *action* : (texte, fonction) d'un bouton à droite."""
         card = _card()
         card.setObjectName("card")
         card.setProperty("eventCard", True)
@@ -2464,6 +2465,11 @@ class AstroApp(QMainWindow):
             top.addWidget(_pastille(text, ton))
         top.addStretch()
         top.addWidget(_label(when, "donnee"))
+        if action:
+            btn = _bouton(action[0], "place", "secondaire", compact=True)
+            btn.setToolTip(t("eclipse_map.button_tip"))
+            btn.clicked.connect(action[1])
+            top.addWidget(btn)
         lay.addLayout(top)
         if details:
             lay.addWidget(_label("   ·   ".join(details), "legende", wrap=True))
@@ -2529,8 +2535,53 @@ class AstroApp(QMainWindow):
             self._event_card(SYMBOL["Sun"] if solar else SYMBOL["Moon"],
                              "or" if solar else "lune",
                              t("events.solar_eclipse" if solar else "events.lunar_eclipse"),
-                             when, pills, self._eclipse_details(ec))
+                             when, pills, self._eclipse_details(ec),
+                             (t("eclipse_map.button"), lambda _=False, e=ec: self._show_eclipse_map(e)))
         self._evt_layout.addStretch()
+
+    def _show_eclipse_map(self, ec):
+        """Fenêtre : l'éclipse projetée au sol (bande, ligne de centralité, partialité)."""
+        solar = ec["type"] == "solar"
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            if solar:
+                scene = AstroEngine.eclipse_map(ec["greatest"], "solar")
+            else:
+                durations = ec.get("durations") or {}
+                minutes = durations.get("partial") or durations.get("penumbral") or 120.0
+                scene = AstroEngine.eclipse_map(ec["greatest"], "lunar", half_span_hours=minutes / 120.0)
+        finally:
+            QApplication.restoreOverrideCursor()
+        sub_type = t(f"events.subtype_{ec['sub_type']}")
+        when = (ec["greatest"] + timedelta(seconds=30)).strftime("%d/%m/%Y %H:%M")
+        labels = {
+            "title": tf("eclipse_map.title", eclipse=t("events.solar_eclipse" if solar
+                                                       else "events.lunar_eclipse"),
+                        type=sub_type.lower(), date=f"{when} {t('chart.ut')}"),
+            "greatest": t("eclipse_map.greatest"), "observer": t("eclipse_map.observer"),
+            "central": t("eclipse_map.central"), "partial": t("eclipse_map.partial"),
+            "path": t("eclipse_map.path_annular" if ec["sub_type"] == "annular"
+                      else "eclipse_map.path_total"),
+            "moon_up": t("eclipse_map.moon_up"), "limits": t("eclipse_map.limits"),
+            "decimal": _locale().decimalPoint(),
+        }
+        dlg = QDialog(self)
+        dlg.setWindowTitle(t("eclipse_map.window_title"))
+        dlg.resize(1000, 640)
+        lay = QVBoxLayout(dlg)
+        fig = Figure(facecolor=Config.CIEL_100)
+        canvas = FigureCanvasQTAgg(fig)
+        lay.addWidget(canvas, stretch=1)
+        observer = (self._lat, self._lon) if self._lat is not None else None
+        charts.draw_eclipse_map(fig, scene, labels, observer)
+        lay.addWidget(_label(t("eclipse_map.note_solar" if solar else "eclipse_map.note_lunar"),
+                             "legende", wrap=True))
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        buttons.rejected.connect(dlg.reject)
+        lay.addWidget(buttons)
+        canvas.draw_idle()
+        self._eclipse_dialog = dlg
+        dlg.show()
 
     def _search_conjunctions_gui(self):
         """Recherche et affiche les conjonctions et oppositions sur 12 mois."""

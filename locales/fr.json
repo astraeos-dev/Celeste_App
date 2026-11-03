@@ -81,6 +81,22 @@
     "note_angular_ecliptic_earth": "Angles : longitude et latitude écliptiques vues de la Terre (apparentes, équinoxe vrai de la date).",
     "note_observation": "Magnitude, angle au Soleil et constellation : vus de la Terre."
   },
+  "eclipse_map": {
+    "button": "Carte",
+    "button_tip": "L'éclipse projetée au sol",
+    "window_title": "Éclipse projetée au sol",
+    "title": "{eclipse} {type} — maximum le {date}",
+    "greatest": "Maximum de l'éclipse",
+    "observer": "Lieu choisi",
+    "central": "Ligne de centralité",
+    "path_total": "Bande de totalité",
+    "path_annular": "Bande d'annularité",
+    "partial": "Partialité (magnitude maximale)",
+    "moon_up": "Lune levée au maximum",
+    "limits": "Limites au début et à la fin de la phase partielle",
+    "note_solar": "Bande : ombre (ou antiombre) de la Lune au sol, minute par minute ; courbes : magnitude maximale de la partialité, Soleil levé. Calcul JPL DE440, ellipsoïde WGS84.",
+    "note_lunar": "Zone claire : la Lune est levée au maximum de l'éclipse ; tirets : limite de la Lune levée au début et à la fin de la phase partielle (ou pénombrale)."
+  },
   "status": {
     "stars_one": "{n} étoile visible",
     "stars_many": "{n} étoiles visibles",

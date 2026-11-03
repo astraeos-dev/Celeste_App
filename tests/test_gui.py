@@ -614,3 +614,18 @@ class TestUserFiles:
         assert json.loads((tmp_path / "user" / "favorites.json").read_text(encoding="utf-8")) == \
             window.favorites
 
+
+class TestEclipseMap:
+    def test_map_of_a_solar_eclipse(self, window, qapp):
+        """Le bouton « Carte » d'une éclipse ouvre sa projection au sol."""
+        from PyQt6.QtWidgets import QPushButton
+        window._search_eclipses_gui()
+        qapp.processEvents()
+        buttons = [b for b in window.findChildren(QPushButton) if b.text() == "Carte"]
+        assert buttons, "aucun bouton Carte"
+        buttons[0].click()
+        qapp.processEvents()
+        dlg = window._eclipse_dialog
+        assert dlg.isVisible() and dlg.windowTitle() == "Éclipse projetée au sol"
+        dlg.close()
+

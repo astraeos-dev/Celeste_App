@@ -81,6 +81,22 @@
     "note_angular_ecliptic_earth": "Angles: ecliptic longitude and latitude seen from the Earth (apparent, true equinox of date).",
     "note_observation": "Magnitude, Sun angle and constellation: seen from the Earth."
   },
+  "eclipse_map": {
+    "button": "Map",
+    "button_tip": "The eclipse projected on the ground",
+    "window_title": "Eclipse projected on the ground",
+    "title": "{eclipse} {type} — greatest on {date}",
+    "greatest": "Greatest eclipse",
+    "observer": "Chosen place",
+    "central": "Central line",
+    "path_total": "Path of totality",
+    "path_annular": "Path of annularity",
+    "partial": "Partiality (maximum magnitude)",
+    "moon_up": "Moon up at greatest eclipse",
+    "limits": "Limits at the start and end of the partial phase",
+    "note_solar": "Band: the Moon's umbra (or antumbra) on the ground, minute by minute; curves: maximum magnitude of the partiality, Sun up. JPL DE440, WGS84 ellipsoid.",
+    "note_lunar": "Light zone: the Moon is up at greatest eclipse; dashes: limit of the Moon being up at the start and end of the partial (or penumbral) phase."
+  },
   "status": {
     "stars_one": "{n} star visible",
     "stars_many": "{n} stars visible",

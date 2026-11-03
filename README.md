@@ -44,6 +44,9 @@ Jour et Observation), avec des graphiques interactifs et une carte du ciel.
 - **Prévision des éclipses** — éclipses de Soleil (totale, annulaire, hybride, partielle ; magnitude, durée de la phase
   centrale) et de Lune (totale, partielle, pénombrale ; magnitudes d'ombre et de pénombre, durée de chaque phase), avec
   l'heure du maximum
+- **Éclipse projetée au sol** — bouton « Carte » de chaque éclipse : bande de totalité ou d'annularité, ligne de
+  centralité, magnitude maximale de la partialité et point du maximum (éclipses de Soleil) ; zone où la Lune est levée
+  (éclipses de Lune) ; sur un fond Natural Earth, avec le lieu choisi
 - **Conjonctions et oppositions** — prochains événements planétaires
 - **Équation du temps** — écart entre temps solaire vrai et temps solaire moyen
 - **Favoris** — enregistrement des lieux (37 villes préchargées)
@@ -199,6 +202,7 @@ est téléchargée depuis le serveur JPL/NAIF au premier lancement.
 | `find_events(dte, lat, lon, body, tz, elevation_m)` | Soleil, Lune ou planète : lever, coucher (bord supérieur), culmination, crépuscules sur le jour local (fuseau IANA, heure d'été comprise), à la seconde ; l'altitude abaisse l'horizon |
 | `horizontal(t, lat, lon, body, elevation_m, refraction)` | Hauteur et azimut topocentriques (vus du lieu, parallaxe comprise) |
 | `coordinates(t, body, center, frame, lat, lon)` | Coordonnées dans le système choisi : héliocentriques (géométriques, J2000) ou géo/topocentriques (apparentes, de la date) ; écliptiques, équatoriales ou horizontales ; angles et x, y, z |
+| `eclipse_map(greatest, kind)` | Éclipse projetée au sol : ligne de centralité, bande d'ombre, partialité (Soleil) ; Lune levée (Lune) |
 | `observations(t, bodies)` | Magnitude visuelle, angle au Soleil et constellation (UAI), vus de la Terre |
 | `moon_phase(t)` | Fraction éclairée de la Lune (%) et âge depuis la dernière nouvelle lune vraie |
 | `altitudes(dtes, lat, lon, elevation_m)` | Hauteurs du Soleil et de la Lune à une série d'instants, en un calcul vectorisé |
@@ -231,6 +235,7 @@ affiché est redessiné ; les autres le sont quand on les ouvre.
   Eclipses*, NASA — valeurs de référence des tests d'éclipses
 - **JPL Horizons** et **USNO** (aa.usno.navy.mil) — valeurs de référence des tests de positions, levers et couchers
 - **D. Hoffleit et W. H. Warren** (1991), *Yale Bright Star Catalogue*, 5e éd. — étoiles de la carte du ciel (domaine public)
+- **Natural Earth** (naturalearthdata.com), terres au 1/110 000 000 — fond de carte des éclipses (domaine public)
 
 ---
 

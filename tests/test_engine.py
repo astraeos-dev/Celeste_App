@@ -799,3 +799,83 @@ class TestStarCatalog:
         shift = AstroEngine.angular_separation(fixed[1][0] / 15, fixed[0][0], moving[1][0] / 15, moving[0][0])
         assert 0.8 < shift * 60 < 1.2                       # arcminutes
 
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Eclipses projected on the ground (NASA's greatest eclipse points)
+# ──────────────────────────────────────────────────────────────────────
+
+class TestEclipseMap:
+    # Greatest eclipse (NASA, Espenak): latitude, longitude
+    NASA_GREATEST = {
+        datetime(2026, 8, 12): (65.17, -25.21),        # total, Iceland
+        datetime(2027, 2, 6): (-31.32, -48.50),        # annular, South Atlantic
+        datetime(2027, 8, 2): (25.52, 33.20),          # total, Egypt
+    }
+
+    @pytest.fixture(scope="class")
+    def solar(self):
+        found = AstroEngine.find_eclipses(datetime(2026, 7, 1), 14)
+        return {e["greatest"].replace(hour=0, minute=0, second=0): e for e in found if e["type"] == "solar"}
+
+    def test_greatest_point_matches_nasa(self, solar):
+        for day, (lat, lon) in self.NASA_GREATEST.items():
+            scene = AstroEngine.eclipse_map(solar[day]["greatest"], "solar")
+            got_lat, got_lon = scene["greatest"]
+            assert abs(got_lat - lat) < 0.15 and abs(got_lon - lon) < 0.15, (day, scene["greatest"])
+
+    def test_sun_and_moon_aligned_on_the_central_line(self, solar):
+        """From the greatest point, at greatest eclipse, the Moon's centre is on the Sun's."""
+        from engine import _sky
+        from skyfield.api import wgs84
+        e = solar[datetime(2027, 8, 2)]
+        lat, lon = AstroEngine.eclipse_map(e["greatest"], "solar")["greatest"]
+        sky = _sky()
+        here = (sky["earth"] + wgs84.latlon(lat, lon)).at(sky["ts"].ut1_jd(AstroEngine.julian_day(e["greatest"])))
+        sun, moon = (here.observe(sky[b]).apparent() for b in ("sun", "moon"))
+        assert sun.separation_from(moon).arcseconds() < 2.0
+
+    def test_width_of_the_path_of_totality(self, solar):
+        """2 August 2027: path 258 km wide at greatest eclipse (NASA)."""
+        e = solar[datetime(2027, 8, 2)]
+        scene = AstroEngine.eclipse_map(e["greatest"], "solar")
+        middle = len(scene["path"]) // 2
+        lats, lons = scene["path"][middle]
+        pts = [(math.radians(a), math.radians(b)) for a, b in zip(lats, lons)]
+        diameter = max(6371.0 * math.acos(min(1.0, math.sin(a1) * math.sin(a2)
+                                              + math.cos(a1) * math.cos(a2) * math.cos(b1 - b2)))
+                       for a1, b1 in pts for a2, b2 in pts)
+        assert 230 < diameter < 290, diameter
+
+    def test_partial_magnitude_matches_a_direct_computation(self, solar):
+        """12 August 2026 seen from Cherbourg: grid value vs a direct topocentric computation."""
+        from engine import _sky
+        from skyfield.api import wgs84
+        import numpy as np
+        e = solar[datetime(2026, 8, 12)]
+        scene = AstroEngine.eclipse_map(e["greatest"], "solar", grid_step=0.5)
+        lat, lon = 49.6333, -1.6167
+        i = int(np.argmin(np.abs(scene["lats"] - lat)))
+        j = int(np.argmin(np.abs(scene["lons"] - lon)))
+        sky = _sky()
+        here = sky["earth"] + wgs84.latlon(lat, lon)
+        jd = AstroEngine.julian_day(e["greatest"]) + np.arange(-180, 181) / 1440.0
+        at = here.at(sky["ts"].ut1_jd(jd))
+        sun, moon = at.observe(sky["sun"]).apparent(), at.observe(sky["moon"]).apparent()
+        rs = np.arcsin(696000.0 / sun.distance().km)
+        rm = np.arcsin(1737.4 / moon.distance().km)
+        sep = sun.separation_from(moon).radians
+        up = sun.altaz()[0].degrees > 0
+        direct = float(np.max(np.where(up, np.clip((rs + rm - sep) / (2 * rs), 0, None), 0)))
+        assert 0.5 < direct < 1.0
+        assert abs(scene["grid"][i, j] - direct) < 0.05
+
+    def test_lunar_eclipse_where_the_moon_is_up(self):
+        lunar = next(e for e in AstroEngine.find_eclipses(datetime(2027, 1, 1), 3) if e["type"] == "lunar")
+        scene = AstroEngine.eclipse_map(lunar["greatest"], "lunar", half_span_hours=1.0)
+        lat, lon = scene["greatest"]
+        assert scene["at_greatest"].max() > 85.0                 # the Moon at the zenith somewhere
+        import numpy as np
+        i = int(np.argmin(np.abs(scene["lats"] - lat)))
+        j = int(np.argmin(np.abs(scene["lons"] - lon)))
+        assert scene["at_greatest"][i, j] > 85.0

@@ -17,3 +17,9 @@ de dégradé ni de déformation ; symbole d'au moins 20 px de haut.
 Les icônes des actions viennent de [Material Design Icons](https://pictogrammers.com/library/mdi/)
 (paquet `@mdi/js` 7.4.47), recopiées dans `icons.py`. Licence : Pictogrammers Free License,
 icônes sous licence Apache 2.0 — voir `LICENSE-MDI.txt`.
+
+## Fond de carte du monde
+
+`world_land.json` : contours des terres de **Natural Earth** au 1/110 000 000 (naturalearthdata.com, domaine public),
+réduits à leur contour extérieur et à deux décimales ; fond de la carte des éclipses projetées au sol (`charts.py`).
+

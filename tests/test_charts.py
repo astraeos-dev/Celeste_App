@@ -208,7 +208,7 @@ class TestOrreryScene:
 # 4. Drawings (smoke tests on Agg)
 # ──────────────────────────────────────────────────────────────────────
 
-LABELS_TRAJ = {"title": "T", "xlabel": "UT", "ylabel": "Alt", "local_axis": "Local",
+LABELS_TRAJ = {"title": "T", "xlabel": "Local", "ylabel": "Alt", "top_axis": "UT",
                "sun": "Sun", "moon": "Moon", "day": "Day", "civil": "Civil",
                "nautical": "Nautical", "astronomical": "Astro", "night": "Night"}
 PLANET_LABELS = {"Venus": "Venus", "Mars": "Mars", "Jupiter": "Jupiter", "Saturn": "Saturn"}
@@ -262,3 +262,29 @@ def test_symbols_are_in_the_symbol_font():
                         "fonts", "AstraeosSymboles-Regular.ttf")
     cmap = TTFont(font).getBestCmap()
     assert all(ord(s) in cmap for s in charts.SYMBOL.values())
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Trajectory over the local day
+# ──────────────────────────────────────────────────────────────────────
+
+class TestLocalDay:
+    def test_starts_at_local_midnight(self):
+        """Kolkata (UTC+5:30): 24 h from local midnight, the Sun highest near local noon."""
+        from zoneinfo import ZoneInfo
+        hours, sun, _ = charts.sample_day(datetime(2026, 11, 2, 6), 22.5726, 88.3639,
+                                          tz=ZoneInfo("Asia/Kolkata"))
+        assert hours[0] == 0 and hours[-1] == 24
+        noon = hours[sun.index(max(sun))]
+        assert abs(noon - (11 + 20 / 60)) < 0.1          # transit 11:20 local (USNO)
+
+    def test_day_of_the_change_of_time_lasts_25_hours(self):
+        from zoneinfo import ZoneInfo
+        hours, _, _ = charts.sample_day(datetime(2026, 10, 25, 12), 48.8566, 2.3522,
+                                        tz=ZoneInfo("Europe/Paris"))
+        assert hours[-1] == 25
+
+    def test_ut_by_default(self):
+        """Without a time zone, the day is the UT day, as before."""
+        hours, _, _ = charts.sample_day(DTE, LAT, LON)
+        assert hours[0] == 0 and hours[-1] == 24

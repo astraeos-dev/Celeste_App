@@ -15,7 +15,9 @@ manquent.
 Lancer avec :  pytest tests/test_gui.py -v
 """
 
+import io
 import json
+import re
 import os
 import sys
 from datetime import datetime
@@ -417,3 +419,166 @@ class TestAstraeosRules:
         assert window._lbl_live.isVisibleTo(window)
         assert window._lbl_live.text().endswith("En direct")
         window.btn_live.toggle()
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Géolocalisation : service de l'appareil, adresse IP en secours
+# ──────────────────────────────────────────────────────────────────────
+
+class _FakeSource:
+    """Service de localisation simulé : répond une position, ou une erreur."""
+    def __init__(self, coord):
+        from PyQt6.QtCore import QObject, pyqtSignal
+
+        class Source(QObject):
+            positionUpdated = pyqtSignal(object)
+            errorOccurred = pyqtSignal(int)
+
+            def requestUpdate(self, _timeout):
+                if coord is None:
+                    self.errorOccurred.emit(2)              # UpdateTimeoutError
+                else:
+                    from PyQt6.QtCore import QDateTime
+                    from PyQt6.QtPositioning import QGeoCoordinate, QGeoPositionInfo
+                    info = QGeoPositionInfo(QGeoCoordinate(*coord), QDateTime.currentDateTime())
+                    info.setAttribute(QGeoPositionInfo.Attribute.HorizontalAccuracy, 25.0)
+                    self.positionUpdated.emit(info)
+
+        self.cls = Source
+
+    def createDefaultSource(self, parent):
+        return self.cls(parent)
+
+
+class _FakeResponse(io.BytesIO):
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+class TestGeolocation:
+    def test_device_position_is_used(self, window, monkeypatch):
+        """Cherbourg donné par le service de l'appareil, nommé par OpenStreetMap."""
+        import gui
+        monkeypatch.setattr(gui, "QGeoPositionInfoSource", _FakeSource((49.6386, -1.6164)))
+        monkeypatch.setattr(gui, "_place_name", lambda lat, lon: "Cherbourg-en-Cotentin")
+        window.geolocate()
+        assert window.entry_lat.text().replace(",", ".") == "49.6386"
+        assert window.location_name == "Cherbourg-en-Cotentin"
+        assert "±25 m" in window.statusBar().currentMessage()
+
+    def test_ip_address_only_as_a_fallback(self, window, monkeypatch):
+        """Service muet : position de l'adresse IP, annoncée comme approximative."""
+        import gui
+        monkeypatch.setattr(gui, "QGeoPositionInfoSource", _FakeSource(None))
+        answer = {"status": "success", "city": "Paris", "country": "France",
+                  "lat": 48.8566, "lon": 2.3522, "timezone": "Europe/Paris"}
+        monkeypatch.setattr(gui.urllib.request, "urlopen",
+                            lambda *a, **k: _FakeResponse(json.dumps(answer).encode()))
+        window.geolocate()
+        assert window.location_name == "Paris"
+        assert "approximative" in window.statusBar().currentMessage()
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Onglet Coordonnées et format des angles
+# ──────────────────────────────────────────────────────────────────────
+
+class TestCoordinatesTab:
+    """Onglet Coordonnées : x, y, z et angles en même temps."""
+
+    BODIES = ["Soleil", "Lune", "Mercure", "Vénus", "Terre", "Mars", "Jupiter", "Saturne",
+              "Uranus", "Neptune", "Pluton"]
+
+    def _open(self, window):
+        window.tabs.setCurrentWidget(window._coord_page)
+
+    def _choose(self, window, key, value):
+        menu = window.coord_menus[key]
+        menu.setCurrentIndex(menu.findData(value))
+
+    def _row(self, window, name):
+        table = window.coord_table
+        r = next(r for r in range(table.rowCount()) if table.item(r, 0).text().endswith(name))
+        return [table.item(r, c).text() for c in range(table.columnCount())]
+
+    def _headers(self, window):
+        table = window.coord_table
+        return [table.horizontalHeaderItem(c).text() for c in range(table.columnCount())]
+
+    def test_short_lists_show_every_choice(self, window, qapp):
+        """Listes en mode liste : aucun choix caché derrière des flèches de défilement."""
+        self._open(window)
+        for menu in window.coord_menus.values():
+            menu.showPopup()
+            qapp.processEvents()
+            view = menu.view()
+            last = view.visualRect(menu.model().index(menu.count() - 1, 0))
+            assert last.bottom() <= view.viewport().height(), menu.currentText()
+            assert not view.verticalScrollBar().isVisible()
+            menu.hidePopup()
+
+    def test_default_heliocentric_and_equatorial(self, window):
+        """Par défaut : x, y, z héliocentriques, angles équatoriaux."""
+        self._open(window)
+        assert self._headers(window) == [
+            "Astre", "x (UA)", "y (UA)", "z (UA)", "Distance (UA)", "Mag.",
+            "Angle Soleil", "Const.", "Ascension droite α", "Déclinaison δ"]
+        rows = [window.coord_table.item(r, 0).text() for r in range(window.coord_table.rowCount())]
+        assert [r.split(" ", 1)[-1] for r in rows] == self.BODIES
+        sun, earth = self._row(window, "Soleil"), self._row(window, "Terre")
+        assert sun[1:5] == ["—"] * 4                      # le Soleil est l'origine
+        assert sun[5].startswith("−26,7") and sun[7] == "Lib"
+        assert earth[1] != "—" and earth[5:] == ["—"] * 5   # la Terre : x, y, z seulement
+        assert sun[8].endswith("s")                           # ascension droite en h m s
+
+    def test_cartesian_and_angular_are_independent(self, window):
+        """Changer l'origine cartésienne ne change pas les angles, et inversement."""
+        self._open(window)
+        before = self._row(window, "Mars")
+        self._choose(window, "cartesian", "geocentric")
+        after = self._row(window, "Mars")
+        assert after[1:5] != before[1:5] and after[8:] == before[8:]
+        assert self._row(window, "Terre")[1:5] == ["—"] * 4
+        self._choose(window, "angular", "horizontal")
+        assert self._headers(window)[8:] == ["Azimut", "Hauteur"]
+        assert self._row(window, "Mars")[1:5] == after[1:5]
+
+    def test_ecliptic_from_the_sun_or_the_earth(self, window):
+        self._open(window)
+        assert not window.coord_menus["ecliptic_from"].isEnabled()
+        self._choose(window, "angular", "ecliptic")
+        assert window.coord_menus["ecliptic_from"].isEnabled()
+        assert self._headers(window)[8:] == ["Longitude λ", "Latitude β"]
+        assert self._row(window, "Soleil")[8:] == ["—", "—"]   # vu du Soleil
+        assert self._row(window, "Terre")[8] != "—"
+        assert "vues du Soleil" in window._coord_note.text()
+        self._choose(window, "ecliptic_from", "earth")
+        assert self._row(window, "Terre")[8:] == ["—", "—"]    # vu de la Terre
+        assert self._row(window, "Soleil")[8] != "—"
+        assert "vues de la Terre" in window._coord_note.text()
+
+    @pytest.mark.parametrize("fmt, pattern", [("dms", r"^\d+h \d\dm \d\d,\ds$"),
+                                              ("dm", r"^\d+h \d\d,\d{3}m$"),
+                                              ("dd", r"^\d+,\d{5}h$")])
+    def test_settings_format_applies_everywhere(self, window, fmt, pattern):
+        """Format des paramètres : tout le logiciel, et le tableau qui le suit par défaut."""
+        self._open(window)
+        assert window.coord_menus["angle"].currentData() == "global"
+        combo = window._anglefmt_combo
+        combo.setCurrentIndex(combo.findData(fmt))
+        assert re.match(pattern, window.sun_labels["ra"].text())
+        assert re.match(pattern, self._row(window, "Vénus")[8])
+
+    def test_coordinates_format_only_for_the_table(self, window):
+        """Le format choisi dans l'onglet ne change que le tableau (issue #13)."""
+        self._open(window)
+        ephemeris = window.sun_labels["ra"].text()
+        self._choose(window, "angle", "dd")
+        assert re.match(r"^\d+,\d{5}h$", self._row(window, "Vénus")[8])
+        assert window.sun_labels["ra"].text() == ephemeris
+        window._anglefmt_combo.setCurrentIndex(window._anglefmt_combo.findData("dm"))
+        assert re.match(r"^\d+h \d\d,\d{3}m$", window.sun_labels["ra"].text())
+        assert re.match(r"^\d+,\d{5}h$", self._row(window, "Vénus")[8])   # garde le sien

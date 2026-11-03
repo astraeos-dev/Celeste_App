@@ -18,6 +18,48 @@ class Formatters:
         h, m = divmod(abs(minutes), 60)
         return f"UTC{'+' if minutes >= 0 else '−'}{h}" + (f":{m:02d}" if m else "")
 
+    # Angle formats offered: degrees-minutes-seconds, degrees and decimal
+    # minutes, decimal degrees (in hours for a right ascension)
+    ANGLE_FORMATS = ("dms", "dm", "dd")
+
+    @staticmethod
+    def angle(value, fmt="dms", signed=False, hours=False):
+        """
+        Formats an angle given in degrees, or in hours for a right ascension.
+
+        Args:
+            value (float): Angle (degrees, or hours if *hours*).
+            fmt (str): "dms" → 123° 45′ 07″ (8h 45m 12.3s),
+                       "dm"  → 123° 45.12′ (8h 45.205m),
+                       "dd"  → 123.45197° (8.75342h).
+            signed (bool): Always write the sign (latitudes, declinations).
+            hours (bool): Units h, m, s instead of °, ′, ″.
+
+        Returns:
+            str: The formatted angle, "-" for a negative one (ASCII minus).
+        """
+        sign = "-" if value < 0 else ("+" if signed else "")
+        value = abs(value)
+        u1, u2, u3 = ("h", "m", "s") if hours else ("°", "′", "″")
+        if fmt == "dd":
+            return f"{sign}{value:.5f}{u1}"
+        whole = int(value)
+        if fmt == "dm":
+            digits = 3 if hours else 2
+            minutes = round((value - whole) * 60.0, digits)
+            if minutes >= 60.0:
+                whole, minutes = whole + 1, 0.0
+            return f"{sign}{whole}{u1} {minutes:0{3 + digits}.{digits}f}{u2}"
+        minutes = int((value - whole) * 60.0)
+        digits = 1 if hours else 0
+        seconds = round(((value - whole) * 60.0 - minutes) * 60.0, digits)
+        if seconds >= 60.0:
+            minutes, seconds = minutes + 1, 0.0
+        if minutes >= 60:
+            whole, minutes = whole + 1, 0
+        sec = f"{seconds:04.1f}" if hours else f"{int(seconds):02d}"
+        return f"{sign}{whole}{u1} {minutes:02d}{u2} {sec}{u3}"
+
     @staticmethod
     def hms(decimal_hours):
         """

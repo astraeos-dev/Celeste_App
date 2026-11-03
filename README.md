@@ -26,13 +26,20 @@ Jour et Observation), avec des graphiques interactifs et une carte du ciel.
 - **Événements du jour** — lever, coucher, culmination, durée du jour ; crépuscules civil (−6°), nautique (−12°) et astronomique (−18°)
 - **Phase de la Lune** — nom de la phase, fraction éclairée, âge et distance de la Lune
 - **Mode temps réel** — mise à jour automatique toutes les 2 s (réglable)
-- **Géolocalisation automatique** — position et fuseau détectés via ip-api.com
+- **Géolocalisation** — position de l'appareil par le service de localisation du système (GPS, Wi-Fi), nom de la
+  commune par OpenStreetMap ; à défaut, position approximative d'après l'adresse IP (ip-api.com), signalée comme telle
 - **Trajectoire sur 24 h** — courbes de hauteur sur un fond coloré selon le moment de la journée (jour, crépuscules, nuit),
-  heure locale en haut, info-bulle au survol
-- **Carte du ciel polaire** — zénith au centre, étoiles à la taille de leur magnitude, constellations, planètes ;
+  sur le jour local (heure locale en bas, TU en haut), info-bulle au survol
+- **Carte du ciel polaire** — zénith au centre, étoiles (ramenées à la date : précession, nutation, aberration) à la
+  taille de leur magnitude, constellations, planètes ;
   info-bulle au survol et fiche détaillée au clic (constellation, magnitude, coordonnées)
 - **Planètes** — tableau de Vénus, Mars, Jupiter et Saturne (coordonnées, distance, élongation, visibilité) et système
   solaire vu de dessus, en vue rapprochée et en vue d'ensemble
+- **Coordonnées** — Soleil, Lune, planètes de Mercure à Pluton et Terre, avec en même temps x, y, z et distance
+  (héliocentriques, géocentriques ou topocentriques) et deux angles (équatoriaux ou horizontaux vus du lieu, écliptiques
+  vus du Soleil ou de la Terre), magnitude, angle au Soleil et constellation ; angles au format des paramètres, ou en
+  dd° mm′ ss″, dd° mm,mm′ ou dd,ddddd° pour ce tableau seulement
+- **Format des angles** — choisi dans les paramètres (dd° mm′ ss″, dd° mm,mm′ ou dd,ddddd°), pour tout le logiciel
 - **Prévision des éclipses** — éclipses de Soleil (totale, annulaire, hybride, partielle ; magnitude, durée de la phase
   centrale) et de Lune (totale, partielle, pénombrale ; magnitudes d'ombre et de pénombre, durée de chaque phase), avec
   l'heure du maximum
@@ -95,7 +102,8 @@ Changer la date recalcule tout au bout d'un instant.
 **Boutons :**
 
 - Horloge, à droite de la date — revient à l'instant présent
-- Viseur, à droite de la longitude — remplit la latitude, la longitude et le fuseau à partir de l'adresse IP
+- Viseur, à droite de la longitude — remplit la latitude, la longitude et le fuseau à partir du service de localisation
+  de l'appareil (à autoriser dans les réglages de confidentialité de Windows ou de macOS) ; sinon, de l'adresse IP
 - **Calculer** (`F5`) — lance les calculs pour la date et le lieu saisis
 - **Suivre en temps réel** (`Ctrl+L`) — bouton à bascule : suit l'heure actuelle tant qu'il reste enfoncé (intervalle
   réglable dans les paramètres)
@@ -192,6 +200,8 @@ est téléchargée depuis le serveur JPL/NAIF au premier lancement.
 | `elevation_correction(h, p)` | Parallaxe en hauteur (π cos h), puis réfraction atmosphérique |
 | `find_events(dte, lat, lon, body, tz, elevation_m)` | Lever, coucher (bord supérieur), culmination, crépuscules sur le jour local (fuseau IANA, heure d'été comprise), à la seconde ; l'altitude abaisse l'horizon |
 | `horizontal(t, lat, lon, body, elevation_m, refraction)` | Hauteur et azimut topocentriques (vus du lieu, parallaxe comprise) |
+| `coordinates(t, body, center, frame, lat, lon)` | Coordonnées dans le système choisi : héliocentriques (géométriques, J2000) ou géo/topocentriques (apparentes, de la date) ; écliptiques, équatoriales ou horizontales ; angles et x, y, z |
+| `observations(t, bodies)` | Magnitude visuelle, angle au Soleil et constellation (UAI), vus de la Terre |
 | `moon_phase(t)` | Fraction éclairée de la Lune (%) et âge depuis la dernière nouvelle lune vraie |
 | `altitudes(dtes, lat, lon, elevation_m)` | Hauteurs du Soleil et de la Lune à une série d'instants, en un calcul vectorisé |
 | `planet_heliocentric(t, name)` | Position héliocentrique écliptique J2000 (x, y, z en UA), Terre comprise |

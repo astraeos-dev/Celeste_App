@@ -39,6 +39,7 @@ from PyQt6.QtGui import (
     QBrush, QColor, QDesktopServices, QFont, QFontDatabase, QKeySequence,
     QPainter, QPainterPath, QPalette, QPen, QRegularExpressionValidator, QShortcut,
 )
+from PyQt6.QtPositioning import QGeoPositionInfo, QGeoPositionInfoSource
 from PyQt6.QtWidgets import (
     QAbstractItemView, QApplication, QButtonGroup, QCheckBox, QComboBox, QCompleter,
     QDateTimeEdit, QDialog, QDialogButtonBox, QFileDialog, QFrame, QGridLayout,
@@ -56,7 +57,7 @@ from matplotlib.figure import Figure  # noqa: E402
 import charts  # noqa: E402
 import icons  # noqa: E402
 import settings as prefs  # noqa: E402
-from config import FONT_MONO, FONT_SANS, THEME_NAMES, Config, mix  # noqa: E402
+from config import APP_VERSION, FONT_MONO, FONT_SANS, THEME_NAMES, Config, mix  # noqa: E402
 from constellations import STAR_CONSTELLATION  # noqa: E402
 from engine import EPHEMERIS_YEARS, AstroEngine  # noqa: E402
 from i18n import (  # noqa: E402
@@ -66,13 +67,13 @@ from utils import Formatters  # noqa: E402
 
 # ── Constantes ────────────────────────────────────────────────────────────────
 
-APP_VERSION = "3.3"
 
 _FAVORITES_FILE = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "favorites.json")
 _FONTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts")
 
 _AUTO_ZONE = "auto"           # fuseau déduit du lieu (timezonefinder)
+_GEOLOC_TIMEOUT_MS = 15000    # attente du service de localisation de l'appareil
 _PLANETS = ("Venus", "Mars", "Jupiter", "Saturn")
 _QT_DATETIME_FORMAT = "dd/MM/yyyy HH:mm:ss"
 
@@ -139,15 +140,32 @@ def _deg(value, decimals=2, signed=False):
     return f"{_num(value, decimals, signed)}°"
 
 
-def _ra(hours):
-    """Ascension droite « 14h 28m 19,0s »."""
-    return Formatters.hms(hours).replace(".", _locale().decimalPoint())
+def _angle_format():
+    """Format des angles choisi : « dms », « dm » ou « dd » (Formatters.ANGLE_FORMATS)."""
+    fmt = prefs.get("angle_format")
+    return fmt if fmt in Formatters.ANGLE_FORMATS else "dms"
 
 
-def _dec(degrees):
-    """Déclinaison « −14° 38′ 49″ » (signe toujours écrit)."""
-    text = Formatters.dms(degrees).replace("'", "′").replace('"', "″")
-    return text.replace("-", "−") if text.startswith("-") else "+" + text
+def _localized(text):
+    """Séparateur décimal de la langue et vrai signe moins."""
+    text = text.replace(".", _locale().decimalPoint())
+    return "−" + text[1:] if text.startswith("-") else text
+
+
+def _ra(hours, fmt=None):
+    """Ascension droite « 14h 28m 19,0s », « 14h 28,317m » ou « 14,47194h »
+    (*fmt* : format imposé, sinon celui des paramètres)."""
+    return _localized(Formatters.angle(hours % 24.0, fmt or _angle_format(), hours=True))
+
+
+def _dec(degrees, fmt=None):
+    """Angle signé (déclinaison, latitude, hauteur) : « −14° 38′ 49″ », « +14° 38,82′ »…"""
+    return _localized(Formatters.angle(degrees, fmt or _angle_format(), signed=True))
+
+
+def _az(degrees, fmt=None):
+    """Angle de 0 à 360° (azimut, longitude) dans le format choisi."""
+    return _localized(Formatters.angle(degrees % 360.0, fmt or _angle_format()))
 
 
 def _fmt_offset(offset):
@@ -189,6 +207,24 @@ def _zone(name, lat=None, lon=None):
 
 def _elev_text(metres):
     return str(int(round(metres)))
+
+
+def _place_name(lat, lon):
+    """Nom de la commune d'un point (OpenStreetMap Nominatim) ; « » sans réponse."""
+    url = ("https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=10"
+           f"&lat={lat:.5f}&lon={lon:.5f}&accept-language={get_lang()}")
+    try:
+        req = urllib.request.Request(url, headers={
+            "User-Agent": f"Celeste/{APP_VERSION} (+https://github.com/astraeos-dev/Celeste_App)"})
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except Exception:  # réseau, délai, JSON : les coordonnées suffisent
+        return ""
+    address = data.get("address") or {}
+    for key in ("city", "town", "village", "municipality", "hamlet"):
+        if address.get(key):
+            return address[key]
+    return data.get("name") or ""
 
 
 def _fmt_lat(lat):
@@ -694,10 +730,17 @@ QFrame#champBoite QLineEdit, QFrame#champBoite QComboBox, QFrame#champBoite QDat
 QLineEdit[numerique="true"], QDateTimeEdit {{ font-family: {mono}; font-weight: 500; }}
 QDateTimeEdit[readOnly="true"] {{ color: {C.ENCRE_ATTENUEE}; }}
 QLabel#champUnite {{ padding-right: 12px; }}
+/* Listes déroulantes en mode liste : hauteur ajustée au contenu, barre de
+   défilement seulement si la liste est longue (le mode « menu » de Qt
+   cachait des choix derrière des flèches de défilement). */
+QComboBox {{ combobox-popup: 0; }}
 QComboBox QAbstractItemView {{
     background: {C.CIEL_100}; border: 1px solid {C.CIEL_200}; outline: 0;
     selection-background-color: {C.CIEL_200}; selection-color: {C.ENCRE};
 }}
+QComboBox QAbstractItemView::item {{ min-height: 30px; padding: 0 10px; }}
+QComboBox QAbstractItemView::item:disabled {{ color: {C.ENCRE_ATTENUEE}; }}
+QComboBox:disabled {{ color: {C.ENCRE_ATTENUEE}; }}
 
 QTabWidget::pane {{ border: none; border-top: 1px solid {C.CIEL_200}; top: -1px; background: {C.CIEL_000}; }}
 QTabBar::tab {{
@@ -822,6 +865,8 @@ class AstroApp(QMainWindow):
         self.visible_stars       = []
         self.visible_planets_map = []
         self.hours               = []
+        self._day_start          = None      # minuit local du jour calculé, en TU
+        self._geo_source         = None      # requête au service de localisation en cours
         self.sun_altitudes       = []
         self.moon_altitudes      = []
         self.last_cache_key      = ""
@@ -878,6 +923,7 @@ class AstroApp(QMainWindow):
         self._build_trajectories_tab()
         self._build_skymap_tab()
         self._build_planets_tab()
+        self._build_coordinates_tab()
         self._build_events_tab()
         self._build_settings_tab()
         self.tabs.currentChanged.connect(self._on_tab_changed)
@@ -958,6 +1004,7 @@ class AstroApp(QMainWindow):
         self.tz_menu = QComboBox()
         self.tz_menu.setEditable(True)
         self.tz_menu.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        self.tz_menu.setMaxVisibleItems(14)
         self.tz_menu.addItem(t("side.timezone_auto"), _AUTO_ZONE)
         for name in _zone_names():
             self.tz_menu.addItem(name, name)
@@ -1258,6 +1305,147 @@ class AstroApp(QMainWindow):
         self._chart_tabs[page] = "orrery"
         self.tabs.addTab(page, t("tabs.planets"))
 
+    # ── Onglet Coordonnées ────────────────────────────────────────────────────
+    #    x, y, z et distance selon l'origine « cartésiennes » ; deux angles selon
+    #    le repère « angulaires » ; magnitude, angle avec le Soleil, constellation.
+
+    _COORD_CHOICES = (
+        ("cartesian", AstroEngine.CENTERS, "coord_cartesian"),
+        ("angular", AstroEngine.FRAMES, "coord_angular"),
+        ("ecliptic_from", ("sun", "earth"), "coord_ecliptic_from"),
+        ("angle", ("global",) + Formatters.ANGLE_FORMATS, "coord_angle_format"),
+    )
+    _COORD_COLUMNS = ("col_body", "col_x", "col_y", "col_z", "col_dist", "col_mag",
+                      "col_sun_angle", "col_constellation", "angle1", "angle2")
+
+    def _build_coordinates_tab(self):
+        page = QWidget()
+        page.setObjectName("page")
+        lay = QVBoxLayout(page)
+        lay.setContentsMargins(0, 16, 0, 16)
+        lay.setSpacing(16)
+
+        row = QHBoxLayout()
+        row.setSpacing(12)
+        self.coord_menus = {}
+        for key, options, pref in self._COORD_CHOICES:
+            menu = QComboBox()
+            for option in options:
+                menu.addItem(t(f"coordinates.{key}_{option}"), option)
+            menu.setCurrentIndex(max(0, menu.findData(prefs.get(pref))))
+            menu.currentIndexChanged.connect(lambda _i, k=key: self._on_coord_choice(k))
+            self.coord_menus[key] = menu
+            row.addWidget(ChampSaisie(t(f"coordinates.{key}"), menu), stretch=1)
+        lay.addLayout(row)
+
+        table = QTableWidget(len(AstroEngine.BODIES), len(self._COORD_COLUMNS))
+        table.verticalHeader().setVisible(False)
+        table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        table.setShowGrid(False)
+        header = table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        header.setStretchLastSection(True)
+        header.setDefaultAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        table.verticalHeader().setDefaultSectionSize(36)
+        table.setStyleSheet("QTableWidget::item { padding: 0 4px; }")
+        mono = QFont()
+        mono.setFamilies(list(_fonts["mono"]))
+        mono.setPixelSize(13)
+        mono.setWeight(QFont.Weight.Medium)
+        for r, body in enumerate(AstroEngine.BODIES):
+            for c, col in enumerate(self._COORD_COLUMNS):
+                item = QTableWidgetItem("—")
+                item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+                if col not in ("col_body", "col_constellation"):
+                    item.setFont(mono)
+                table.setItem(r, c, item)
+        table.setFixedHeight(36 * table.rowCount() + header.sizeHint().height() + 4)
+        self.coord_table = table
+        lay.addWidget(table)
+        self._coord_note = _label("", "legende", wrap=True)
+        lay.addWidget(self._coord_note)
+        lay.addStretch(1)
+        self._coord_page = page
+        self._sync_coord_menus()
+        self.tabs.addTab(page, t("tabs.coordinates"))
+
+    def _coord_choice(self, key):
+        return self.coord_menus[key].currentData()
+
+    def _sync_coord_menus(self):
+        """Le choix Soleil / Terre ne vaut que pour les coordonnées écliptiques."""
+        self.coord_menus["ecliptic_from"].setEnabled(self._coord_choice("angular") == "ecliptic")
+
+    def _on_coord_choice(self, key):
+        pref = dict((k, p) for k, _o, p in self._COORD_CHOICES)[key]
+        prefs.set(pref, self._coord_choice(key))
+        self._sync_coord_menus()
+        self._refresh_coordinates()
+
+    def _coord_angle_format(self):
+        """Format des angles du tableau : le sien, ou celui des paramètres (« global »)."""
+        fmt = self._coord_choice("angle")
+        return fmt if fmt in Formatters.ANGLE_FORMATS else _angle_format()
+
+    @staticmethod
+    def _body_label(body):
+        if body in ("sun", "moon"):
+            return f"{charts.SYMBOL[body.capitalize()]} {t(f'chart.{body}')}"
+        if body == "earth":
+            return f"{charts.SYMBOL['Earth']} {t('coordinates.earth')}"
+        symbol = charts.SYMBOL.get(body)
+        name = t(f"planets.{body.lower()}")
+        return f"{symbol} {name}" if symbol else name
+
+    def _refresh_coordinates(self):
+        """Tableau des coordonnées, calculé quand son onglet est affiché."""
+        if self._lat is None or self.tabs.currentWidget() is not getattr(self, "_coord_page", None):
+            return
+        cartesian, angular, from_body = (self._coord_choice(k)
+                                         for k in ("cartesian", "angular", "ecliptic_from"))
+        # (origine, repère) des angles : équatoriales et horizontales vues du lieu,
+        # écliptiques vues du Soleil ou de la Terre
+        if angular == "ecliptic":
+            angle_system = ("heliocentric" if from_body == "sun" else "geocentric", "ecliptic")
+        else:
+            angle_system = ("topocentric", angular)
+        angle_heads = {"ecliptic": ("col_lon", "col_lat"), "equatorial": ("col_ra", "col_dec"),
+                       "horizontal": ("col_az", "col_alt")}[angular]
+        heads = [t(f"coordinates.{c}") for c in self._COORD_COLUMNS[:-2]]
+        self.coord_table.setHorizontalHeaderLabels(heads + [t(f"coordinates.{c}") for c in angle_heads])
+
+        tc, elev = AstroEngine.julian_century_j2000(self._dte), self._elevation()
+        fmt = self._coord_angle_format()
+        seen = AstroEngine.observations(tc)
+        for r, body in enumerate(AstroEngine.BODIES):
+            xyz = AstroEngine.coordinates(tc, body, cartesian, "ecliptic", self._lat, self._lon, elev)
+            ang = AstroEngine.coordinates(tc, body, *angle_system, self._lat, self._lon, elev)
+            obs = seen[body]
+            cells = [self._body_label(body)]
+            cells += (["—"] * 4 if xyz is None else
+                      [_num(xyz[k], 7) for k in ("x", "y", "z")] + [_num(xyz["dist"], 7)])
+            if obs is None:
+                cells += ["—"] * 3
+            else:
+                cells += [_num(obs["mag"], 2, signed=True),
+                          "—" if obs["elongation"] is None else _deg(obs["elongation"], 1),
+                          obs["constellation"]]
+            if ang is None:
+                cells += ["—", "—"]
+            elif angular == "equatorial":
+                cells += [_ra(ang["lon"] / 15.0, fmt), _dec(ang["lat"], fmt)]
+            else:
+                cells += [_az(ang["lon"], fmt), _dec(ang["lat"], fmt)]
+            for c, text in enumerate(cells):
+                self.coord_table.item(r, c).setText(text)
+            self.coord_table.item(r, 7).setToolTip(obs["constellation_name"] if obs else "")
+        self._coord_note.setText(" ".join((
+            t(f"coordinates.note_cartesian_{cartesian}"),
+            t(f"coordinates.note_angular_{angular if angular != 'ecliptic' else 'ecliptic_' + from_body}"),
+            t("coordinates.note_observation"))))
+
     # ── Onglet 5 : événements ─────────────────────────────────────────────────
 
     def _build_events_tab(self):
@@ -1322,10 +1510,17 @@ class AstroApp(QMainWindow):
         self._timefmt_combo.setCurrentIndex(
             max(0, self._timefmt_combo.findData(prefs.get("time_format") or "24h")))
         self._timefmt_combo.currentIndexChanged.connect(self._on_timefmt_change)
+        self._anglefmt_combo = QComboBox()
+        for key in Formatters.ANGLE_FORMATS:
+            self._anglefmt_combo.addItem(t(f"coordinates.angle_{key}"), key)
+        self._anglefmt_combo.setCurrentIndex(max(0, self._anglefmt_combo.findData(_angle_format())))
+        self._anglefmt_combo.setToolTip(t("settings.angle_format_tip"))
+        self._anglefmt_combo.currentIndexChanged.connect(self._on_anglefmt_change)
         row = QHBoxLayout()
         row.setSpacing(16)
         row.addWidget(ChampSaisie(t("settings.language"), self._lang_combo), stretch=1)
         row.addWidget(ChampSaisie(t("settings.time_format"), self._timefmt_combo), stretch=1)
+        row.addWidget(ChampSaisie(t("settings.angle_format"), self._anglefmt_combo), stretch=1)
         box.addLayout(row)
         box.addWidget(_label(t("settings.theme_hint"), "legende", wrap=True))
 
@@ -1471,6 +1666,11 @@ class AstroApp(QMainWindow):
 
     def _on_timefmt_change(self, index):
         prefs.set("time_format", self._timefmt_combo.itemData(index))
+        self.calculate()
+
+    def _on_anglefmt_change(self, index):
+        """Format des angles de tout le logiciel (et du tableau des coordonnées s'il le suit)."""
+        prefs.set("angle_format", self._anglefmt_combo.itemData(index))
         self.calculate()
 
     def _mag_limit(self):
@@ -1674,6 +1874,11 @@ class AstroApp(QMainWindow):
         dte = getattr(self, "_dte", None) or _utc_now()
         return dte.replace(tzinfo=timezone.utc).astimezone(self._zone).utcoffset().total_seconds() / 3600
 
+    def _midnight_offset(self):
+        """Décalage du fuseau au minuit local du jour calculé, en heures."""
+        start = self._day_start or self._dte
+        return (self._local(start) - start).total_seconds() / 3600
+
     def _zone_text(self):
         """« Europe/Paris · UTC+1 » : le fuseau et son décalage à l'instant calculé."""
         return f"{getattr(self._zone, 'key', 'UTC')} · {_fmt_offset(self.utc_offset)}"
@@ -1694,6 +1899,64 @@ class AstroApp(QMainWindow):
     # ──────────────────────────────────────────────────────────────────────────
 
     def geolocate(self):
+        """
+        Position de l'appareil par le service de localisation du système
+        (GPS, Wi-Fi : QtPositioning) ; s'il est absent, refusé ou muet, position
+        approximative d'après l'adresse IP, annoncée comme telle.
+        """
+        if self._geo_source is not None:                     # une requête est en cours
+            return
+        source = QGeoPositionInfoSource.createDefaultSource(self)
+        if source is None:
+            self._geolocate_by_ip()
+            return
+        self._geo_source = source
+        source.positionUpdated.connect(self._on_device_position)
+        source.errorOccurred.connect(self._on_device_position_error)
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        self.statusBar().showMessage(t("errors.geoloc_waiting"))
+        source.requestUpdate(_GEOLOC_TIMEOUT_MS)
+
+    def _end_device_request(self):
+        source, self._geo_source = self._geo_source, None
+        if source is not None:
+            source.positionUpdated.disconnect(self._on_device_position)
+            source.errorOccurred.disconnect(self._on_device_position_error)
+            source.deleteLater()
+            QApplication.restoreOverrideCursor()
+
+    def _on_device_position(self, info):
+        self._end_device_request()
+        coord = info.coordinate()
+        if not coord.isValid():
+            self._geolocate_by_ip()
+            return
+        lat, lon = coord.latitude(), coord.longitude()
+        name = _place_name(lat, lon)
+        self._set_place(lat, lon, name, _zone_at(round(lat, 3), round(lon, 3)))
+        accuracy = info.attribute(QGeoPositionInfo.Attribute.HorizontalAccuracy)
+        precision = f" (±{_num(accuracy)} m)" if accuracy == accuracy and accuracy > 0 else ""
+        self.statusBar().showMessage(
+            tf("errors.geoloc_device", place=name or f"{_fmt_lat(lat)}, {_fmt_lon(lon)}",
+               precision=precision), 8000)
+
+    def _on_device_position_error(self, _error):
+        self._end_device_request()
+        self._geolocate_by_ip()
+
+    def _set_place(self, lat, lon, name, zone=None):
+        """Lieu trouvé par la géolocalisation : coordonnées, nom, fuseau, puis calcul."""
+        self.entry_lat.setText(_coord_text(lat))
+        self.entry_lon.setText(_coord_text(lon))
+        if zone and self.tz_name != _AUTO_ZONE and self.tz_menu.findData(zone) >= 0:
+            self.tz_name = zone
+            self._select_zone(zone)
+        self.location_name = name
+        self.combo_fav.setCurrentIndex(-1)
+        self.calculate()
+
+    def _geolocate_by_ip(self):
+        """Secours : position de l'adresse IP, souvent celle du fournisseur d'accès."""
         url = ("http://ip-api.com/json/"
                "?fields=status,message,country,city,lat,lon,timezone")
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
@@ -1711,18 +1974,11 @@ class AstroApp(QMainWindow):
         if data.get("status") != "success":
             QMessageBox.warning(self, t("errors.geoloc_title"), t("errors.geoloc_fail"))
             return
-        self.entry_lat.setText(_coord_text(float(data["lat"])))
-        self.entry_lon.setText(_coord_text(float(data["lon"])))
-        zone = data.get("timezone")
-        if zone and self.tz_name != _AUTO_ZONE and self.tz_menu.findData(zone) >= 0:
-            self.tz_name = zone
-            self._select_zone(zone)
-        self.location_name = data.get("city") or ""
-        self.combo_fav.setCurrentIndex(-1)
-        self.calculate()
+        self._set_place(float(data["lat"]), float(data["lon"]), data.get("city") or "",
+                        data.get("timezone"))
         self.statusBar().showMessage(
-            tf("errors.geoloc_success", city=data.get("city", "?"),
-               country=data.get("country", "?")), 8000)
+            tf("errors.geoloc_ip", city=data.get("city", "?"),
+               country=data.get("country", "?")), 12000)
 
     def toggle_live(self, checked):
         self.live_mode = bool(checked)
@@ -1844,7 +2100,8 @@ class AstroApp(QMainWindow):
             self.sun_events  = AstroEngine.find_events(dte, lat, lon, "sun", self._zone, elev)
             self.moon_events = AstroEngine.find_events(dte, lat, lon, "moon", self._zone, elev)
             self.hours, self.sun_altitudes, self.moon_altitudes = \
-                charts.sample_day(dte, lat, lon, elevation_m=elev)
+                charts.sample_day(dte, lat, lon, elevation_m=elev, tz=self._zone)
+            self._day_start = AstroEngine._local_day(dte, self._zone)[0]
             self.last_cache_key = key
 
         self.planets = []
@@ -1867,6 +2124,7 @@ class AstroApp(QMainWindow):
         self._update_sun_card()
         self._update_moon_card()
         self._update_planet_table()
+        self._refresh_coordinates()
         self._update_status()
         self._dirty = {"traj", "sky", "orrery"}
         self._draw_visible_chart()
@@ -1908,8 +2166,8 @@ class AstroApp(QMainWindow):
         sd, lb, ev = self.sun_data, self.sun_labels, self.sun_events
         lb["ra"].setText(_ra(sd["ra"]))
         lb["dec"].setText(_dec(sd["dec"]))
-        lb["alt"].setText(_deg(sd["alt"], 2, signed=True))
-        lb["az"].setText(_deg(sd["az"], 2))
+        lb["alt"].setText(_dec(sd["alt"]))
+        lb["az"].setText(_az(sd["az"]))
         lb["eot"].setText(tf("units.minutes", value=_num(sd["eot"], 1, signed=True)))
         lb["dist"].setText(tf("units.au", value=_num(sd["dist"], 4)))
         for key in ("dawn_astro", "dawn_naut", "dawn_civ", "rise", "transit",
@@ -1925,8 +2183,8 @@ class AstroApp(QMainWindow):
         md, lb, ev = self.moon_data, self.moon_labels, self.moon_events
         lb["ra"].setText(_ra(md["ra"]))
         lb["dec"].setText(_dec(md["dec"]))
-        lb["alt"].setText(_deg(md["alt"], 2, signed=True))
-        lb["az"].setText(_deg(md["az"], 2))
+        lb["alt"].setText(_dec(md["alt"]))
+        lb["az"].setText(_az(md["az"]))
         lb["dist"].setText(tf("units.km", value=_num(md["dist"])))
         key = Formatters.PHASES[Formatters.phase_index(md["phase"])][0]
         self._phase_disc.set_phase(md["phase"], southern=(self._lat or 0) < 0)
@@ -1948,8 +2206,8 @@ class AstroApp(QMainWindow):
             side = t("coords.east") if p["east"] else t("coords.west")
             items["col_ra"].setText(_ra(p["ra"]))
             items["col_dec"].setText(_dec(p["dec"]))
-            items["col_alt"].setText(_deg(p["alt"], 2, signed=True))
-            items["col_az"].setText(_deg(p["az"], 2))
+            items["col_alt"].setText(_dec(p["alt"]))
+            items["col_az"].setText(_az(p["az"]))
             items["col_dist"].setText(tf("units.au", value=_num(p["dist"], 4)))
             items["col_elong"].setText(f"{_deg(p['elong'], 1)} {side}")
             up = p["alt"] > 0
@@ -1978,6 +2236,7 @@ class AstroApp(QMainWindow):
 
     def _on_tab_changed(self, _index):
         self._draw_visible_chart()
+        self._refresh_coordinates()
 
     def _draw_visible_chart(self):
         """Dessine le graphique de l'onglet affiché s'il n'est plus à jour : en
@@ -1992,21 +2251,21 @@ class AstroApp(QMainWindow):
     def _draw_trajectory(self):
         if not self.hours:
             return
-        dte = self._dte
+        dte, start = self._dte, self._day_start
+        offset = self._midnight_offset()
         labels = {
-            "title": tf("chart.trajectory_title", date=dte.strftime("%d/%m/%Y")),
-            "xlabel": t("chart.hour_ut"),
+            "title": tf("chart.trajectory_title", date=self._local(start).strftime("%d/%m/%Y")),
+            "xlabel": tf("chart.hour_local", offset=_fmt_offset(offset)),
             "ylabel": t("chart.altitude"),
-            "local_axis": tf("chart.hour_local", offset=_fmt_offset(self.utc_offset)),
+            "top_axis": t("chart.hour_ut"),
             "sun": t("chart.sun"),
             "moon": t("chart.moon"),
         }
         labels.update({p: t(f"chart.phase_{p}") for p in charts.DAY_PHASES})
-        now_h = dte.hour + dte.minute / 60 + dte.second / 3600
+        now_h = (dte - start).total_seconds() / 3600       # depuis minuit local
         self._traj_ax, tip = charts.draw_trajectory(
             self.fig_traj, self.hours, self.sun_altitudes, self.moon_altitudes,
-            now_h, self.sun_data["alt"], self.moon_data["alt"], labels,
-            self.utc_offset)
+            now_h, self.sun_data["alt"], self.moon_data["alt"], labels, offset)
         self._traj_tip.attach(tip)
         self.canvas_traj.draw_idle()
 
@@ -2051,13 +2310,13 @@ class AstroApp(QMainWindow):
             return
         step = self.hours[1] - self.hours[0]
         i = max(0, min(len(self.hours) - 1, int(round(event.xdata / step))))
-        hour = self.hours[i]
-        base = datetime(2000, 1, 1)
-        ut = self._fmt_clock(base + timedelta(hours=hour))
+        hour = self.hours[i]                                  # depuis minuit local
+        base, offset = datetime(2000, 1, 1), self._midnight_offset()
+        ut = self._fmt_clock(base + timedelta(hours=hour - offset))
         first = f"{ut} {t('chart.ut')}"
-        if self.utc_offset:
-            local = self._fmt_clock(base + timedelta(hours=hour + self.utc_offset))
-            first += f"  ·  {local} {t('chart.local')}"
+        if offset:
+            local = self._fmt_clock(base + timedelta(hours=hour))
+            first = f"{local} {t('chart.local')}  ·  {first}"
         tip.set_text(f"{first}\n"
                      f"{charts.SYMBOL['Sun']} {t('chart.sun')}  {_deg(self.sun_altitudes[i], 1, True)}\n"
                      f"{charts.SYMBOL['Moon']} {t('chart.moon')}  {_deg(self.moon_altitudes[i], 1, True)}")
@@ -2147,8 +2406,8 @@ class AstroApp(QMainWindow):
         rows += [
             (t("detail.ra"), _ra(obj["ra"])),
             (t("detail.dec"), _dec(obj["dec"])),
-            (t("detail.alt"), _deg(obj["alt"], 2, signed=True)),
-            (t("detail.az"), _deg(obj["az"], 2)),
+            (t("detail.alt"), _dec(obj["alt"])),
+            (t("detail.az"), _az(obj["az"])),
         ]
         return title, rows
 

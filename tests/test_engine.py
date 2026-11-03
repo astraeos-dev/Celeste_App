@@ -613,3 +613,166 @@ class TestZonesAndObserver:
         illum, age = AstroEngine.moon_phase(AstroEngine.julian_century_j2000(datetime(2026, 11, 2, 12)))
         assert abs(illum - 42.90961) < 0.02
         assert 22.5 < age < 23.0
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Catalogue stars brought to the date (sky map)
+# ──────────────────────────────────────────────────────────────────────
+
+class TestStarsOfTheDate:
+    """J2000 star positions precessed to the date, checked by Meeus's rigorous precession (chap. 21)."""
+
+    ALDEBARAN = (4.5988, 16.5093)                    # J2000, constellations.py
+    WHEN, PARIS = datetime(2026, 11, 2, 22), (48.8566, 2.3522)
+
+    @staticmethod
+    def _precess_meeus(ra_h, dec_deg, t):
+        """Equatorial precession J2000 → date (Meeus 21.2 and 21.3), without nutation nor aberration."""
+        arcsec = lambda x: math.radians(x / 3600.0)
+        zeta  = arcsec(2306.2181 * t + 0.30188 * t * t + 0.017998 * t ** 3)
+        z     = arcsec(2306.2181 * t + 1.09468 * t * t + 0.018203 * t ** 3)
+        theta = arcsec(2004.3109 * t - 0.42665 * t * t - 0.041833 * t ** 3)
+        a0, d0 = math.radians(ra_h * 15.0), math.radians(dec_deg)
+        A = math.cos(d0) * math.sin(a0 + zeta)
+        B = math.cos(theta) * math.cos(d0) * math.cos(a0 + zeta) - math.sin(theta) * math.sin(d0)
+        C = math.sin(theta) * math.cos(d0) * math.cos(a0 + zeta) + math.cos(theta) * math.sin(d0)
+        return (math.degrees(math.atan2(A, B) + z) % 360.0) / 15.0, math.degrees(math.asin(C))
+
+    def _separation_arcsec(self, alt1, az1, alt2, az2):
+        return AstroEngine.angular_separation(az1 / 15.0, alt1, az2 / 15.0, alt2) * 3600.0
+
+    def test_matches_rigorous_precession(self):
+        """Within 1′ of Meeus's precession (the rest: nutation and aberration, ~40″ at most)."""
+        t = AstroEngine.julian_century_j2000(self.WHEN)
+        jd = AstroEngine.julian_day(self.WHEN)
+        alt, az = AstroEngine.stars_horizontal(t, *self.PARIS, [self.ALDEBARAN[0]], [self.ALDEBARAN[1]])
+        ra, dec = self._precess_meeus(*self.ALDEBARAN, t)
+        ref_alt, ref_az = AstroEngine.equatorial_to_horizontal(jd, *self.PARIS, ra, dec)
+        assert self._separation_arcsec(alt[0], az[0], ref_alt, ref_az) < 60.0
+
+    def test_j2000_position_is_a_third_of_a_degree_off(self):
+        """The bug fixed: the J2000 coordinates used as such are ~0.37° off in 2026."""
+        t = AstroEngine.julian_century_j2000(self.WHEN)
+        jd = AstroEngine.julian_day(self.WHEN)
+        alt, az = AstroEngine.stars_horizontal(t, *self.PARIS, [self.ALDEBARAN[0]], [self.ALDEBARAN[1]])
+        old_alt, old_az = AstroEngine.equatorial_to_horizontal(jd, *self.PARIS, *self.ALDEBARAN)
+        assert self._separation_arcsec(alt[0], az[0], old_alt, old_az) > 0.3 * 3600
+
+    def test_whole_catalogue_at_once(self):
+        from constellations import STARS
+        t = AstroEngine.julian_century_j2000(self.WHEN)
+        alts, azs = AstroEngine.stars_horizontal(t, *self.PARIS, [s[0] for s in STARS.values()],
+                                                 [s[1] for s in STARS.values()])
+        assert len(alts) == len(azs) == len(STARS)
+        assert all(-90 <= a <= 90 for a in alts) and all(0 <= z < 360 for z in azs)
+
+
+def test_version_is_single_sourced():
+    """The engine's docstring describes the version the interface and the PDF show."""
+    import engine
+    from config import APP_VERSION
+    assert f"v{APP_VERSION}" in engine.__doc__
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Coordinates in the chosen system (JPL Horizons, 2 November 2026 12h UT)
+# ──────────────────────────────────────────────────────────────────────
+
+class TestCoordinateSystems:
+    T = AstroEngine.julian_century_j2000(datetime(2026, 11, 2, 12))
+    PARIS = (48.8566, 2.3522)
+
+    def test_heliocentric_vectors(self):
+        """Geometric heliocentric vectors, ecliptic J2000 (Horizons VECTORS, no correction)."""
+        refs = {"Mars": (-0.3081280212458685, 1.565401835532534, 0.04036036724601148),
+                "Jupiter": (-3.674476851412720, 3.842965080361585, 0.06624793661325734)}
+        for body, ref in refs.items():
+            c = AstroEngine.coordinates(self.T, body, "heliocentric", "ecliptic")
+            for got, exp in zip((c["x"], c["y"], c["z"]), ref):
+                assert abs(got - exp) < 2e-6, body          # Jupiter: barycentre vs centre, 160 km
+
+    def test_geocentric_ecliptic_of_date(self):
+        """Apparent geocentric ecliptic longitude and latitude of date (Horizons quantity 31)."""
+        for body, (lon, lat) in {"Mars": (139.3734896, 1.6319487),
+                                 "Jupiter": (144.5028828, 0.6951914)}.items():
+            c = AstroEngine.coordinates(self.T, body, "geocentric", "ecliptic")
+            assert abs(c["lon"] - lon) * 3600 < 1 and abs(c["lat"] - lat) * 3600 < 1, body
+
+    def test_geocentric_equatorial_is_planet_position(self):
+        c = AstroEngine.coordinates(self.T, "Venus", "geocentric", "equatorial")
+        ra, dec, dist = AstroEngine.planet_position(self.T, "Venus")
+        assert approx(c["lon"], ra * 15.0, 1e-9) and approx(c["lat"], dec, 1e-9)
+        assert approx(c["dist"], dist, 1e-12)
+
+    def test_topocentric_horizontal_is_horizontal(self):
+        c = AstroEngine.coordinates(self.T, "moon", "topocentric", "horizontal", *self.PARIS)
+        alt, az = AstroEngine.horizontal(self.T, *self.PARIS, "moon")
+        assert approx(c["lat"], alt, 1e-9) and approx(c["lon"], az, 1e-9)
+
+    def test_parallax_separates_geocentric_and_topocentric_moon(self):
+        """Seen from Paris, the Moon is ~0.94° lower than from the Earth's centre."""
+        geo = AstroEngine.coordinates(self.T, "moon", "geocentric", "horizontal", *self.PARIS)
+        topo = AstroEngine.coordinates(self.T, "moon", "topocentric", "horizontal", *self.PARIS)
+        assert 0.8 < geo["lat"] - topo["lat"] < 1.0
+
+    @pytest.mark.parametrize("center, frame", [("heliocentric", "ecliptic"), ("geocentric", "equatorial"),
+                                               ("topocentric", "horizontal"), ("topocentric", "ecliptic")])
+    def test_cartesian_matches_the_angles(self, center, frame):
+        c = AstroEngine.coordinates(self.T, "Mars", center, frame, *self.PARIS)
+        lon, lat = math.radians(c["lon"]), math.radians(c["lat"])
+        expected = (c["dist"] * math.cos(lat) * math.cos(lon), c["dist"] * math.cos(lat) * math.sin(lon),
+                    c["dist"] * math.sin(lat))
+        for got, exp in zip((c["x"], c["y"], c["z"]), expected):
+            assert abs(got - exp) < 1e-9
+
+    def test_centre_has_no_coordinates(self):
+        assert AstroEngine.coordinates(self.T, "sun", "heliocentric", "ecliptic") is None
+        assert AstroEngine.coordinates(self.T, "earth", "geocentric", "equatorial") is None
+        assert AstroEngine.coordinates(self.T, "earth", "heliocentric", "ecliptic")["dist"] == \
+            pytest.approx(0.9923, abs=1e-3)
+
+    def test_no_horizontal_frame_from_the_sun(self):
+        with pytest.raises(ValueError):
+            AstroEngine.coordinates(self.T, "Mars", "heliocentric", "horizontal")
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Magnitude, angle with the Sun, constellation (JPL Horizons, 2 Nov 2026 12h UT)
+# ──────────────────────────────────────────────────────────────────────
+
+class TestObservations:
+    # Horizons quantities 9 (APmag), 23 (S-O-T elongation) and 29 (constellation)
+    HORIZONS = {
+        "sun":     (-26.759, None,     "Lib"),
+        "moon":    (-9.870,  81.7051,  "Leo"),
+        "Mercury": (4.581,   4.9327,   "Lib"),
+        "Venus":   (-4.277,  15.2075,  "Vir"),
+        "Mars":    (0.867,   80.7079,  "Leo"),
+        "Jupiter": (-2.011,  75.5758,  "Leo"),
+        "Saturn":  (0.469,   149.0110, "Cet"),
+        "Uranus":  (5.609,   155.4561, "Tau"),
+        "Neptune": (7.695,   141.9531, "Psc"),
+        "Pluto":   (14.590,  83.0822,  "Cap"),
+    }
+    # Mercury, 165° from full phase behind the Sun: the magnitude models part (0.12)
+    MAG_TOLERANCE = {"Mercury": 0.15}
+
+    def test_against_horizons(self):
+        seen = AstroEngine.observations(AstroEngine.julian_century_j2000(datetime(2026, 11, 2, 12)))
+        assert seen["earth"] is None
+        for body, (mag, elongation, constellation) in self.HORIZONS.items():
+            o = seen[body]
+            assert abs(o["mag"] - mag) < self.MAG_TOLERANCE.get(body, 0.05), f"{body}: {o['mag']:.3f}"
+            if elongation is None:
+                assert o["elongation"] is None
+            else:
+                assert abs(o["elongation"] - elongation) < 0.01, body
+            assert o["constellation"] == constellation, body
+        assert seen["Pluto"]["constellation_name"] == "Capricornus"
+
+    def test_every_body_of_the_table(self):
+        t = AstroEngine.julian_century_j2000(datetime(2026, 11, 2, 12))
+        for body in AstroEngine.BODIES:
+            c = AstroEngine.coordinates(t, body, "heliocentric", "ecliptic")
+            assert (c is None) == (body == "sun"), body
+        assert 29.0 < AstroEngine.coordinates(t, "Pluto", "heliocentric", "ecliptic")["dist"] < 50.0

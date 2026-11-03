@@ -11,5 +11,10 @@
   "temp_unit": "C",
   "dist_unit": "km",
   "live_interval": 2000,
-  "mag_limit": 6.0
+  "mag_limit": 6.0,
+  "angle_format": "dms",
+  "coord_cartesian": "heliocentric",
+  "coord_angular": "equatorial",
+  "coord_ecliptic_from": "sun",
+  "coord_angle_format": "global"
 }

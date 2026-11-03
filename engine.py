@@ -17,6 +17,17 @@ model of Stephenson, Morrison & Hohenkerk (2016).
   • ecliptic_to_equatorial(), equatorial_to_horizontal() — true obliquity
     (IAU 2006 + nutation) and apparent sidereal time, for the interface
 
+v4.1:
+  • find_events(tz=ZoneInfo) — local day of an IANA time zone (summer time);
+    elevation_m lowers the horizon
+  • horizontal(), moon_phase() — topocentric positions, exact phase
+  • stars_horizontal() — J2000 catalogue stars brought to the date
+    (precession, nutation, aberration) for the sky map
+  • coordinates() — any body in the chosen system: heliocentric, geocentric or
+    topocentric; ecliptic, equatorial or horizontal; angles and x, y, z
+  • observations() — visual magnitude, angle with the Sun and constellation
+    of the Sun, the Moon and the planets from Mercury to Pluto
+
 The ephemeris (32 MB) is looked for in data/ next to this module, then in
 ~/.celeste (or $CELESTE_DATA), where it is downloaded from the JPL/NAIF
 server the first time (load_ephemeris()).
@@ -31,8 +42,9 @@ from datetime import timedelta, timezone
 
 import numpy as np
 from skyfield import almanac
-from skyfield.api import Loader, wgs84
-from skyfield.framelib import ecliptic_J2000_frame, true_equator_and_equinox_of_date
+from skyfield.api import Loader, Star, load_constellation_map, load_constellation_names, wgs84
+from skyfield.magnitudelib import planetary_magnitude
+from skyfield.framelib import ecliptic_frame, ecliptic_J2000_frame, true_equator_and_equinox_of_date
 
 # ==========================================================
 # CONSTANTS
@@ -49,8 +61,16 @@ _DATA_DIRS = (
 
 # DE440 targets (barycentres for Mars, Jupiter and Saturn: their moons move
 # them by less than a millisecond of arc)
-_PLANETS = {"Venus": "venus", "Mars": "mars barycenter", "Jupiter": "jupiter barycenter",
-            "Saturn": "saturn barycenter", "Earth": "earth"}
+_PLANETS = {"Mercury": "mercury", "Venus": "venus", "Mars": "mars barycenter",
+            "Jupiter": "jupiter barycenter", "Saturn": "saturn barycenter",
+            "Uranus": "uranus barycenter", "Neptune": "neptune barycenter",
+            "Pluto": "pluto barycenter", "Earth": "earth"}
+
+# Visual magnitudes outside Skyfield's planetary models (Mallama & Hilton 2018):
+# Allen's Astrophysical Quantities (4th ed.), V(1,0) and phase coefficients
+_SUN_MAGNITUDE_1AU = -26.74
+_MOON_MAGNITUDE    = (0.21, 0.026, 4.0e-9)       # V(1,0), mag/°, mag/°⁴
+_PLUTO_MAGNITUDE   = (-1.01, 0.041)              # V(1,0), mag/°
 
 # Rise and set of the Sun: refraction (34′) and semi-diameter (16′)
 _HORIZON_CORRECTION_SUN = 0.833  # degrees
@@ -709,6 +729,152 @@ class AstroEngine:
         return alt.degrees, az.degrees
 
     @classmethod
+    def stars_horizontal(cls, t, lat, lon, ra_hours, dec_degrees, elevation_m=0.0):
+        """
+        Altitudes and azimuths (degrees, geometric) of stars given by their
+        J2000 coordinates (ICRS): precession, nutation and aberration to the
+        date in one vectorised computation. Without them, a J2000 position is
+        off by 50″ a year (0.37° in 2026).
+
+        Args:
+            t (float): Julian centuries of UT since J2000.0.
+            ra_hours, dec_degrees (sequence): J2000 right ascensions (h) and
+                declinations (°).
+
+        Returns:
+            tuple[numpy.ndarray, numpy.ndarray]: (altitudes, azimuths)
+        """
+        sky   = _sky()
+        stars = Star(ra_hours=np.asarray(ra_hours, dtype=float),
+                     dec_degrees=np.asarray(dec_degrees, dtype=float))
+        here  = (sky["earth"] + wgs84.latlon(lat, lon, elevation_m=elevation_m)).at(cls._time_ut(t))
+        alt, az, _ = here.observe(stars).apparent().altaz()
+        return alt.degrees, az.degrees
+
+    # The bodies of the coordinates table, in the order of the Solar System
+    BODIES  = ("sun", "moon", "Mercury", "Venus", "earth", "Mars", "Jupiter", "Saturn",
+               "Uranus", "Neptune", "Pluto")
+    CENTERS = ("heliocentric", "geocentric", "topocentric")
+    FRAMES  = ("ecliptic", "equatorial", "horizontal")
+
+    @classmethod
+    def coordinates(cls, t, body, center="geocentric", frame="equatorial",
+                    lat=0.0, lon=0.0, elevation_m=0.0):
+        """
+        Coordinates of a body in the chosen system, as angles and as x, y, z.
+
+        Centres, following the ephemerides (JPL Horizons, Astronomical Almanac):
+          • heliocentric — geometric position from the Sun's centre, mean
+            ecliptic or equator and equinox of J2000;
+          • geocentric, topocentric — apparent position (light time,
+            aberration, deflection) from the Earth's centre or from the
+            observer, true ecliptic or equator and equinox of the date.
+        Frames: "ecliptic" (λ, β), "equatorial" (α, δ) or "horizontal"
+        (azimuth from the north through the east, altitude without refraction;
+        not for the heliocentric centre).
+
+        Args:
+            t (float): Julian centuries of UT since J2000.0.
+            body (str): one of BODIES ("sun", "moon", "earth" or a planet name).
+            lat, lon, elevation_m: observer (topocentric centre, horizontal frame).
+
+        Returns:
+            dict | None: lon (°, [0, 360[: λ, α in degrees or azimuth), lat (°:
+            β, δ or altitude), dist (AU), x, y, z (AU: x towards the equinox, or
+            the north for the horizontal frame, z towards the pole or the
+            zenith); None when the body is the centre itself.
+        """
+        if center not in cls.CENTERS or frame not in cls.FRAMES:
+            raise ValueError(f"unknown system: {center}, {frame}")
+        if frame == "horizontal" and center == "heliocentric":
+            raise ValueError("no horizontal frame for heliocentric coordinates")
+        sky  = _sky()
+        time = cls._time_ut(t)
+        target = cls._target(body)
+        here = wgs84.latlon(lat, lon, elevation_m=elevation_m)
+        if center == "heliocentric":
+            if body == "sun":
+                return None
+            position = target.at(time) - sky["sun"].at(time)
+            reference = ecliptic_J2000_frame if frame == "ecliptic" else None   # None: ICRS
+        else:
+            if body == "earth":
+                return None
+            origin = sky["earth"] if center == "geocentric" else sky["earth"] + here
+            position = origin.at(time).observe(target).apparent()
+            reference = {"ecliptic": ecliptic_frame, "horizontal": here,
+                         "equatorial": true_equator_and_equinox_of_date}[frame]
+        if reference is None:
+            lat_, lon_, dist = position.radec()
+            lon_deg = lon_.hours * 15.0
+            x, y, z = position.position.au
+        else:
+            lat_, lon_, dist = position.frame_latlon(reference)
+            lon_deg = lon_.degrees
+            x, y, z = position.frame_xyz(reference).au
+        return {"lon": float(lon_deg) % 360.0, "lat": float(lat_.degrees), "dist": float(dist.au),
+                "x": float(x), "y": float(y), "z": float(z)}
+
+    @staticmethod
+    def _target(body):
+        """DE440 target of a body name: "sun", "moon", "earth" or a planet."""
+        sky = _sky()
+        return sky[body] if body in ("sun", "moon") else sky["eph"][_PLANETS[body.capitalize()]]
+
+    @classmethod
+    def observations(cls, t, bodies=None):
+        """
+        How the bodies look from the Earth's centre (DE440, apparent): visual
+        magnitude, angle with the Sun (elongation) and constellation (IAU
+        boundaries), computed together.
+
+        Magnitudes: Mallama & Hilton (2018) from Mercury to Neptune (Skyfield);
+        Allen's Astrophysical Quantities for the Sun, the Moon and Pluto.
+
+        Args:
+            t (float): Julian centuries of UT since J2000.0.
+            bodies (sequence): names among BODIES (all by default).
+
+        Returns:
+            dict: {body: {"mag", "elongation" (None for the Sun), "constellation"
+            (IAU abbreviation, as "Cap"), "constellation_name" (Latin name)}},
+            None for the Earth.
+        """
+        sky    = _sky()
+        time   = cls._time_ut(t)
+        earth  = sky["earth"].at(time)
+        sun_at = sky["sun"].at(time)
+        sun    = earth.observe(sky["sun"]).apparent()
+        result = {}
+        for body in bodies or cls.BODIES:
+            if body == "earth":
+                result[body] = None
+                continue
+            target = cls._target(body)
+            astrometric = earth.observe(target)
+            apparent = astrometric.apparent()
+            delta = astrometric.distance().au
+            if body == "sun":
+                mag, elongation = _SUN_MAGNITUDE_1AU + 5.0 * math.log10(delta), None
+            else:
+                elongation = float(apparent.separation_from(sun).degrees)
+                if body in ("moon", "Pluto"):
+                    r = (target.at(time) - sun_at).distance().au
+                    phase = float(almanac.phase_angle(sky["eph"], _PLANETS.get(body, body), time).degrees)
+                    if body == "moon":
+                        h, k1, k4 = _MOON_MAGNITUDE
+                        mag = h + 5.0 * math.log10(r * delta) + k1 * phase + k4 * phase ** 4
+                    else:
+                        h, k1 = _PLUTO_MAGNITUDE
+                        mag = h + 5.0 * math.log10(r * delta) + k1 * phase
+                else:
+                    mag = float(planetary_magnitude(astrometric))
+            abbreviation, name = _constellation(apparent)
+            result[body] = {"mag": float(mag), "elongation": elongation,
+                            "constellation": abbreviation, "constellation_name": name}
+        return result
+
+    @classmethod
     def moon_phase(cls, t):
         """
         Illuminated fraction of the Moon (%, from the Sun–Moon–Earth angle,
@@ -1038,3 +1204,16 @@ def _new_moons(bucket):
     start = bucket * 10.0
     jds, phases = AstroEngine._phases_between(start - 40.0, start + 20.0)
     return tuple(jd for jd, i in zip(jds, phases) if i == 0)
+
+
+@functools.lru_cache(maxsize=1)
+def _constellations():
+    """IAU constellation boundaries and Latin names (data shipped with Skyfield)."""
+    return load_constellation_map(), dict(load_constellation_names())
+
+
+def _constellation(position):
+    """IAU abbreviation and Latin name of the constellation of an apparent position."""
+    find, names = _constellations()
+    abbreviation = str(find(position))
+    return abbreviation, names.get(abbreviation, abbreviation)

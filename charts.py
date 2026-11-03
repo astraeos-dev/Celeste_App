@@ -3,7 +3,7 @@ charts.py — Matplotlib drawings of Céleste
 ==========================================
 The three charts of the interface:
 
-- the altitude of the Sun and the Moon over the UT day, on a background
+- the altitude of the Sun and the Moon over the local day, on a background
   shaded by the phases of the day (day, civil, nautical and astronomical
   twilights, night);
 - the sky map: the dome seen from below with the zenith at the centre, the
@@ -40,8 +40,9 @@ from engine import AstroEngine, _HORIZON_CORRECTION_SUN
 
 # Astronomical symbols (Astraeos Symboles). Matplotlib never draws emoji, so
 # they go without the U+FE0E selector here.
-SYMBOL = {"Sun": "☉", "Moon": "☽", "Earth": "⊕", "Venus": "♀",
-          "Mars": "♂", "Jupiter": "♃", "Saturn": "♄", "vernal": "♈"}
+SYMBOL = {"Sun": "☉", "Moon": "☽", "Earth": "⊕", "Mercury": "☿", "Venus": "♀",
+          "Mars": "♂", "Jupiter": "♃", "Saturn": "♄", "Uranus": "♅", "Neptune": "♆",
+          "Pluto": "♇", "vernal": "♈"}
 
 # Text sizes of the design system (px) converted to points at the figures'
 # 100 dpi: legende 13 px, corps 15 px, sous-titre 17 px.
@@ -204,19 +205,26 @@ def _title(fig, ax, text):
 # 24 H TRAJECTORIES
 # ──────────────────────────────────────────────────────────────────────────────
 
-def sample_day(dte, lat, lon, step_min=5, elevation_m=0.0):
+def sample_day(dte, lat, lon, step_min=5, elevation_m=0.0, tz=0):
     """
     Altitude of the Sun (geometric centre) and the Moon (seen from the
-    observer, refraction included) over the UT day of *dte*, computed at once
-    from the DE440 ephemeris.
+    observer, refraction included) over the local day of *dte*, the one of
+    the events listed (AstroEngine.find_events), computed at once from the
+    DE440 ephemeris.
+
+    Args:
+        dte (datetime): instant of the day, UT.
+        tz (float | tzinfo): local time zone, hours east of UT or a zoneinfo.
 
     Returns:
-        tuple[list, list, list]: (hours, sun_altitudes, moon_altitudes)
+        tuple[list, list, list]: (hours since local midnight, sun_altitudes,
+        moon_altitudes); a day of change of summer time lasts 23 or 25 hours.
     """
-    base = dte.replace(hour=0, minute=0, second=0, microsecond=0)
-    minutes = range(0, 1441, step_min)
+    start, end = AstroEngine._local_day(dte, tz)
+    span = int((end - start).total_seconds() // 60)
+    minutes = range(0, span + 1, step_min)
     sun_alts, moon_alts = AstroEngine.altitudes(
-        [base + timedelta(minutes=minute) for minute in minutes], lat, lon, elevation_m)
+        [start + timedelta(minutes=minute) for minute in minutes], lat, lon, elevation_m)
     return [minute / 60.0 for minute in minutes], sun_alts.tolist(), moon_alts.tolist()
 
 
@@ -228,12 +236,12 @@ def draw_trajectory(fig, hours, sun_alts, moon_alts, now_hour, sun_now, moon_now
     Args:
         fig: matplotlib Figure (cleared first).
         hours, sun_alts, moon_alts: samples from ``sample_day``.
-        now_hour (float): Current UT time in hours.
+        now_hour (float): Current time, hours since local midnight.
         sun_now, moon_now (float): Current altitudes (degrees).
-        labels (dict): title, xlabel, ylabel, local_axis, sun, moon and one
-            entry per phase of DAY_PHASES.
-        utc_offset (int): Hours added to UT for the local time axis on top
-            (no top axis when 0).
+        labels (dict): title, xlabel (local time), ylabel, top_axis (UT),
+            sun, moon and one entry per phase of DAY_PHASES.
+        utc_offset (float): Offset of the time zone at local midnight, hours:
+            the UT axis on top reads local time minus it (no top axis when 0).
 
     Returns:
         tuple: (axes, tooltip annotation)
@@ -259,7 +267,7 @@ def draw_trajectory(fig, hours, sun_alts, moon_alts, now_hour, sun_now, moon_now
         ax.plot(now_hour, alt, "o", color=color, markersize=7,
                 markeredgecolor=Config.CIEL_100, markeredgewidth=1.5, zorder=5)
 
-    ax.set_xlim(0, 24)
+    ax.set_xlim(0, hours[-1] if hours else 24)          # 23 or 25 h on a change of time
     ax.xaxis.set_major_locator(MultipleLocator(3))
     ax.xaxis.set_major_formatter(FuncFormatter(_hour_label))
     values = list(sun_alts) + list(moon_alts) + [sun_now, moon_now]
@@ -272,13 +280,13 @@ def draw_trajectory(fig, hours, sun_alts, moon_alts, now_hour, sun_now, moon_now
 
     if utc_offset:
         top = ax.secondary_xaxis(
-            "top", functions=(lambda x: x + utc_offset, lambda x: x - utc_offset))
+            "top", functions=(lambda x: x - utc_offset, lambda x: x + utc_offset))
         top.xaxis.set_major_locator(MultipleLocator(3))
         top.xaxis.set_major_formatter(FuncFormatter(_hour_label))
         top.tick_params(colors=Config.ENCRE_ATTENUEE, labelsize=SIZE_LEGENDE,
                         length=3, width=0.8)
         top.spines["top"].set_color(Config.CIEL_200)
-        top.set_xlabel(labels["local_axis"], color=Config.ENCRE_ATTENUEE,
+        top.set_xlabel(labels["top_axis"], color=Config.ENCRE_ATTENUEE,
                        fontsize=SIZE_LEGENDE)
 
     handles = [sun_line, moon_line] + [
@@ -326,28 +334,29 @@ def sky_scene(jd, lat, lon, mag_limit, sun, moon, planets):
         lines (at least one end above the horizon), sun, moon, planets;
         every object carries its map position "x", "y".
     """
+    # every catalogue star brought to the date at once (precession, nutation, aberration)
+    names = list(STARS)
+    alts, azs = AstroEngine.stars_horizontal(
+        (jd - 2451545.0) / 36525.0, lat, lon,
+        [STARS[n][0] for n in names], [STARS[n][1] for n in names])
+    horizontal = {n: (float(a), float(z)) for n, a, z in zip(names, alts, azs)}
+
     stars = []
     for name, (ra, dec, mag) in STARS.items():
         if mag > mag_limit:
             continue
-        alt, az = AstroEngine.equatorial_to_horizontal(jd, lat, lon, ra, dec)
+        alt, az = horizontal[name]
         if alt <= 0:
             continue
         x, y = sky_xy(alt, az)
         stars.append({"kind": "star", "name": name, "alt": alt, "az": az,
                       "ra": ra, "dec": dec, "mag": mag, "x": x, "y": y})
 
-    horizontal = {}
     lines = []
     for edges in CONSTELLATIONS.values():
         for a, b in edges:
             if a not in STARS or b not in STARS:
                 continue
-            for star in (a, b):
-                if star not in horizontal:
-                    ra, dec, _ = STARS[star]
-                    horizontal[star] = AstroEngine.equatorial_to_horizontal(
-                        jd, lat, lon, ra, dec)
             (alt1, az1), (alt2, az2) = horizontal[a], horizontal[b]
             if max(alt1, alt2) <= 0:
                 continue

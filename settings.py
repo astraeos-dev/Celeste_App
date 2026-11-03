@@ -1,7 +1,11 @@
 """
 settings.py — Gestionnaire de préférences persistantes de Céleste
 ==================================================================
-Charge et sauvegarde les préférences utilisateur dans ``settings.json``.
+Charge et sauvegarde les préférences utilisateur dans ``settings.json``, rangé
+dans le dossier de l'utilisateur (``~/.celeste``, ou ``$CELESTE_DATA``) et non
+dans le dépôt : changer de branche ou mettre à jour Céleste n'y touche pas.
+Un ``settings.json`` laissé dans le dossier de l'application par une version
+précédente est repris au premier lancement.
 
 Chaque préférence a une valeur par défaut définie dans ``_DEFAULTS``.
 Au chargement, les clés manquantes sont complétées par les défauts.
@@ -19,9 +23,12 @@ API publique
 import json
 import os
 
-_SETTINGS_FILE = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "settings.json"
-)
+# Dossier des données de l'utilisateur, partagé avec l'éphéméride (engine.py)
+USER_DIR = os.environ.get("CELESTE_DATA") or os.path.join(os.path.expanduser("~"), ".celeste")
+
+_SETTINGS_FILE = os.path.join(USER_DIR, "settings.json")
+# Emplacement des versions ≤ 4.1, dans le dossier de l'application
+_LEGACY_SETTINGS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "settings.json")
 
 # ── Valeurs par défaut ─────────────────────────────────────────────────────────
 
@@ -65,9 +72,12 @@ def load() -> dict:
     """Charge settings.json. Complète les clés manquantes avec les défauts."""
     global _settings
     _settings = dict(_DEFAULTS)
-    if os.path.isfile(_SETTINGS_FILE):
+    path = _SETTINGS_FILE
+    if not os.path.isfile(path) and os.path.isfile(_LEGACY_SETTINGS_FILE):
+        path = _LEGACY_SETTINGS_FILE          # reprise d'une version précédente
+    if os.path.isfile(path):
         try:
-            with open(_SETTINGS_FILE, "r", encoding="utf-8") as f:
+            with open(path, "r", encoding="utf-8") as f:
                 user = json.load(f)
             for k, v in user.items():
                 if k in _DEFAULTS:
@@ -82,7 +92,8 @@ def load() -> dict:
 
 
 def save() -> None:
-    """Écrit les préférences courantes dans settings.json."""
+    """Écrit les préférences courantes dans settings.json (dossier de l'utilisateur)."""
+    os.makedirs(os.path.dirname(_SETTINGS_FILE), exist_ok=True)
     with open(_SETTINGS_FILE, "w", encoding="utf-8") as f:
         json.dump(_settings, f, ensure_ascii=False, indent=2)
 

@@ -68,8 +68,12 @@ from utils import Formatters  # noqa: E402
 # ── Constantes ────────────────────────────────────────────────────────────────
 
 
-_FAVORITES_FILE = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "favorites.json")
+# Favoris de l'utilisateur, hors du dépôt ; au premier lancement, ceux d'une
+# version précédente (dossier de l'application) ou la liste de départ
+_FAVORITES_FILE = os.path.join(prefs.USER_DIR, "favorites.json")
+_LEGACY_FAVORITES_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "favorites.json")
+_DEFAULT_FAVORITES_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                       "favorites_default.json")
 _FONTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts")
 
 _AUTO_ZONE = "auto"           # fuseau déduit du lieu (timezonefinder)
@@ -1739,16 +1743,18 @@ class AstroApp(QMainWindow):
     # ──────────────────────────────────────────────────────────────────────────
 
     def _load_favorites(self):
-        if os.path.exists(_FAVORITES_FILE):
-            try:
-                with open(_FAVORITES_FILE, "r", encoding="utf-8") as f:
-                    return json.load(f)
-            except (OSError, json.JSONDecodeError):
-                pass
+        for path in (_FAVORITES_FILE, _LEGACY_FAVORITES_FILE, _DEFAULT_FAVORITES_FILE):
+            if os.path.exists(path):
+                try:
+                    with open(path, "r", encoding="utf-8") as f:
+                        return json.load(f)
+                except (OSError, json.JSONDecodeError):
+                    continue
         return {}
 
     def _save_favorites(self):
         try:
+            os.makedirs(os.path.dirname(_FAVORITES_FILE), exist_ok=True)
             with open(_FAVORITES_FILE, "w", encoding="utf-8") as f:
                 json.dump(self.favorites, f, ensure_ascii=False, indent=2)
         except OSError as exc:

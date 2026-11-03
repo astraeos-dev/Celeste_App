@@ -447,7 +447,17 @@ class TestAngularSeparation:
 # ──────────────────────────────────────────────────────────────────────
 
 class TestFindConjunctions:
-    """Verifies conjunction/opposition search."""
+    """Conjunctions, oppositions and greatest elongations, to the minute."""
+
+    @pytest.fixture(scope="class")
+    @classmethod
+    def year_2026(cls):
+        return AstroEngine.find_conjunctions(datetime(2026, 1, 1), num_days=365)
+
+    @staticmethod
+    def _find(events, kind, bodies, month):
+        return next(e for e in events if e["type"] == kind and e["bodies"] == bodies
+                    and e["date"].month == month)
 
     def test_returns_list(self):
         """Result is a list."""
@@ -455,22 +465,84 @@ class TestFindConjunctions:
             datetime(2024, 1, 1), num_days=30)
         assert isinstance(results, list)
 
-    def test_result_structure(self):
-        """Each result contains expected keys."""
-        results = AstroEngine.find_conjunctions(
-            datetime(2024, 1, 1), num_days=60)
-        for r in results:
-            assert 'date' in r
-            assert 'type' in r
-            assert r['type'] in ('conjunction', 'opposition')
-            assert 'bodies' in r
-            assert 'separation' in r
+    def test_result_structure(self, year_2026):
+        """Each result contains the expected keys, sorted by date."""
+        for r in year_2026:
+            assert set(r) >= {"date", "type", "bodies", "separation", "kind", "transit", "side", "details"}
+            assert r["type"] in ("conjunction", "opposition", "greatest_elongation")
+        assert [r["date"] for r in year_2026] == sorted(r["date"] for r in year_2026)
 
-    def test_events_over_year(self):
-        """Over a year, should find at least a few events."""
-        results = AstroEngine.find_conjunctions(
-            datetime(2024, 1, 1), num_days=365)
-        assert len(results) >= 1
+    @pytest.mark.parametrize("kind, bodies, instant", [
+        # JPL Horizons: crossing of the observer ecliptic longitudes (quantity 31), minute sampling
+        ("conjunction", ("Venus", "Sun"), datetime(2026, 1, 6, 16, 36, 0)),
+        ("opposition", ("Jupiter", "Sun"), datetime(2026, 1, 10, 8, 42, 10)),
+        ("conjunction", ("Mercury", "Sun"), datetime(2026, 3, 7, 11, 1, 43)),
+        ("conjunction", ("Venus", "Saturn"), datetime(2026, 3, 8, 13, 39, 38)),
+        ("conjunction", ("Mercury", "Sun"), datetime(2026, 5, 14, 14, 24, 22)),
+        ("opposition", ("Saturn", "Sun"), datetime(2026, 10, 4, 12, 29, 12)),
+        ("conjunction", ("Venus", "Sun"), datetime(2026, 10, 24, 3, 44, 7)),
+        ("conjunction", ("Mars", "Jupiter"), datetime(2026, 11, 16, 6, 23, 38)),
+    ])
+    def test_instants_match_horizons(self, year_2026, kind, bodies, instant):
+        event = self._find(year_2026, kind, bodies, instant.month)
+        assert abs((event["date"] - instant).total_seconds()) < 30
+
+    def test_inferior_and_superior_conjunctions(self, year_2026):
+        """Venus behind the Sun in January 2026, between the Earth and the Sun in October."""
+        superior = self._find(year_2026, "conjunction", ("Venus", "Sun"), 1)
+        inferior = self._find(year_2026, "conjunction", ("Venus", "Sun"), 10)
+        assert superior["kind"] == "superior" and inferior["kind"] == "inferior"
+        assert inferior["side"] == "south" and inferior["separation"] == pytest.approx(6.51, abs=0.02)
+        assert not superior["transit"] and not inferior["transit"]
+        assert self._find(year_2026, "conjunction", ("Jupiter", "Sun"), 7)["kind"] is None
+
+    def test_planet_north_of_the_other(self, year_2026):
+        """Mars passes 1.2° north of Jupiter on 16 November 2026."""
+        event = self._find(year_2026, "conjunction", ("Mars", "Jupiter"), 11)
+        assert event["side"] == "north" and event["separation"] == pytest.approx(1.195, abs=0.01)
+
+    @pytest.mark.parametrize("start, planet, instant", [
+        (datetime(2019, 11, 1), "Mercury", datetime(2019, 11, 11, 15, 21, 42)),   # Horizons
+        (datetime(2012, 6, 1), "Venus", datetime(2012, 6, 6, 1, 9)),               # USNO
+    ])
+    def test_transits(self, start, planet, instant):
+        event = next(e for e in AstroEngine.find_conjunctions(start, num_days=30)
+                     if e["bodies"] == (planet, "Sun") and e["type"] == "conjunction")
+        assert event["kind"] == "inferior" and event["transit"]
+        assert abs((event["date"] - instant).total_seconds()) < 60
+
+    @pytest.mark.parametrize("planet, month, instant, elongation, side", [
+        # Horizons, minute sampling: maximum of the angle Sun–planet
+        ("Mercury", 2, datetime(2026, 2, 19, 17, 41), 18.1227, "east"),
+        ("Venus", 8, datetime(2026, 8, 15, 6, 34), 45.8923, "east"),
+        ("Mercury", 4, datetime(2026, 4, 3, 22, 33), 27.819, "west"),
+    ])
+    def test_greatest_elongations(self, year_2026, planet, month, instant, elongation, side):
+        event = self._find(year_2026, "greatest_elongation", (planet, "Sun"), month)
+        assert event["side"] == side
+        assert event["separation"] == pytest.approx(elongation, abs=0.002)
+        assert abs((event["date"] - instant).total_seconds()) < 300     # a very flat maximum
+
+    def test_no_opposition_of_inner_planets(self, year_2026):
+        assert not [e for e in year_2026 if e["type"] == "opposition"
+                    and e["bodies"][0] in ("Mercury", "Venus")]
+        assert not [e for e in year_2026 if e["type"] == "greatest_elongation"
+                    and e["bodies"][0] not in ("Mercury", "Venus")]
+
+    def test_scene_of_an_event(self, year_2026):
+        """The map of an event: both paths around the instant, the stars of the field."""
+        from star_catalog import CATALOG
+        event = self._find(year_2026, "conjunction", ("Mars", "Jupiter"), 11)
+        scene = AstroEngine.event_scene(event, CATALOG)
+        (a, ra_a, dec_a, ra0_a, dec0_a), (b, ra_b, dec_b, ra0_b, dec0_b) = scene["bodies"]
+        assert (a, b) == ("Mars", "Jupiter") and len(ra_a) == len(scene["days"])
+        ra1, dec1, ra2, dec2 = map(math.radians, (ra0_a * 15, dec0_a, ra0_b * 15, dec0_b))
+        distance = math.degrees(math.acos(math.sin(dec1) * math.sin(dec2)
+                                          + math.cos(dec1) * math.cos(dec2) * math.cos(ra1 - ra2)))
+        assert distance == pytest.approx(event["separation"], abs=0.001)
+        assert dec0_a > dec0_b                                 # Mars to the north
+        assert len(scene["stars"]) == len(CATALOG)
+        assert 0.26 < scene["sun_radius"] < 0.28
 
 
 # ──────────────────────────────────────────────────────────────────────

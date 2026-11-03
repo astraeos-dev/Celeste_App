@@ -307,3 +307,19 @@ class TestLocalDay:
         """Without a time zone, the day is the UT day, as before."""
         hours, _, _ = charts.sample_day(DTE, LAT, LON)
         assert hours[0] == 0 and hours[-1] == 24
+
+
+def test_draw_event_map():
+    """Map of a conjunction with the Sun and of an opposition (the Sun left out)."""
+    from star_catalog import CATALOG
+    events = AstroEngine.find_conjunctions(datetime(2026, 1, 1), num_days=15)
+    for event in [e for e in events if e["type"] in ("conjunction", "opposition")][:3]:
+        scene = AstroEngine.event_scene(event, CATALOG)
+        fig = Figure(figsize=(7, 6))
+        ax = charts.draw_event_map(fig, scene, {"title": "Event", "ecliptic": "Ecliptic",
+                                                "bodies": {"Sun": "Sun"}}, event["date"])
+        paths = len(scene["bodies"]) - (event["type"] == "opposition")
+        assert len([line for line in ax.lines if len(line.get_xdata()) == len(scene["days"])]) == paths
+        lo, hi = ax.get_xlim()
+        assert lo < hi                                   # x grows westward: east on the left
+        fig.canvas.draw()

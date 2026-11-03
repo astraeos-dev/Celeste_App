@@ -290,6 +290,39 @@ class TestEvents:
         assert "06/02/2027 16:00 TU" in texts[0]
         assert "02/08/2027 10:07 TU" in texts[3]
 
+    def test_conjunction_time_and_kind(self, window):
+        """Mercure en conjonction inférieure le 04/11/2026 à 14:24 TU (Horizons 14:24:19)."""
+        window._search_conjunctions_gui()
+        texts = [" ".join(lbl.text() for lbl in c.findChildren(QLabel))
+                 for c in _event_cards(window)]
+        first = next(text for text in texts if "Mercure en conjonction inférieure" in text)
+        assert "04/11/2026 14:24 TU" in first and "Mercure au sud du Soleil" in first
+        assert "Heure locale" not in first                  # lieu en TU : rien à ajouter
+        assert any("plus grande élongation ouest (matin)" in text for text in texts)
+        assert any("Mars au nord de Jupiter" in text for text in texts)
+
+    def test_conjunction_local_time(self, window):
+        """L'heure locale du lieu, heure d'hiver de Paris comprise, sous l'instant TU."""
+        window.tz_menu.setCurrentIndex(window.tz_menu.findData("auto"))     # Cherbourg
+        window._search_conjunctions_gui()
+        texts = [" ".join(lbl.text() for lbl in c.findChildren(QLabel))
+                 for c in _event_cards(window)]
+        first = next(text for text in texts if "Mercure en conjonction inférieure" in text)
+        assert "Heure locale 04/11 15:24 (Europe/Paris)" in first
+
+    def test_map_of_a_conjunction(self, window, qapp):
+        """Le bouton « Carte » d'une conjonction ouvre le trajet des astres parmi les étoiles."""
+        from PyQt6.QtWidgets import QPushButton
+        window._search_conjunctions_gui()
+        qapp.processEvents()
+        buttons = [b for b in window.findChildren(QPushButton) if b.text() == "Carte"]
+        assert len(buttons) == len(_event_cards(window))
+        buttons[0].click()
+        qapp.processEvents()
+        dlg = window._event_dialog
+        assert dlg.isVisible() and dlg.windowTitle() == "Carte de l'évènement"
+        dlg.close()
+
     def test_conjunction_search_replaces_previous_results(self, window):
         window._search_eclipses_gui()
         n_eclipses = len(_event_cards(window))

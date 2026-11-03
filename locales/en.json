@@ -97,6 +97,15 @@
     "note_solar": "Band: the Moon's umbra (or antumbra) on the ground, minute by minute; curves: maximum magnitude of the partiality, Sun up. JPL DE440, WGS84 ellipsoid.",
     "note_lunar": "Light zone: the Moon is up at greatest eclipse; dashes: limit of the Moon being up at the start and end of the partial (or penumbral) phase."
   },
+  "event_map": {
+    "button": "Map",
+    "button_tip": "Paths of the bodies among the stars around the event",
+    "window_title": "Event map",
+    "title": "{event} — {date}",
+    "ecliptic": "Ecliptic",
+    "date_format": "%d/%m",
+    "note": "Equatorial coordinates of date: north up, east left, as in the sky. Small dots: positions at regular intervals, dated in Universal Time; large dot: position at the instant of the event."
+  },
   "status": {
     "stars_one": "{n} star visible",
     "stars_many": "{n} stars visible",
@@ -262,12 +271,11 @@
     "search_conjunctions": "Search conjunctions (12 months)",
     "click_to_search": "Pick a search above: it starts from the date entered in the sidebar.",
     "eclipses_title": "Eclipses — 12 months from {date}",
-    "conjunctions_title": "Conjunctions and oppositions — 12 months from {date}",
+    "conjunctions_title": "Conjunctions, oppositions and elongations — 12 months from {date}",
     "eclipse_count_one": "{n} eclipse found",
     "eclipse_count_many": "{n} eclipses found",
     "event_count_one": "{n} event found",
     "event_count_many": "{n} events found",
-    "daily_note": "Day-by-day search: dates are accurate to one day.",
     "no_eclipse": "No eclipse in this period.",
     "no_conjunction": "No conjunction or opposition in this period.",
     "solar_eclipse": "Solar eclipse",
@@ -292,7 +300,18 @@
     "duration_central": "Central phase {value} min",
     "duration_total": "Totality {value}",
     "duration_partial": "Partial phase {value}",
-    "duration_penumbral": "Penumbral phase {value}"
+    "duration_penumbral": "Penumbral phase {value}",
+    "precise_note": "Times in Universal Time, to the minute (JPL DE440 ephemeris, apparent positions seen from the Earth's centre). Conjunction: same ecliptic longitude; opposition: 180° from the Sun; greatest elongation: farthest from the Sun.",
+    "conjunction_inferior": "{planet} at inferior conjunction with the Sun",
+    "conjunction_superior": "{planet} at superior conjunction with the Sun",
+    "greatest_elongation_east": "{planet} at greatest eastern elongation (evening)",
+    "greatest_elongation_west": "{planet} at greatest western elongation (morning)",
+    "north_of": "{a} north of {b}",
+    "south_of": "{a} south of {b}",
+    "transit": "Transit across the Sun",
+    "local_time": "Local time {time} ({zone})",
+    "north_of_sun": "{a} north of the Sun",
+    "south_of_sun": "{a} south of the Sun"
   },
   "favs": {
     "save_title": "Add to favourites",

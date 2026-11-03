@@ -97,6 +97,15 @@
     "note_solar": "Band: Kern- (oder Gegen-)schatten des Mondes am Boden, Minute für Minute; Kurven: maximale Größe der Partialität bei Sonne über dem Horizont. JPL DE440, WGS84-Ellipsoid.",
     "note_lunar": "Helle Zone: Mond im Maximum über dem Horizont; Striche: Grenze des Mondes über dem Horizont zu Beginn und am Ende der partiellen (oder Halbschatten-)Phase."
   },
+  "event_map": {
+    "button": "Karte",
+    "button_tip": "Bahnen der Himmelskörper zwischen den Sternen um das Ereignis",
+    "window_title": "Ereigniskarte",
+    "title": "{event} — {date}",
+    "ecliptic": "Ekliptik",
+    "date_format": "%d.%m.",
+    "note": "Äquatoriale Koordinaten des Datums: Norden oben, Osten links, wie am Himmel. Kleine Punkte: Positionen in regelmäßigen Abständen, in Weltzeit datiert; großer Punkt: Position zum Zeitpunkt des Ereignisses."
+  },
   "status": {
     "stars_one": "{n} Stern sichtbar",
     "stars_many": "{n} Sterne sichtbar",
@@ -262,12 +271,11 @@
     "search_conjunctions": "Konjunktionen suchen (12 Monate)",
     "click_to_search": "Wählen Sie oben eine Suche: Sie beginnt beim Datum aus der Seitenleiste.",
     "eclipses_title": "Finsternisse — 12 Monate ab {date}",
-    "conjunctions_title": "Konjunktionen und Oppositionen — 12 Monate ab {date}",
+    "conjunctions_title": "Konjunktionen, Oppositionen und Elongationen — 12 Monate ab {date}",
     "eclipse_count_one": "{n} Finsternis gefunden",
     "eclipse_count_many": "{n} Finsternisse gefunden",
     "event_count_one": "{n} Ereignis gefunden",
     "event_count_many": "{n} Ereignisse gefunden",
-    "daily_note": "Tageweise Suche: Die Daten sind auf einen Tag genau.",
     "no_eclipse": "Keine Finsternis in diesem Zeitraum.",
     "no_conjunction": "Keine Konjunktion und keine Opposition in diesem Zeitraum.",
     "solar_eclipse": "Sonnenfinsternis",
@@ -292,7 +300,18 @@
     "duration_central": "Zentrale Phase {value} min",
     "duration_total": "Totalität {value}",
     "duration_partial": "Partielle Phase {value}",
-    "duration_penumbral": "Halbschattenphase {value}"
+    "duration_penumbral": "Halbschattenphase {value}",
+    "precise_note": "Zeiten in Weltzeit, auf die Minute genau (Ephemeriden JPL DE440, scheinbare Positionen vom Erdmittelpunkt aus). Konjunktion: gleiche ekliptikale Länge; Opposition: 180° von der Sonne; größte Elongation: größter Abstand zur Sonne.",
+    "conjunction_inferior": "{planet} in unterer Konjunktion mit der Sonne",
+    "conjunction_superior": "{planet} in oberer Konjunktion mit der Sonne",
+    "greatest_elongation_east": "{planet} in größter östlicher Elongation (Abend)",
+    "greatest_elongation_west": "{planet} in größter westlicher Elongation (Morgen)",
+    "north_of": "{a} nördlich von {b}",
+    "south_of": "{a} südlich von {b}",
+    "transit": "Transit vor der Sonne",
+    "local_time": "Ortszeit {time} ({zone})",
+    "north_of_sun": "{a} nördlich der Sonne",
+    "south_of_sun": "{a} südlich der Sonne"
   },
   "favs": {
     "save_title": "Zu den Favoriten hinzufügen",

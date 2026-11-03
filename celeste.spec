@@ -1,24 +1,19 @@
 # -*- mode: python ; coding: utf-8 -*-
 """
-celeste.spec — Céleste en application autonome (PyInstaller)
-=============================================================
+celeste.spec — Céleste.exe pour Windows (PyInstaller)
+=====================================================
 À lancer par ``python scripts/build_exe.py``, qui prépare l'éphéméride JPL
-(data/de440s.bsp) et les icônes (build/icons) avant d'appeler PyInstaller.
+(data/de440s.bsp) et l'icône (build/icons/celeste.ico) avant d'appeler
+PyInstaller.
 
 L'application contient l'éphéméride : elle fonctionne hors ligne dès le
-premier lancement. Sous macOS, Info.plist déclare l'usage de la position
-(géolocalisation par le service de localisation du système).
+premier lancement.
 """
 import os
-import sys
 
 from PyInstaller.utils.hooks import collect_data_files
 
-sys.path.insert(0, os.path.abspath("."))
-from config import APP_VERSION  # noqa: E402
-
-MACOS = sys.platform == "darwin"
-ICON = os.path.join("build", "icons", "celeste.icns" if MACOS else "celeste.ico")
+ICON = os.path.join("build", "icons", "celeste.ico")
 
 datas = [
     ("fonts", "fonts"),
@@ -46,21 +41,3 @@ exe = EXE(
     icon=ICON if os.path.exists(ICON) else None,
 )
 coll = COLLECT(exe, a.binaries, a.datas, name="Celeste")
-
-if MACOS:
-    app = BUNDLE(
-        coll,
-        name="Celeste.app",
-        icon=ICON if os.path.exists(ICON) else None,
-        bundle_identifier="dev.astraeos.celeste",
-        version=APP_VERSION,
-        info_plist={
-            "CFBundleDisplayName": "Céleste",
-            "CFBundleShortVersionString": APP_VERSION,
-            "NSHighResolutionCapable": True,
-            "NSLocationWhenInUseUsageDescription":
-                "Céleste utilise votre position pour calculer le ciel de votre lieu.",
-            "NSLocationUsageDescription":
-                "Céleste utilise votre position pour calculer le ciel de votre lieu.",
-        },
-    )

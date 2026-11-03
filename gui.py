@@ -2467,7 +2467,7 @@ class AstroApp(QMainWindow):
         top.addWidget(_label(when, "donnee"))
         if action:
             btn = _bouton(action[0], "place", "secondaire", compact=True)
-            btn.setToolTip(t("eclipse_map.button_tip"))
+            btn.setToolTip(action[2] if len(action) > 2 else t("eclipse_map.button_tip"))
             btn.clicked.connect(action[1])
             top.addWidget(btn)
         lay.addLayout(top)
@@ -2583,8 +2583,25 @@ class AstroApp(QMainWindow):
         self._eclipse_dialog = dlg
         dlg.show()
 
+    def _event_title(self, ev, symbol=True):
+        """Titre d'une conjonction, d'une opposition ou d'une plus grande élongation."""
+        a, b = ev["bodies"]
+        planet = _planet_name(a, symbol=symbol)
+        if ev["type"] == "opposition":
+            return tf("events.opposition", planet=planet)
+        if ev["type"] == "greatest_elongation":
+            return tf(f"events.greatest_elongation_{ev['side']}", planet=planet)
+        if b == "Sun":
+            key = f"events.conjunction_{ev['kind']}" if ev.get("kind") else "events.solar_conjunction"
+            return tf(key, planet=planet)
+        return tf("events.conjunction_pair", a=planet, b=_planet_name(b, symbol=symbol))
+
+    def _event_when(self, dt):
+        """« 06/01/2026 16:36 TU » : l'instant à la minute la plus proche."""
+        return (dt + timedelta(seconds=30)).strftime("%d/%m/%Y %H:%M") + f" {t('chart.ut')}"
+
     def _search_conjunctions_gui(self):
-        """Recherche et affiche les conjonctions et oppositions sur 12 mois."""
+        """Recherche et affiche conjonctions, oppositions et plus grandes élongations sur 12 mois."""
         dte = self._search_start("conjunctions")
         try:
             conjs = AstroEngine.find_conjunctions(dte, num_days=365)
@@ -2597,27 +2614,68 @@ class AstroApp(QMainWindow):
         n = len(conjs)
         self._events_header(
             tf("events.conjunctions_title", date=dte.strftime("%d/%m/%Y")),
-            tf(_plural_key("events.event_count", n), n=n), t("events.daily_note"))
+            tf(_plural_key("events.event_count", n), n=n), t("events.precise_note"))
         if not conjs:
             self._evt_layout.addWidget(_label(t("events.no_conjunction"), "corps",
                                               tone="attenuee"))
         for cj in conjs:
-            a, b = cj.get("bodies", ("?", "?"))
-            sep = cj.get("separation")
-            if cj.get("type") == "opposition":
+            a, b = cj["bodies"]
+            sep = cj["separation"]
+            pills = []
+            if cj["type"] == "opposition":
                 symbole = SYMBOL["opposition"]
-                title = tf("events.opposition", planet=_planet_name(a, symbol=True))
-                detail_key, digits = "events.elongation", 1
-            elif b == "Sun":
-                symbole = SYMBOL["conjunction"]
-                title = tf("events.solar_conjunction", planet=_planet_name(a, symbol=True))
-                detail_key, digits = "events.separation", 2
+                details = [tf("events.elongation", value=_num(sep, 1))]
+            elif cj["type"] == "greatest_elongation":
+                symbole = SYMBOL[a]
+                details = [tf("events.elongation", value=_num(sep, 1))]
             else:
                 symbole = SYMBOL["conjunction"]
-                title = tf("events.conjunction_pair", a=_planet_name(a, symbol=True),
-                           b=_planet_name(b, symbol=True))
-                detail_key, digits = "events.separation", 2
-            details = [tf(detail_key, value=_num(sep, digits))] if sep is not None else []
-            self._event_card(symbole, "attenuee", title, cj["date"].strftime("%d/%m/%Y"),
-                             details=details)
+                side = (tf(f"events.{cj['side']}_of_sun", a=_planet_name(a)) if b == "Sun"
+                        else tf(f"events.{cj['side']}_of", a=_planet_name(a), b=_planet_name(b)))
+                details = [tf("events.separation", value=_num(sep, 2)), side]
+                if cj.get("transit"):
+                    pills.append((t("events.transit"), "info"))
+            local = self._local(cj["date"] + timedelta(seconds=30))
+            if local != (cj["date"] + timedelta(seconds=30)).replace(tzinfo=None):
+                details.append(tf("events.local_time", time=f"{local:%d/%m} {self._fmt_clock(local)}",
+                                  zone=getattr(self._zone, "key", "UTC")))
+            # an elongation has the planet's symbol in front: not twice
+            title = self._event_title(cj, symbol=cj["type"] != "greatest_elongation")
+            self._event_card(symbole, "attenuee", title, self._event_when(cj["date"]),
+                             pills, details,
+                             action=(t("event_map.button"),
+                                     lambda _=False, e=cj: self._show_event_map(e),
+                                     t("event_map.button_tip")))
         self._evt_layout.addStretch()
+
+    def _show_event_map(self, ev):
+        """Fenêtre : trajets des astres parmi les étoiles autour de l'évènement."""
+        from star_catalog import CATALOG
+
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            scene = AstroEngine.event_scene(ev, CATALOG)
+        finally:
+            QApplication.restoreOverrideCursor()
+        names = {name: (t("chart.sun") if name == "Sun" else _planet_name(name)) for name in ev["bodies"]}
+        labels = {
+            "title": tf("event_map.title", event=self._event_title(ev, symbol=False),
+                        date=self._event_when(ev["date"])),
+            "ecliptic": t("event_map.ecliptic"), "bodies": names,
+            "date_format": t("event_map.date_format"),
+        }
+        dlg = QDialog(self)
+        dlg.setWindowTitle(t("event_map.window_title"))
+        dlg.resize(820, 720)
+        lay = QVBoxLayout(dlg)
+        fig = Figure(facecolor=Config.CIEL_100)
+        canvas = FigureCanvasQTAgg(fig)
+        lay.addWidget(canvas, stretch=1)
+        charts.draw_event_map(fig, scene, labels, ev["date"])
+        lay.addWidget(_label(t("event_map.note"), "legende", wrap=True))
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        buttons.rejected.connect(dlg.reject)
+        lay.addWidget(buttons)
+        canvas.draw_idle()
+        self._event_dialog = dlg
+        dlg.show()

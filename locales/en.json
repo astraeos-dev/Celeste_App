@@ -31,8 +31,6 @@
     "calculate_tip": "Calculate for the date and place entered ({key})",
     "live": "Follow live",
     "live_tip": "Follow the current time, updated automatically ({key})",
-    "export": "Export as PDF",
-    "export_tip": "Today's ephemeris as a PDF ({key})",
     "lat_error": "Enter a latitude between −90 and 90",
     "lon_error": "Enter a longitude between −180 and 180"
   },
@@ -294,14 +292,6 @@
     "geoloc_ip": "Approximate position from the IP address: {city}, {country} — often the Internet provider's. Turn on the system's location service, or enter your coordinates.",
     "geoloc_fail": "Unable to determine the location.",
     "geoloc_network": "Cannot reach the geolocation service. Check your connection.\n\nDetail: {detail}"
-  },
-  "pdf": {
-    "title": "PDF export",
-    "dialog": "Save the PDF report",
-    "filter": "PDF files (*.pdf)",
-    "saved": "Report saved:\n{path}",
-    "open": "Open",
-    "error": "The PDF export failed:\n{detail}"
   },
   "settings": {
     "time_format": "Time format",

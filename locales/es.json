@@ -31,8 +31,6 @@
     "calculate_tip": "Calcular para la fecha y el lugar introducidos ({key})",
     "live": "Seguir en tiempo real",
     "live_tip": "Seguir la hora actual, con actualización automática ({key})",
-    "export": "Exportar en PDF",
-    "export_tip": "Efemérides del día en PDF ({key})",
     "lat_error": "Introduzca una latitud entre −90 y 90",
     "lon_error": "Introduzca una longitud entre −180 y 180"
   },
@@ -294,14 +292,6 @@
     "geoloc_ip": "Posición aproximada según la dirección IP: {city}, {country} — a menudo la del proveedor de Internet. Active el servicio de ubicación del sistema o introduzca sus coordenadas.",
     "geoloc_fail": "No se ha podido determinar la posición.",
     "geoloc_network": "No se puede contactar con el servicio de geolocalización. Compruebe su conexión.\n\nDetalle: {detail}"
-  },
-  "pdf": {
-    "title": "Exportar PDF",
-    "dialog": "Guardar el informe PDF",
-    "filter": "Archivos PDF (*.pdf)",
-    "saved": "Informe guardado:\n{path}",
-    "open": "Abrir",
-    "error": "La exportación a PDF ha fallado:\n{detail}"
   },
   "settings": {
     "time_format": "Formato de hora",

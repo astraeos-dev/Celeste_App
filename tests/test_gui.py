@@ -4,7 +4,7 @@ tests/test_gui.py — Tests de l'interface PyQt6 (sans écran)
 Construit la fenêtre de Céleste hors écran (QT_QPA_PLATFORM=offscreen) et
 la pilote : calcul, changement de langue et de thème (Nuit, Jour,
 Observation) sans redémarrer, favoris, recherche d'événements, info-bulles
-et fiches de la carte du ciel, temps réel, export PDF ; vérifie aussi deux
+et fiches de la carte du ciel, temps réel ; vérifie aussi deux
 règles du design Astræos (pas d'emoji, symboles suivis de U+FE0E).
 
 Les préférences et les favoris sont écrits dans un dossier temporaire : ceux
@@ -351,7 +351,7 @@ class TestSkyMapAndTrajectory:
 
 
 # ──────────────────────────────────────────────────────────────────────
-# 6. Temps réel et export PDF
+# 6. Temps réel
 # ──────────────────────────────────────────────────────────────────────
 
 class TestLiveAndExport:
@@ -362,16 +362,6 @@ class TestLiveAndExport:
         assert window._edit_datetime() != DTE
         window.btn_live.toggle()
         assert not window.live_mode and not window._live_timer.isActive()
-
-    def test_pdf_report(self, window, tmp_path):
-        from export_pdf import build_data_from_app, generate_report_pdf
-        data = build_data_from_app(window)
-        assert data["location"] == "Cherbourg-en-Cotentin"
-        assert data["date"] == DTE
-        assert data["events"]["sun"]["rise"] == "06:55"
-        path = generate_report_pdf(data, str(tmp_path / "report.pdf"))
-        with open(path, "rb") as f:
-            assert f.read(5) == b"%PDF-"
 
 
 # ──────────────────────────────────────────────────────────────────────

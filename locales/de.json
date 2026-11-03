@@ -31,8 +31,6 @@
     "calculate_tip": "Für das eingegebene Datum und den Ort berechnen ({key})",
     "live": "Live verfolgen",
     "live_tip": "Der aktuellen Uhrzeit folgen, mit automatischer Aktualisierung ({key})",
-    "export": "Als PDF exportieren",
-    "export_tip": "Ephemeriden des Tages als PDF ({key})",
     "lat_error": "Eine Breite zwischen −90 und 90 eingeben",
     "lon_error": "Eine Länge zwischen −180 und 180 eingeben"
   },
@@ -294,14 +292,6 @@
     "geoloc_ip": "Ungefähre Position nach der IP-Adresse: {city}, {country} — oft die des Internetanbieters. Aktivieren Sie den Ortungsdienst des Systems oder geben Sie Ihre Koordinaten ein.",
     "geoloc_fail": "Der Standort konnte nicht bestimmt werden.",
     "geoloc_network": "Der Dienst zur Standortbestimmung ist nicht erreichbar. Prüfen Sie Ihre Verbindung.\n\nDetail: {detail}"
-  },
-  "pdf": {
-    "title": "PDF-Export",
-    "dialog": "PDF-Bericht speichern",
-    "filter": "PDF-Dateien (*.pdf)",
-    "saved": "Bericht gespeichert:\n{path}",
-    "open": "Öffnen",
-    "error": "Der PDF-Export ist fehlgeschlagen:\n{detail}"
   },
   "settings": {
     "time_format": "Zeitformat",

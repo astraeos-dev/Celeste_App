@@ -11,7 +11,7 @@ v3.3 — Interface au design system Astræos :
     Jauge, Onglets, SelecteurTheme ; une seule zone dorée par écran (le
     bouton Calculer), filets plutôt qu'ombres
   ★ Textes traduits (fr, en, es, de) ; nombres à la mode de la langue
-  ★ Raccourcis : F5 calculer, Ctrl+L temps réel, Ctrl+E export PDF
+  ★ Raccourcis : F5 calculer, Ctrl+L temps réel
 
 Architecture :
   - Barre latérale  : date, lieu, fuseau, favoris, actions, thème
@@ -33,16 +33,16 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError, available_timezones
 
 from PyQt6.QtCore import (
     QDate, QDateTime, QEvent, QLocale, QPointF, QRectF, QRegularExpression, QSize,
-    Qt, QTime, QTimer, QTimeZone, QUrl,
+    Qt, QTime, QTimer, QTimeZone,
 )
 from PyQt6.QtGui import (
-    QBrush, QColor, QDesktopServices, QFont, QFontDatabase, QKeySequence,
+    QBrush, QColor, QFont, QFontDatabase, QKeySequence,
     QPainter, QPainterPath, QPalette, QPen, QRegularExpressionValidator, QShortcut,
 )
 from PyQt6.QtPositioning import QGeoPositionInfo, QGeoPositionInfoSource
 from PyQt6.QtWidgets import (
     QAbstractItemView, QApplication, QButtonGroup, QCheckBox, QComboBox, QCompleter,
-    QDateTimeEdit, QDialog, QDialogButtonBox, QFileDialog, QFrame, QGridLayout,
+    QDateTimeEdit, QDialog, QDialogButtonBox, QFrame, QGridLayout,
     QHBoxLayout, QHeaderView, QInputDialog, QLabel, QLineEdit, QMainWindow,
     QMessageBox, QProgressBar, QPushButton, QScrollArea, QSizePolicy, QSlider,
     QStatusBar, QTabWidget, QTableWidget, QTableWidgetItem, QToolButton,
@@ -890,8 +890,7 @@ class AstroApp(QMainWindow):
 
         # Raccourcis, attachés à la fenêtre : ils survivent aux reconstructions
         for keys, slot in ((("F5", "Ctrl+Return"), self.calculate),
-                           (("Ctrl+L",), lambda: self.btn_live.toggle()),
-                           (("Ctrl+E",), self.export_pdf)):
+                           (("Ctrl+L",), lambda: self.btn_live.toggle())):
             for key in keys:
                 QShortcut(QKeySequence(key), self).activated.connect(slot)
 
@@ -1043,10 +1042,6 @@ class AstroApp(QMainWindow):
         self.btn_live.setToolTip(tf("side.live_tip", key="Ctrl+L"))
         self.btn_live.toggled.connect(self.toggle_live)
         lay.addWidget(self.btn_live)
-        btn_pdf = _bouton(t("side.export"), "export", "secondaire")
-        btn_pdf.setToolTip(tf("side.export_tip", key="Ctrl+E"))
-        btn_pdf.clicked.connect(self.export_pdf)
-        lay.addWidget(btn_pdf)
 
         lay.addStretch()
         self.theme_selector = SelecteurTheme(Config.THEME, self._on_theme_selected)
@@ -2007,42 +2002,6 @@ class AstroApp(QMainWindow):
     def _live_tick(self):
         self._set_datetime(_utc_now())
         self.calculate()
-
-    # ──────────────────────────────────────────────────────────────────────────
-    # EXPORT PDF
-    # ──────────────────────────────────────────────────────────────────────────
-
-    def export_pdf(self):
-        try:
-            from export_pdf import build_data_from_app, generate_report_pdf
-        except ImportError as exc:
-            QMessageBox.critical(self, t("pdf.title"), tf("pdf.error", detail=exc))
-            return
-        if not self._check_inputs():
-            self._warn_invalid_coords()
-            return
-        self.calculate()        # le rapport suit exactement les valeurs saisies
-        stamp = _utc_now().strftime("%Y%m%d_%H%M%S")
-        path, _ = QFileDialog.getSaveFileName(
-            self, t("pdf.dialog"),
-            os.path.join(os.path.expanduser("~"), f"celeste_{stamp}.pdf"),
-            t("pdf.filter"))
-        if not path:
-            return
-        if not path.lower().endswith(".pdf"):
-            path += ".pdf"
-        try:
-            generate_report_pdf(build_data_from_app(self), path)
-        except Exception as exc:
-            QMessageBox.critical(self, t("pdf.title"), tf("pdf.error", detail=exc))
-            return
-        box = QMessageBox(QMessageBox.Icon.Information, t("pdf.title"),
-                          tf("pdf.saved", path=path), parent=self)
-        open_btn = box.addButton(t("pdf.open"), QMessageBox.ButtonRole.ActionRole)
-        box.addButton(QMessageBox.StandardButton.Ok)
-        box.exec()
-        if box.clickedButton() is open_btn:
-            QDesktopServices.openUrl(QUrl.fromLocalFile(path))
 
     # ──────────────────────────────────────────────────────────────────────────
     # CALCUL PRINCIPAL

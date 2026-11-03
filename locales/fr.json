@@ -31,8 +31,6 @@
     "calculate_tip": "Calculer pour la date et le lieu saisis ({key})",
     "live": "Suivre en temps réel",
     "live_tip": "Suivre l'heure actuelle, avec mise à jour automatique ({key})",
-    "export": "Exporter en PDF",
-    "export_tip": "Éphémérides du jour au format PDF ({key})",
     "lat_error": "Saisir une latitude entre −90 et 90",
     "lon_error": "Saisir une longitude entre −180 et 180"
   },
@@ -294,14 +292,6 @@
     "geoloc_ip": "Position approximative d'après l'adresse IP : {city}, {country} — souvent celle du fournisseur d'accès. Activez le service de localisation du système, ou saisissez vos coordonnées.",
     "geoloc_fail": "Position indéterminée.",
     "geoloc_network": "Impossible de joindre le service de géolocalisation. Vérifiez votre connexion.\n\nDétail : {detail}"
-  },
-  "pdf": {
-    "title": "Export PDF",
-    "dialog": "Enregistrer le rapport PDF",
-    "filter": "Fichiers PDF (*.pdf)",
-    "saved": "Rapport enregistré :\n{path}",
-    "open": "Ouvrir",
-    "error": "L'export PDF a échoué :\n{detail}"
   },
   "settings": {
     "time_format": "Format de l'heure",

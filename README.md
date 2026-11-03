@@ -47,12 +47,11 @@ Jour et Observation), avec des graphiques interactifs et une carte du ciel.
 - **Équation du temps** — écart entre temps solaire vrai et temps solaire moyen
 - **Favoris** — enregistrement des lieux (37 villes préchargées)
 - **Fuseaux horaires** — conversion TU → heure locale par sélecteur UTC±N
-- **Export PDF** — éphémérides du jour
 - **Interface multilingue** — français, anglais, espagnol, allemand ; langue du système par défaut, changement immédiat
   dans les paramètres (ou `--lang`)
 - **Thèmes** — Nuit (sombre), Jour (clair) et Observation (rouge sur noir, pour garder la vision de nuit), choisis en bas
   de la barre latérale sans redémarrer (ou `--theme`)
-- **Raccourcis clavier** — `F5` calculer, `Ctrl+L` temps réel, `Ctrl+E` export PDF
+- **Raccourcis clavier** — `F5` calculer, `Ctrl+L` temps réel
 - **Réglages persistants** — thème, langue, format de l'heure, lieu de démarrage, magnitude limite, intervalle temps réel
   (`~/.celeste/settings.json`, hors du dépôt)
 
@@ -107,7 +106,6 @@ Changer la date recalcule tout au bout d'un instant.
 - **Calculer** (`F5`) — lance les calculs pour la date et le lieu saisis
 - **Suivre en temps réel** (`Ctrl+L`) — bouton à bascule : suit l'heure actuelle tant qu'il reste enfoncé (intervalle
   réglable dans les paramètres)
-- **Exporter en PDF** (`Ctrl+E`) — exporte les éphémérides du jour en PDF
 - **Nuit · Jour · Observation** — sélecteur de thème, en bas de la barre latérale
 
 **Événements :** les deux boutons de l'onglet cherchent les éclipses des 12 prochaines lunaisons et les conjonctions de
@@ -142,7 +140,7 @@ L'interface et les graphiques suivent le design system Astræos :
   des libellés sans capitales ; un contraste du texte d'au moins 4,5:1 dans les trois thèmes (vérifié par
   `tests/test_config.py`).
 
-L'export PDF garde sa propre mise en page. Polices IBM Plex (© IBM) et Astraeos Symboles (d'après Noto Sans Symbols)
+Polices IBM Plex (© IBM) et Astraeos Symboles (d'après Noto Sans Symbols)
 sous licence SIL Open Font License 1.1 ; icônes Material Design Icons (Pictogrammers) sous licence Apache 2.0 : voir
 `fonts/README.md` et `assets/README.md`.
 
@@ -164,7 +162,6 @@ Celeste_App/
 ├── i18n.py              # Internationalisation — traductions par clé avec repli
 ├── settings.py          # Préférences persistantes (~/.celeste/settings.json)
 ├── constellations.py    # Catalogue d'étoiles et tracés des constellations
-├── export_pdf.py        # Export PDF des éphémérides
 ├── favorites_default.json # Lieux préchargés (36 villes), copiés dans ~/.celeste au premier enregistrement
 ├── locales/             # Traductions (fr.json est la référence)
 ├── fonts/               # Polices IBM Plex Sans, IBM Plex Mono et Astraeos Symboles (licence OFL)
@@ -240,7 +237,6 @@ affiché est redessiné ; les autres le sont quand on les ouvre.
 |--------|-------------|------|
 | [PyQt6](https://www.riverbankcomputing.com/software/pyqt/) | 6.5 | Interface graphique (Qt 6) |
 | [matplotlib](https://matplotlib.org/) | 3.10.8 | Graphiques astronomiques interactifs |
-| [reportlab](https://www.reportlab.com/) | 4.0 | Export PDF |
 | [Skyfield](https://rhodesmill.org/skyfield/) | 1.47 | Éphéméride JPL DE440, temps (TU1, ΔT), levers et couchers (installe NumPy) |
 | [timezonefinder](https://github.com/jannikmi/timezonefinder) | 6.5 | Fuseau IANA d'un lieu, hors ligne (mode « Automatique ») |
 | [tzdata](https://pypi.org/project/tzdata/) | — | Base des fuseaux IANA pour `zoneinfo` (indispensable sous Windows) |
@@ -277,7 +273,6 @@ avec le projet (`fonts/`, `assets/`) : rien à installer.
 - [x] Favoris — enregistrement des lieux (`~/.celeste/favorites.json`)
 - [x] Fuseaux horaires IANA, heure d'été comprise ; « Automatique » prend celui du lieu (timezonefinder)
 - [x] Altitude de l'observateur (abaissement de l'horizon), positions topocentriques, phase exacte de la Lune
-- [x] **Export** — éphémérides du jour en PDF
 - [x] **Interface multilingue** — FR / EN / ES / DE
 - [x] **Réglages persistants** — langue, thème, lieu, intervalle temps réel (`~/.celeste/settings.json`)
 - [ ] **Historique des calculs** — derniers calculs rechargeables en un clic

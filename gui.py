@@ -1305,7 +1305,7 @@ class AstroApp(QMainWindow):
         self._chart_tabs[page] = "orrery"
         self.tabs.addTab(page, t("tabs.planets"))
 
-    # ── Onglet Coordonnées (comme le Solar System Calculator de Don Cross) ───
+    # ── Onglet Coordonnées ────────────────────────────────────────────────────
     #    x, y, z et distance selon l'origine « cartésiennes » ; deux angles selon
     #    le repère « angulaires » ; magnitude, angle avec le Soleil, constellation.
 

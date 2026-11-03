@@ -487,7 +487,7 @@ class TestGeolocation:
 # ──────────────────────────────────────────────────────────────────────
 
 class TestCoordinatesTab:
-    """Onglet comme le Solar System Calculator : x, y, z et angles en même temps."""
+    """Onglet Coordonnées : x, y, z et angles en même temps."""
 
     BODIES = ["Soleil", "Lune", "Mercure", "Vénus", "Terre", "Mars", "Jupiter", "Saturne",
               "Uranus", "Neptune", "Pluton"]
@@ -521,7 +521,7 @@ class TestCoordinatesTab:
             menu.hidePopup()
 
     def test_default_heliocentric_and_equatorial(self, window):
-        """Par défaut, comme cosinekitty.com : x, y, z héliocentriques, angles équatoriaux."""
+        """Par défaut : x, y, z héliocentriques, angles équatoriaux."""
         self._open(window)
         assert self._headers(window) == [
             "Astre", "x (UA)", "y (UA)", "z (UA)", "Distance (UA)", "Mag.",

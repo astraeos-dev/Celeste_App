@@ -37,8 +37,8 @@ Jour et Observation), avec des graphiques interactifs et une carte du ciel.
   solaire vu de dessus, en vue rapprochée et en vue d'ensemble
 - **Coordonnées** — Soleil, Lune, planètes de Mercure à Pluton et Terre, avec en même temps x, y, z et distance
   (héliocentriques, géocentriques ou topocentriques) et deux angles (équatoriaux ou horizontaux vus du lieu, écliptiques
-  vus du Soleil ou de la Terre), magnitude, angle au Soleil et constellation ; angles en dd° mm′ ss″, dd° mm,mm′ ou dd,ddddd° : comme dans les paramètres, ou un format
-  propre au tableau
+  vus du Soleil ou de la Terre), magnitude, angle au Soleil et constellation ; angles au format des paramètres, ou en
+  dd° mm′ ss″, dd° mm,mm′ ou dd,ddddd° pour ce tableau seulement
 - **Format des angles** — choisi dans les paramètres (dd° mm′ ss″, dd° mm,mm′ ou dd,ddddd°), pour tout le logiciel
 - **Prévision des éclipses** — éclipses de Soleil (totale, annulaire, hybride, partielle ; magnitude, durée de la phase
   centrale) et de Lune (totale, partielle, pénombrale ; magnitudes d'ombre et de pénombre, durée de chaque phase), avec

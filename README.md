@@ -33,8 +33,9 @@ Jour et Observation), avec des graphiques interactifs et une carte du ciel.
 - **Carte du ciel polaire** — zénith au centre, étoiles (ramenées à la date : précession, nutation, aberration) à la
   taille de leur magnitude, constellations, planètes ;
   info-bulle au survol et fiche détaillée au clic (constellation, magnitude, coordonnées)
-- **Planètes** — tableau de Vénus, Mars, Jupiter et Saturne (coordonnées, distance, élongation, visibilité) et système
-  solaire vu de dessus, en vue rapprochée et en vue d'ensemble
+- **Planètes** — Mercure, Vénus, Mars, Jupiter, Saturne, Uranus et Neptune : coordonnées, hauteur et azimut, distance,
+  élongation, heures de lever, de culmination et de coucher (nom atténué sous l'horizon) ; système solaire vu de dessus,
+  interne et externe
 - **Coordonnées** — Soleil, Lune, planètes de Mercure à Pluton et Terre, avec en même temps x, y, z et distance
   (héliocentriques, géocentriques ou topocentriques) et deux angles (équatoriaux ou horizontaux vus du lieu, écliptiques
   vus du Soleil ou de la Terre), magnitude, angle au Soleil et constellation ; angles au format des paramètres, ou en
@@ -194,14 +195,14 @@ est téléchargée depuis le serveur JPL/NAIF au premier lancement.
 | `ecliptic_to_equatorial(l, b, t)` | Écliptique → équatorial (AD, Déc), obliquité vraie (IAU 2006 + nutation) |
 | `equatorial_to_horizontal(jd, lat, lon, ra, dec)` | Équatorial → horizontal (hauteur, azimut), temps sidéral apparent |
 | `elevation_correction(h, p)` | Parallaxe en hauteur (π cos h), puis réfraction atmosphérique |
-| `find_events(dte, lat, lon, body, tz, elevation_m)` | Lever, coucher (bord supérieur), culmination, crépuscules sur le jour local (fuseau IANA, heure d'été comprise), à la seconde ; l'altitude abaisse l'horizon |
+| `find_events(dte, lat, lon, body, tz, elevation_m)` | Soleil, Lune ou planète : lever, coucher (bord supérieur), culmination, crépuscules sur le jour local (fuseau IANA, heure d'été comprise), à la seconde ; l'altitude abaisse l'horizon |
 | `horizontal(t, lat, lon, body, elevation_m, refraction)` | Hauteur et azimut topocentriques (vus du lieu, parallaxe comprise) |
 | `coordinates(t, body, center, frame, lat, lon)` | Coordonnées dans le système choisi : héliocentriques (géométriques, J2000) ou géo/topocentriques (apparentes, de la date) ; écliptiques, équatoriales ou horizontales ; angles et x, y, z |
 | `observations(t, bodies)` | Magnitude visuelle, angle au Soleil et constellation (UAI), vus de la Terre |
 | `moon_phase(t)` | Fraction éclairée de la Lune (%) et âge depuis la dernière nouvelle lune vraie |
 | `altitudes(dtes, lat, lon, elevation_m)` | Hauteurs du Soleil et de la Lune à une série d'instants, en un calcul vectorisé |
 | `planet_heliocentric(t, name)` | Position héliocentrique écliptique J2000 (x, y, z en UA), Terre comprise |
-| `planet_position(t, name)` | Position géocentrique apparente : AD, Déc et distance (Vénus, Mars, Jupiter, Saturne) |
+| `planet_position(t, name)` | Position géocentrique apparente : AD, Déc et distance (Mercure à Pluton) |
 | `equation_of_time(t)` | Équation du temps en minutes |
 | `angular_separation(ra1, dec1, ra2, dec2)` | Séparation angulaire entre deux astres |
 | `find_conjunctions(dte_start, num_days)` | Prochaines conjonctions et oppositions |

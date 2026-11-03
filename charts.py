@@ -36,7 +36,7 @@ from matplotlib.ticker import FuncFormatter, MultipleLocator
 
 from config import Config, FONT_SANS, mix
 from constellations import CONSTELLATIONS, STARS
-from engine import AstroEngine, _HORIZON_CORRECTION_SUN
+from engine import EPHEMERIS_YEARS, AstroEngine, _HORIZON_CORRECTION_SUN
 
 # Astronomical symbols (Astraeos Symboles). Matplotlib never draws emoji, so
 # they go without the U+FE0E selector here.
@@ -510,9 +510,10 @@ def draw_sky_map(fig, scene, labels):
 # ──────────────────────────────────────────────────────────────────────────────
 
 # Sidereal periods (years), to trace one full orbit
-_PERIOD_YEARS = {"Venus": 0.61520, "Mars": 1.88085,
-                 "Jupiter": 11.8622, "Saturn": 29.4571}
-_PLANET_MARKER = {"Venus": 6, "Mars": 5, "Jupiter": 9, "Saturn": 8}
+_PERIOD_YEARS = {"Mercury": 0.24085, "Venus": 0.61520, "Mars": 1.88085,
+                 "Jupiter": 11.8622, "Saturn": 29.4571, "Uranus": 84.0205, "Neptune": 164.79}
+_PLANET_MARKER = {"Mercury": 5, "Venus": 6, "Mars": 5, "Jupiter": 9, "Saturn": 8,
+                  "Uranus": 7, "Neptune": 7}
 
 
 def orrery_scene(t, samples=180):
@@ -527,10 +528,16 @@ def orrery_scene(t, samples=180):
         dict: "earth" and "planets" ({name: ...}), each with "x", "y" (AU)
         and "orbit" (list of (x, y)).
     """
+    # an orbit is traced from now, or shifted back to stay within the ephemeris
+    # (Neptune takes 165 years: 2026 + 165 is past 2149)
+    first, last = ((year - 2000.0) / 100.0 for year in (EPHEMERIS_YEARS[0], EPHEMERIS_YEARS[1] + 1))
+
     def body(name, period_years):
         x, y, _ = AstroEngine.planet_heliocentric(t, name)
+        span = period_years / 100.0
+        start = max(first, min(t, last - span))
         ox, oy, _ = AstroEngine.planet_heliocentric(               # one orbit, at once
-            t + np.linspace(0.0, period_years / 100.0, samples + 1), name)
+            start + np.linspace(0.0, span, samples + 1), name)
         return {"x": float(x), "y": float(y), "orbit": list(zip(ox.tolist(), oy.tolist()))}
 
     planets = {name: body(name, period) for name, period in _PERIOD_YEARS.items()}
@@ -552,8 +559,8 @@ def draw_orrery(fig, scene, labels):
     fig.get_layout_engine().set(w_pad=0.16, h_pad=0.12, wspace=0.08)
     fig.patch.set_facecolor(Config.CIEL_100)
     panels = (
-        (fig.add_subplot(1, 2, 1), 1.8, ("Venus", "Mars"), labels["inner"]),
-        (fig.add_subplot(1, 2, 2), 10.6, ("Jupiter", "Saturn"), labels["outer"]),
+        (fig.add_subplot(1, 2, 1), 1.8, ("Mercury", "Venus", "Mars"), labels["inner"]),
+        (fig.add_subplot(1, 2, 2), 31.5, ("Jupiter", "Saturn", "Uranus", "Neptune"), labels["outer"]),
     )
     earth = scene["earth"]
     for ax, lim, named, title in panels:

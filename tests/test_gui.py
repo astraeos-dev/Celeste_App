@@ -109,8 +109,10 @@ class TestCalculation:
 
     def test_planet_table(self, window):
         items = window._planet_items["Saturn"]
-        assert items["col_dist"].text().endswith("UA")
-        assert items["col_state"].text() == "Visible"
+        assert re.match(r"^\d+,\d{4}$", items["col_dist"].text())      # l'unité est dans l'en-tête
+        assert items["col_planet"].toolTip() == "Visible"
+        assert re.match(r"^\d\d:\d\d$", items["col_rise"].text())
+        assert window.planet_table.rowCount() == 7                         # Mercure à Neptune
 
     def test_invalid_latitude_is_flagged_without_dialog(self, window):
         """L'erreur s'affiche sous le champ (ChampSaisie), sans fenêtre."""

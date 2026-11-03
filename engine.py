@@ -66,6 +66,9 @@ _PLANETS = {"Mercury": "mercury", "Venus": "venus", "Mars": "mars barycenter",
             "Uranus": "uranus barycenter", "Neptune": "neptune barycenter",
             "Pluto": "pluto barycenter", "Earth": "earth"}
 
+# The planets of the interface (Pluto, a dwarf planet, only in the coordinates table)
+PLANETS = ("Mercury", "Venus", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune")
+
 # Visual magnitudes outside Skyfield's planetary models (Mallama & Hilton 2018):
 # Allen's Astrophysical Quantities (4th ed.), V(1,0) and phase coefficients
 _SUN_MAGNITUDE_1AU = -26.74
@@ -647,7 +650,7 @@ class AstroEngine:
         Args:
             dte_ref (datetime): instant of the day, UT (naive or aware).
             lat, lon (float): degrees, east positive.
-            body (str): "sun" or "moon".
+            body (str): "sun", "moon" or a planet name ("Venus"…).
             tz (float | tzinfo): local time zone, hours east of UT or a
                 zoneinfo.ZoneInfo (summer time included); the day searched
                 runs from local midnight to midnight.
@@ -666,12 +669,12 @@ class AstroEngine:
         t1 = cls._time_ut(cls.julian_century_j2000(end))
         sky      = _sky()
         observer = sky["earth"] + wgs84.latlon(lat, lon, elevation_m=elevation_m)
-        target   = sky[body]
+        target   = cls._target(body)
         horizon  = None                                 # Skyfield's standard horizon
         if elevation_m > 0:
             middle = cls._time_ut(cls.julian_century_j2000(start + (end - start) / 2))
             km = sky["earth"].at(middle).observe(target).distance().km
-            horizon = -(_HORIZON_REFRACTION + math.degrees(math.asin(_BODY_RADIUS_KM[body] / km))
+            horizon = -(_HORIZON_REFRACTION + math.degrees(math.asin(_BODY_RADIUS_KM.get(body, 0.0) / km))
                         + _HORIZON_DIP * math.sqrt(elevation_m))
 
         def first(times, crosses=None):
@@ -955,7 +958,7 @@ class AstroEngine:
         Returns:
             list[dict]: sorted by date, keys: date, type, bodies, separation, details
         """
-        planets = ["Venus", "Mars", "Jupiter", "Saturn"]
+        planets = list(PLANETS)
         pairs   = [(a, b) for i, a in enumerate(planets) for b in planets[i+1:]]
         days    = [dte_start + timedelta(days=day) for day in range(num_days)]
         if not days:
@@ -996,7 +999,7 @@ class AstroEngine:
                         results.append({'date': dte-timedelta(days=1), 'type': 'conjunction',
                                         'bodies': (pname,'Sun'), 'separation': p1,
                                         'details': f"{pname} in solar conjunction: {p1:.1f}°"})
-                    if (pname in ("Mars","Jupiter","Saturn")
+                    if (pname not in ("Mercury", "Venus")
                             and p1 > p2 and p1 > elong and p1 > 175.0):
                         results.append({'date': dte-timedelta(days=1), 'type': 'opposition',
                                         'bodies': (pname,'Sun'), 'separation': p1,

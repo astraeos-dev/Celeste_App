@@ -59,7 +59,7 @@ import icons  # noqa: E402
 import settings as prefs  # noqa: E402
 from config import APP_VERSION, FONT_MONO, FONT_SANS, THEME_NAMES, Config, mix  # noqa: E402
 from constellations import STAR_CONSTELLATION  # noqa: E402
-from engine import EPHEMERIS_YEARS, AstroEngine  # noqa: E402
+from engine import EPHEMERIS_YEARS, PLANETS, AstroEngine  # noqa: E402
 from i18n import (  # noqa: E402
     available_langs, get_lang, lang_name, resolve_lang, switch_lang, t, tf,
 )
@@ -78,7 +78,7 @@ _FONTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts")
 
 _AUTO_ZONE = "auto"           # fuseau déduit du lieu (timezonefinder)
 _GEOLOC_TIMEOUT_MS = 15000    # attente du service de localisation de l'appareil
-_PLANETS = ("Venus", "Mars", "Jupiter", "Saturn")
+_PLANETS = PLANETS        # Mercure à Neptune (engine.PLANETS)
 _QT_DATETIME_FORMAT = "dd/MM/yyyy HH:mm:ss"
 
 # Degrés décimaux, avec un point ou une virgule (49.6333 ou 49,6333)
@@ -864,6 +864,7 @@ class AstroApp(QMainWindow):
         self.sun_data            = {}
         self.moon_data           = {}
         self.sun_events          = {}
+        self.planet_events     = {}
         self.moon_events         = {}
         self.planets             = []
         self.visible_stars       = []
@@ -1254,8 +1255,9 @@ class AstroApp(QMainWindow):
         lay.setContentsMargins(0, 16, 0, 16)
         lay.setSpacing(16)
 
-        columns = ["col_planet", "col_ra", "col_dec", "col_alt", "col_az",
-                   "col_dist", "col_elong", "col_state"]
+        # la visibilité se lit à la couleur du nom (vive au-dessus de l'horizon)
+        columns = ["col_planet", "col_ra", "col_dec", "col_alt", "col_az", "col_dist",
+                   "col_elong", "col_rise", "col_transit", "col_set"]
         table = QTableWidget(len(_PLANETS), len(columns))
         table.setHorizontalHeaderLabels([t(f"planets.{c}") for c in columns])
         table.verticalHeader().setVisible(False)
@@ -1265,12 +1267,13 @@ class AstroApp(QMainWindow):
         table.setShowGrid(False)
         header = table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        header.setStretchLastSection(True)
         header.setDefaultAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         table.verticalHeader().setDefaultSectionSize(40)
+        table.setStyleSheet("QTableWidget::item { padding: 0 4px; }")
         mono = QFont()
         mono.setFamilies(list(_fonts["mono"]))
-        mono.setPixelSize(15)
+        mono.setPixelSize(13)
         mono.setWeight(QFont.Weight.Medium)
         self._planet_items = {}
         for r, name in enumerate(_PLANETS):
@@ -1285,7 +1288,7 @@ class AstroApp(QMainWindow):
                     bold.setPixelSize(15)
                     bold.setWeight(QFont.Weight.DemiBold)
                     item.setFont(bold)
-                elif col != "col_state":
+                else:
                     item.setFont(mono)
                 table.setItem(r, c, item)
                 items[col] = item
@@ -2064,6 +2067,8 @@ class AstroApp(QMainWindow):
         if key != self.last_cache_key:
             self.sun_events  = AstroEngine.find_events(dte, lat, lon, "sun", self._zone, elev)
             self.moon_events = AstroEngine.find_events(dte, lat, lon, "moon", self._zone, elev)
+            self.planet_events = {name: AstroEngine.find_events(dte, lat, lon, name, self._zone, elev)
+                                  for name in _PLANETS}
             self.hours, self.sun_altitudes, self.moon_altitudes = \
                 charts.sample_day(dte, lat, lon, elevation_m=elev, tz=self._zone)
             self._day_start = AstroEngine._local_day(dte, self._zone)[0]
@@ -2173,12 +2178,15 @@ class AstroApp(QMainWindow):
             items["col_dec"].setText(_dec(p["dec"]))
             items["col_alt"].setText(_dec(p["alt"]))
             items["col_az"].setText(_az(p["az"]))
-            items["col_dist"].setText(tf("units.au", value=_num(p["dist"], 4)))
+            items["col_dist"].setText(_num(p["dist"], 4))                 # UA dans l'en-tête
             items["col_elong"].setText(f"{_deg(p['elong'], 1)} {side}")
+            events = self.planet_events.get(p["name"], {})
+            for key in ("rise", "transit", "set"):
+                items[f"col_{key}"].setText(self._format_event(events.get(key)))
             up = p["alt"] > 0
-            items["col_state"].setText(t("common.visible" if up else "common.below_horizon"))
-            items["col_state"].setForeground(
-                QBrush(QColor(Config.LUNE if up else Config.ENCRE_ATTENUEE)))
+            name = items["col_planet"]
+            name.setForeground(QBrush(QColor(Config.ENCRE if up else Config.ENCRE_ATTENUEE)))
+            name.setToolTip(t("common.visible" if up else "common.below_horizon"))
 
     def _update_status(self):
         if self._lat is None:

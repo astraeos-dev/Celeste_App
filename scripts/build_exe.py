@@ -1,15 +1,14 @@
 """
-scripts/build_exe.py — Construit Céleste en application autonome
-==================================================================
+scripts/build_exe.py — Construit Céleste.exe pour Windows
+===========================================================
 1. place l'éphéméride JPL DE440 dans data/ (copiée de ~/.celeste, ou
    téléchargée la première fois) : l'application fonctionne hors ligne ;
-2. dessine les icônes (build/icons/celeste.ico et .icns) depuis
-   assets/astraeos-icone.svg ;
+2. dessine l'icône (build/icons/celeste.ico) depuis assets/astraeos-icone.svg ;
 3. lance PyInstaller avec celeste.spec ;
 4. vérifie que l'application construite démarre (--self-test) ;
-5. réunit le résultat dans dist/Celeste-<version>-<système>.zip.
+5. réunit le résultat dans dist/Celeste-<version>-Windows.zip.
 
-Usage : python scripts/build_exe.py            (pip install pyinstaller)
+Usage, sous Windows : python scripts/build_exe.py      (pip install pyinstaller)
 """
 import os
 import platform
@@ -33,7 +32,7 @@ def ensure_ephemeris():
 
 
 def make_icons():
-    """Icônes Windows (.ico) et macOS (.icns) rendues depuis le SVG du design system."""
+    """Icône Windows (.ico) rendue depuis le SVG du design system."""
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PIL import Image
     from PyQt6.QtCore import Qt
@@ -52,14 +51,10 @@ def make_icons():
     image.save(png)
     icon = Image.open(png)
     icon.save(os.path.join(out, "celeste.ico"), sizes=[(s, s) for s in (16, 24, 32, 48, 64, 128, 256)])
-    icon.save(os.path.join(out, "celeste.icns"))
 
 
 def executable():
-    dist = os.path.join(ROOT, "dist")
-    if sys.platform == "darwin":
-        return os.path.join(dist, "Celeste.app", "Contents", "MacOS", "Celeste")
-    return os.path.join(dist, "Celeste", "Celeste.exe" if os.name == "nt" else "Celeste")
+    return os.path.join(ROOT, "dist", "Celeste", "Celeste.exe" if os.name == "nt" else "Celeste")
 
 
 def self_test():
@@ -73,10 +68,9 @@ def self_test():
 
 def package():
     from config import APP_VERSION
-    system = {"darwin": "macOS", "win32": "Windows"}.get(sys.platform, platform.system())
+    system = "Windows" if os.name == "nt" else platform.system()     # Linux : essai local
     base = os.path.join(ROOT, "dist", f"Celeste-{APP_VERSION}-{system}")
-    folder = "Celeste.app" if sys.platform == "darwin" else "Celeste"
-    archive = shutil.make_archive(base, "zip", os.path.join(ROOT, "dist"), folder)
+    archive = shutil.make_archive(base, "zip", os.path.join(ROOT, "dist"), "Celeste")
     print("archive :", archive)
 
 

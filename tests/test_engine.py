@@ -776,3 +776,26 @@ class TestObservations:
             c = AstroEngine.coordinates(t, body, "heliocentric", "ecliptic")
             assert (c is None) == (body == "sun"), body
         assert 29.0 < AstroEngine.coordinates(t, "Pluto", "heliocentric", "ecliptic")["dist"] < 50.0
+
+
+class TestStarCatalog:
+    def test_every_star_of_the_figures_is_in_the_catalogue(self):
+        """The constellation lines need the position of each of their stars."""
+        from constellations import CONSTELLATIONS
+        from star_catalog import CATALOG
+        names = {c[6] for c in CATALOG if c[6]}
+        for edges in CONSTELLATIONS.values():
+            for a, b in edges:
+                assert a in names and b in names, (a, b)
+
+    def test_proper_motion_moves_arcturus(self):
+        """Arcturus, −1.09″ and −2.00″ a year: 1′ from its J2000 place in 2026."""
+        from star_catalog import CATALOG
+        ra, dec, pm_ra, pm_dec = next((c[1], c[2], c[4], c[5]) for c in CATALOG if c[6] == "Arcturus")
+        t = AstroEngine.julian_century_j2000(datetime(2026, 11, 2, 22))
+        fixed = AstroEngine.stars_horizontal(t, 48.8566, 2.3522, [ra], [dec])
+        moving = AstroEngine.stars_horizontal(t, 48.8566, 2.3522, [ra], [dec],
+                                              pm_ra_mas=[pm_ra], pm_dec_mas=[pm_dec])
+        shift = AstroEngine.angular_separation(fixed[1][0] / 15, fixed[0][0], moving[1][0] / 15, moving[0][0])
+        assert 0.8 < shift * 60 < 1.2                       # arcminutes
+

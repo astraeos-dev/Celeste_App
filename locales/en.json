@@ -229,6 +229,7 @@
     "type_sun": "Star (our Sun)",
     "type_moon": "Earth's natural satellite",
     "constellation": "Constellation",
+    "designation": "Designation",
     "mag": "Magnitude",
     "ra": "Right ascension",
     "dec": "Declination",

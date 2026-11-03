@@ -229,6 +229,7 @@
     "type_sun": "Stern (unsere Sonne)",
     "type_moon": "Natürlicher Satellit der Erde",
     "constellation": "Sternbild",
+    "designation": "Bezeichnung",
     "mag": "Helligkeit",
     "ra": "Rektaszension",
     "dec": "Deklination",

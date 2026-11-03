@@ -59,7 +59,7 @@ import icons  # noqa: E402
 import settings as prefs  # noqa: E402
 from config import APP_VERSION, FONT_MONO, FONT_SANS, THEME_NAMES, Config, mix  # noqa: E402
 from constellations import STAR_CONSTELLATION  # noqa: E402
-from engine import EPHEMERIS_YEARS, PLANETS, AstroEngine  # noqa: E402
+from engine import EPHEMERIS_YEARS, PLANETS, AstroEngine, constellation_names  # noqa: E402
 from i18n import (  # noqa: E402
     available_langs, get_lang, lang_name, resolve_lang, switch_lang, t, tf,
 )
@@ -2354,10 +2354,17 @@ class AstroApp(QMainWindow):
         if kind == "star":
             title = obj["name"]
             rows.append((t("detail.type"), t("detail.type_star")))
+            designation = obj.get("designation", "")
+            if designation and designation != obj["name"]:
+                rows.append((t("detail.designation"), designation))
             consts = STAR_CONSTELLATION.get(obj["name"], [])
             if consts:
                 rows.append((t("detail.constellation"),
                              ", ".join(t(f"constellations.{c}") for c in consts)))
+            elif designation and not designation.startswith("HR"):
+                latin = constellation_names().get(designation.split()[-1])
+                if latin:
+                    rows.append((t("detail.constellation"), latin))
             rows.append((t("detail.mag"), _num(obj["mag"], 2)))
         elif kind == "planet":
             title = f"{sym[obj['name']]} {_planet_name(obj['name'])}"

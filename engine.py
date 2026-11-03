@@ -732,7 +732,8 @@ class AstroEngine:
         return alt.degrees, az.degrees
 
     @classmethod
-    def stars_horizontal(cls, t, lat, lon, ra_hours, dec_degrees, elevation_m=0.0):
+    def stars_horizontal(cls, t, lat, lon, ra_hours, dec_degrees, elevation_m=0.0,
+                         pm_ra_mas=None, pm_dec_mas=None):
         """
         Altitudes and azimuths (degrees, geometric) of stars given by their
         J2000 coordinates (ICRS): precession, nutation and aberration to the
@@ -743,13 +744,18 @@ class AstroEngine:
             t (float): Julian centuries of UT since J2000.0.
             ra_hours, dec_degrees (sequence): J2000 right ascensions (h) and
                 declinations (°).
+            pm_ra_mas, pm_dec_mas (sequence): proper motions (μα·cos δ, μδ),
+                milliseconds of arc a year (none by default).
 
         Returns:
             tuple[numpy.ndarray, numpy.ndarray]: (altitudes, azimuths)
         """
         sky   = _sky()
-        stars = Star(ra_hours=np.asarray(ra_hours, dtype=float),
-                     dec_degrees=np.asarray(dec_degrees, dtype=float))
+        ra = np.asarray(ra_hours, dtype=float)
+        motion = {} if pm_ra_mas is None else {
+            "ra_mas_per_year": np.asarray(pm_ra_mas, dtype=float),
+            "dec_mas_per_year": np.asarray(pm_dec_mas, dtype=float)}
+        stars = Star(ra_hours=ra, dec_degrees=np.asarray(dec_degrees, dtype=float), **motion)
         here  = (sky["earth"] + wgs84.latlon(lat, lon, elevation_m=elevation_m)).at(cls._time_ut(t))
         alt, az, _ = here.observe(stars).apparent().altaz()
         return alt.degrees, az.degrees
@@ -1213,6 +1219,11 @@ def _new_moons(bucket):
 def _constellations():
     """IAU constellation boundaries and Latin names (data shipped with Skyfield)."""
     return load_constellation_map(), dict(load_constellation_names())
+
+
+def constellation_names():
+    """{IAU abbreviation: Latin name} of the 88 constellations."""
+    return _constellations()[1]
 
 
 def _constellation(position):

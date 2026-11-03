@@ -30,8 +30,8 @@ Jour et Observation), avec des graphiques interactifs et une carte du ciel.
   commune par OpenStreetMap ; à défaut, position approximative d'après l'adresse IP (ip-api.com), signalée comme telle
 - **Trajectoire sur 24 h** — courbes de hauteur sur un fond coloré selon le moment de la journée (jour, crépuscules, nuit),
   sur le jour local (heure locale en bas, TU en haut), info-bulle au survol
-- **Carte du ciel polaire** — zénith au centre, étoiles (ramenées à la date : précession, nutation, aberration) à la
-  taille de leur magnitude, constellations, planètes ;
+- **Carte du ciel polaire** — zénith au centre, 513 étoiles jusqu'à la magnitude 4 (Yale Bright Star Catalogue, ramenées
+  à la date : mouvement propre, précession, nutation, aberration) à la taille de leur magnitude, constellations, planètes ;
   info-bulle au survol et fiche détaillée au clic (constellation, magnitude, coordonnées)
 - **Planètes** — Mercure, Vénus, Mars, Jupiter, Saturne, Uranus et Neptune : coordonnées, hauteur et azimut, distance,
   élongation, heures de lever, de culmination et de coucher (nom atténué sous l'horizon) ; système solaire vu de dessus,
@@ -162,7 +162,8 @@ Celeste_App/
 ├── icons.py             # Icônes Material Design (SVG) et symbole Astræos aux couleurs du thème
 ├── i18n.py              # Internationalisation — traductions par clé avec repli
 ├── settings.py          # Préférences persistantes (~/.celeste/settings.json)
-├── constellations.py    # Catalogue d'étoiles et tracés des constellations
+├── constellations.py    # Tracés des constellations et noms de leurs étoiles
+├── star_catalog.py      # 513 étoiles brillantes (Yale Bright Star Catalogue, magnitude < 4), généré
 ├── favorites_default.json # Lieux préchargés (36 villes), copiés dans ~/.celeste au premier enregistrement
 ├── locales/             # Traductions (fr.json est la référence)
 ├── fonts/               # Polices IBM Plex Sans, IBM Plex Mono et Astraeos Symboles (licence OFL)
@@ -229,6 +230,7 @@ affiché est redessiné ; les autres le sont quand on les ouvre.
 - **Fred Espenak et Jean Meeus**, *Five Millennium Canon of Solar Eclipses* et *Five Millennium Canon of Lunar
   Eclipses*, NASA — valeurs de référence des tests d'éclipses
 - **JPL Horizons** et **USNO** (aa.usno.navy.mil) — valeurs de référence des tests de positions, levers et couchers
+- **D. Hoffleit et W. H. Warren** (1991), *Yale Bright Star Catalogue*, 5e éd. — étoiles de la carte du ciel (domaine public)
 
 ---
 

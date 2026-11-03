@@ -20,7 +20,7 @@ from PyQt6.QtWidgets import QApplication
 
 import settings as prefs
 from config import Config
-from i18n import resolve_lang, switch_lang
+from i18n import resolve_lang, switch_lang, t
 
 
 def parse_args(argv):
@@ -31,6 +31,33 @@ def parse_args(argv):
     parser.add_argument("--theme", help="thème : nuit, jour, observation")
     args, _qt_args = parser.parse_known_args(argv)
     return args
+
+
+def ensure_ephemeris():
+    """
+    Loads the JPL DE440 ephemeris, downloading it (32 MB) at the first launch.
+    Returns False, after telling the user, when it can be neither found nor
+    downloaded.
+    """
+    import os
+    from PyQt6.QtWidgets import QMessageBox, QProgressDialog
+    import engine
+
+    dialog = None
+    if not os.path.isfile(engine.ephemeris_path()):
+        dialog = QProgressDialog(t("startup.downloading"), None, 0, 0)
+        dialog.setWindowTitle("Céleste")
+        dialog.show()
+        QApplication.processEvents()
+    try:
+        engine.load_ephemeris()
+    except engine.EphemerisUnavailable as exc:
+        QMessageBox.critical(None, "Céleste", t("startup.ephemeris_error").format(error=exc))
+        return False
+    finally:
+        if dialog is not None:
+            dialog.close()
+    return True
 
 
 def main(argv=None):
@@ -53,6 +80,8 @@ def main(argv=None):
 
     from gui import AstroApp, init_style
     init_style(app)
+    if not ensure_ephemeris():
+        return 1
     window = AstroApp()
     window.show()
 

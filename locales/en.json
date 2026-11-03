@@ -5,6 +5,10 @@
     "subtitle": "Astronomical observatory",
     "version": "Céleste {version} · Astræos design"
   },
+  "startup": {
+    "downloading": "First launch: downloading the JPL DE440 ephemeris (32 MB)…",
+    "ephemeris_error": "The JPL DE440 ephemeris needed for the calculations could not be loaded.\nCheck the Internet connection, or put de440s.bsp in Céleste's data/ folder.\n\n{error}"
+  },
   "side": {
     "datetime": "Date and time (UT)",
     "datetime_tip": "Date and time in Universal Time; the arrow opens the calendar",
@@ -15,7 +19,10 @@
     "longitude_tip": "Decimal degrees, positive east (2.35 for Paris)",
     "geoloc_tip": "Detect my location (from the IP address)",
     "timezone": "Time zone",
-    "timezone_tip": "Offset added to UT to show local times",
+    "timezone_tip": "IANA time zone, summer time included; type to search (\"Paris\", \"Kolkata\"…). \"Automatic\" uses the place's zone",
+    "timezone_auto": "Automatic (from the place)",
+    "elevation": "Elevation",
+    "elevation_tip": "Observer's height above the horizon (m): it lowers the horizon, so the rise comes earlier and the set later",
     "favorites": "Favourite places",
     "favorites_placeholder": "Choose a place…",
     "fav_save_tip": "Add this place to favourites",

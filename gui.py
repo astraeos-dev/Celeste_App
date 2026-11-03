@@ -27,7 +27,9 @@ import json
 import math
 import os
 import urllib.request
+import functools
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError, available_timezones
 
 from PyQt6.QtCore import (
     QDate, QDateTime, QEvent, QLocale, QPointF, QRectF, QRegularExpression, QSize,
@@ -38,7 +40,7 @@ from PyQt6.QtGui import (
     QPainter, QPainterPath, QPalette, QPen, QRegularExpressionValidator, QShortcut,
 )
 from PyQt6.QtWidgets import (
-    QAbstractItemView, QApplication, QButtonGroup, QCheckBox, QComboBox,
+    QAbstractItemView, QApplication, QButtonGroup, QCheckBox, QComboBox, QCompleter,
     QDateTimeEdit, QDialog, QDialogButtonBox, QFileDialog, QFrame, QGridLayout,
     QHBoxLayout, QHeaderView, QInputDialog, QLabel, QLineEdit, QMainWindow,
     QMessageBox, QProgressBar, QPushButton, QScrollArea, QSizePolicy, QSlider,
@@ -56,7 +58,7 @@ import icons  # noqa: E402
 import settings as prefs  # noqa: E402
 from config import FONT_MONO, FONT_SANS, THEME_NAMES, Config, mix  # noqa: E402
 from constellations import STAR_CONSTELLATION  # noqa: E402
-from engine import MeeusEngine  # noqa: E402
+from engine import EPHEMERIS_YEARS, AstroEngine  # noqa: E402
 from i18n import (  # noqa: E402
     available_langs, get_lang, lang_name, resolve_lang, switch_lang, t, tf,
 )
@@ -70,7 +72,7 @@ _FAVORITES_FILE = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "favorites.json")
 _FONTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts")
 
-_UTC_OFFSETS = range(-12, 15)
+_AUTO_ZONE = "auto"           # fuseau déduit du lieu (timezonefinder)
 _PLANETS = ("Venus", "Mars", "Jupiter", "Saturn")
 _QT_DATETIME_FORMAT = "dd/MM/yyyy HH:mm:ss"
 
@@ -149,7 +151,44 @@ def _dec(degrees):
 
 
 def _fmt_offset(offset):
-    return f"UTC{'+' if offset >= 0 else '−'}{abs(offset)}"
+    return Formatters.utc_offset(offset)
+
+
+def _zone_names():
+    """Fuseaux IANA proposés (base zoneinfo), UTC en tête."""
+    hidden = ("posix/", "right/", "SystemV/")
+    return ["UTC"] + sorted(z for z in available_timezones()
+                            if z != "UTC" and not z.startswith(hidden))
+
+
+@functools.lru_cache(maxsize=1)
+def _tz_finder():
+    from timezonefinder import TimezoneFinder
+    return TimezoneFinder()
+
+
+@functools.lru_cache(maxsize=256)
+def _zone_at(lat, lon):
+    """Fuseau IANA d'un lieu (timezonefinder, hors ligne) ; « UTC » s'il est inconnu."""
+    try:
+        return _tz_finder().timezone_at(lat=lat, lng=lon) or "UTC"
+    except Exception:  # timezonefinder absent ou en échec : temps universel
+        return "UTC"
+
+
+def _zone(name, lat=None, lon=None):
+    """tzinfo d'un fuseau ; « auto » est celui du lieu (lat, lon)."""
+    name = name or _AUTO_ZONE
+    if name == _AUTO_ZONE:
+        name = _zone_at(round(lat, 3), round(lon, 3)) if lat is not None else "UTC"
+    try:
+        return ZoneInfo(name)
+    except (ZoneInfoNotFoundError, ValueError):
+        return ZoneInfo("UTC")
+
+
+def _elev_text(metres):
+    return str(int(round(metres)))
 
 
 def _fmt_lat(lat):
@@ -770,7 +809,9 @@ class AstroApp(QMainWindow):
 
         # État
         self.live_mode           = False
-        self.utc_offset          = int(prefs.get("default_utc") or 0)
+        self.tz_name             = prefs.get("default_tz") or _AUTO_ZONE
+        self._zone               = _zone(self.tz_name, _pref_float("default_lat", 49.6333),
+                                         _pref_float("default_lon", -1.6167))
         self.location_name       = _clean_place(prefs.get("default_place"))
         self.favorites           = self._load_favorites()
         self.sun_data            = {}
@@ -877,6 +918,9 @@ class AstroApp(QMainWindow):
         else:
             self.dt_edit.setTimeSpec(Qt.TimeSpec.UTC)
         self.dt_edit.setDisplayFormat(_QT_DATETIME_FORMAT)
+        # dates covered by the JPL DE440 ephemeris
+        self.dt_edit.setMinimumDate(QDate(EPHEMERIS_YEARS[0], 1, 1))
+        self.dt_edit.setMaximumDate(QDate(EPHEMERIS_YEARS[1], 12, 31))
         self.dt_edit.setCalendarPopup(True)
         self.dt_edit.setToolTip(t("side.datetime_tip"))
         self._set_datetime(_utc_now())
@@ -904,13 +948,27 @@ class AstroApp(QMainWindow):
         btn_geo.clicked.connect(self.geolocate)
         lay.addLayout(self._with_button(self.field_lon, btn_geo))
 
-        self.offset_menu = QComboBox()
-        for offset in _UTC_OFFSETS:
-            self.offset_menu.addItem(_fmt_offset(offset), offset)
-        self.offset_menu.setCurrentIndex(self.offset_menu.findData(self.utc_offset))
-        self.offset_menu.setToolTip(t("side.timezone_tip"))
-        self.offset_menu.currentIndexChanged.connect(self._on_offset_change)
-        lay.addWidget(ChampSaisie(t("side.timezone"), self.offset_menu))
+        self.entry_elev = QLineEdit(_elev_text(_pref_float("default_elevation", 0.0)))
+        self.entry_elev.setValidator(QRegularExpressionValidator(QRegularExpression(r"^-?\d{0,4}$")))
+        self.entry_elev.setToolTip(t("side.elevation_tip"))
+        self.entry_elev.returnPressed.connect(self.calculate)
+        lay.addWidget(ChampSaisie(t("side.elevation"), self.entry_elev, unite="m", numerique=True))
+
+        # Fuseau IANA (heure d'été comprise), à taper ou choisir ; « Automatique » suit le lieu
+        self.tz_menu = QComboBox()
+        self.tz_menu.setEditable(True)
+        self.tz_menu.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        self.tz_menu.addItem(t("side.timezone_auto"), _AUTO_ZONE)
+        for name in _zone_names():
+            self.tz_menu.addItem(name, name)
+        completer = self.tz_menu.completer()
+        completer.setFilterMode(Qt.MatchFlag.MatchContains)
+        completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        completer.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
+        self._select_zone(self.tz_name)
+        self.tz_menu.setToolTip(t("side.timezone_tip"))
+        self.tz_menu.currentIndexChanged.connect(self._on_zone_change)
+        lay.addWidget(ChampSaisie(t("side.timezone"), self.tz_menu))
 
         self.combo_fav = QComboBox()
         self.combo_fav.setPlaceholderText(t("side.favorites_placeholder"))
@@ -1354,6 +1412,7 @@ class AstroApp(QMainWindow):
             "dte": self._edit_datetime(),
             "lat": self._input_coord(self.entry_lat),
             "lon": self._input_coord(self.entry_lon),
+            "elev": self.entry_elev.text(),
             "tab": self.tabs.currentIndex(),
             "fav": self.combo_fav.currentIndex(),
         }
@@ -1376,6 +1435,7 @@ class AstroApp(QMainWindow):
         if keep_place:
             for edit, value in ((self.entry_lat, state["lat"]), (self.entry_lon, state["lon"])):
                 edit.setText(_coord_text(value) if isinstance(value, float) else value)
+            self.entry_elev.setText(state["elev"])
             self.combo_fav.setCurrentIndex(state["fav"])
         self._dirty = set()
         self.tabs.setCurrentIndex(state["tab"])
@@ -1432,9 +1492,13 @@ class AstroApp(QMainWindow):
     def _update_default_place_label(self):
         lat = _pref_float("default_lat", 0.0)
         lon = _pref_float("default_lon", 0.0)
-        utc = int(prefs.get("default_utc") or 0)
-        self._default_coords_lbl.setText(
-            f"{_fmt_lat(lat)}, {_fmt_lon(lon)} · {_fmt_offset(utc)}")
+        zone = prefs.get("default_tz") or _AUTO_ZONE
+        text = f"{_fmt_lat(lat)}, {_fmt_lon(lon)} · "
+        text += t("side.timezone_auto") if zone == _AUTO_ZONE else zone
+        elevation = _pref_float("default_elevation", 0.0)
+        if elevation:
+            text += f" · {_elev_text(elevation)} m"
+        self._default_coords_lbl.setText(text)
 
     def _save_default_place(self):
         """Le lieu saisi devient le lieu de démarrage (nom, coordonnées, fuseau)."""
@@ -1448,7 +1512,8 @@ class AstroApp(QMainWindow):
         prefs.set("default_place", name)
         prefs.set("default_lat", round(lat, 4))
         prefs.set("default_lon", round(lon, 4))
-        prefs.set("default_utc", self.utc_offset)
+        prefs.set("default_tz", self.tz_name)
+        prefs.set("default_elevation", self._elevation())
         self._place_entry.setText(name)
         self._update_default_place_label()
         self.statusBar().showMessage(tf("settings.default_saved", name=name), 6000)
@@ -1462,7 +1527,7 @@ class AstroApp(QMainWindow):
         prefs.reset()
         Config.apply_theme(prefs.get("theme"))
         switch_lang(resolve_lang(prefs.get("lang"), QLocale.system().name()))
-        self.utc_offset = int(prefs.get("default_utc") or 0)
+        self.tz_name = prefs.get("default_tz") or _AUTO_ZONE
         self.location_name = _clean_place(prefs.get("default_place"))
         if self.live_mode:
             self._live_timer.setInterval(int(prefs.get("live_interval") or 2000))
@@ -1503,6 +1568,7 @@ class AstroApp(QMainWindow):
             return
         self.entry_lat.setText(_coord_text(float(loc["lat"])))
         self.entry_lon.setText(_coord_text(float(loc["lon"])))
+        self.entry_elev.setText(_elev_text(float(loc.get("elev", 0))))
         self.location_name = name
         self.calculate()
 
@@ -1522,7 +1588,8 @@ class AstroApp(QMainWindow):
         name = name.strip()
         if not ok or not name:
             return
-        self.favorites[name] = {"lat": round(lat, 4), "lon": round(lon, 4)}
+        self.favorites[name] = {"lat": round(lat, 4), "lon": round(lon, 4),
+                                "elev": int(round(self._elevation()))}
         self._save_favorites()
         self._refresh_favorites_combo(select=name)
         self.location_name = name
@@ -1576,9 +1643,40 @@ class AstroApp(QMainWindow):
         if not self.live_mode:
             self._recalc_timer.start(delay)
 
-    def _on_offset_change(self, index):
-        self.utc_offset = int(self.offset_menu.itemData(index) or 0)
+    def _on_zone_change(self, index):
+        self.tz_name = self.tz_menu.itemData(index) or _AUTO_ZONE
         self.calculate()
+
+    def _select_zone(self, name):
+        """Montre le fuseau *name* dans le sélecteur, sans recalcul."""
+        idx = self.tz_menu.findData(name)
+        if idx < 0:
+            self.tz_menu.addItem(name, name)
+            idx = self.tz_menu.count() - 1
+        self.tz_menu.blockSignals(True)
+        self.tz_menu.setCurrentIndex(idx)
+        self.tz_menu.blockSignals(False)
+
+    def _elevation(self):
+        """Altitude saisie de l'observateur, en mètres (0 si vide ou invalide)."""
+        try:
+            return max(-500.0, min(9000.0, float(self.entry_elev.text().strip() or 0)))
+        except ValueError:
+            return 0.0
+
+    def _local(self, dt):
+        """Heure locale (sans fuseau) de l'instant TU *dt* : fuseau du lieu, heure d'été comprise."""
+        return dt.replace(tzinfo=timezone.utc).astimezone(self._zone).replace(tzinfo=None)
+
+    @property
+    def utc_offset(self):
+        """Décalage du fuseau à l'instant calculé, en heures (heure d'été comprise)."""
+        dte = getattr(self, "_dte", None) or _utc_now()
+        return dte.replace(tzinfo=timezone.utc).astimezone(self._zone).utcoffset().total_seconds() / 3600
+
+    def _zone_text(self):
+        """« Europe/Paris · UTC+1 » : le fuseau et son décalage à l'instant calculé."""
+        return f"{getattr(self._zone, 'key', 'UTC')} · {_fmt_offset(self.utc_offset)}"
 
     def _fmt_clock(self, dt):
         if prefs.get("time_format") == "12h":
@@ -1588,7 +1686,8 @@ class AstroApp(QMainWindow):
     def _format_event(self, dt):
         if dt is None:
             return "--:--"
-        return self._fmt_clock(dt + timedelta(hours=self.utc_offset))
+        # rounded to the nearest minute, as in the almanacs (the engine gives the second)
+        return self._fmt_clock(self._local(dt + timedelta(seconds=30)))
 
     # ──────────────────────────────────────────────────────────────────────────
     # GÉOLOCALISATION / TEMPS RÉEL
@@ -1596,7 +1695,7 @@ class AstroApp(QMainWindow):
 
     def geolocate(self):
         url = ("http://ip-api.com/json/"
-               "?fields=status,message,country,city,lat,lon,offset")
+               "?fields=status,message,country,city,lat,lon,timezone")
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
             req = urllib.request.Request(
@@ -1614,14 +1713,10 @@ class AstroApp(QMainWindow):
             return
         self.entry_lat.setText(_coord_text(float(data["lat"])))
         self.entry_lon.setText(_coord_text(float(data["lon"])))
-        offset = data.get("offset")
-        if isinstance(offset, int) and offset % 3600 == 0:
-            idx = self.offset_menu.findData(offset // 3600)
-            if idx >= 0:
-                self.offset_menu.blockSignals(True)
-                self.offset_menu.setCurrentIndex(idx)
-                self.offset_menu.blockSignals(False)
-                self.utc_offset = offset // 3600
+        zone = data.get("timezone")
+        if zone and self.tz_name != _AUTO_ZONE and self.tz_menu.findData(zone) >= 0:
+            self.tz_name = zone
+            self._select_zone(zone)
         self.location_name = data.get("city") or ""
         self.combo_fav.setCurrentIndex(-1)
         self.calculate()
@@ -1717,46 +1812,48 @@ class AstroApp(QMainWindow):
             return
         dte, lat, lon = self.current_inputs()
         self._dte, self._lat, self._lon = dte, lat, lon
+        self._zone = _zone(self.tz_name, lat, lon)
+        elev = self._elevation()
 
-        jd = MeeusEngine.julian_day(dte)
-        tc = MeeusEngine.julian_century_j2000(dte)
+        jd = AstroEngine.julian_day(dte)
+        tc = AstroEngine.julian_century_j2000(dte)
 
-        s_l, r_sun  = MeeusEngine.sun_position(tc)
-        s_ra, s_dec = MeeusEngine.ecliptic_to_equatorial(s_l, 0, tc)
-        s_alt, s_az = MeeusEngine.equatorial_to_horizontal(jd, lat, lon, s_ra, s_dec)
+        s_l, r_sun  = AstroEngine.sun_position(tc)
+        s_ra, s_dec = AstroEngine.ecliptic_to_equatorial(s_l, 0, tc)
+        s_alt, s_az = AstroEngine.horizontal(tc, lat, lon, "sun", elev)
 
-        m_l, m_b, m_p = MeeusEngine.moon_position(tc)
-        m_ra, m_dec   = MeeusEngine.ecliptic_to_equatorial(m_l, m_b, tc)
-        m_alt, m_az   = MeeusEngine.equatorial_to_horizontal(jd, lat, lon, m_ra, m_dec)
-        m_alt_c       = MeeusEngine.elevation_correction(m_alt, m_p)
+        m_l, m_b, m_p = AstroEngine.moon_position(tc)
+        m_ra, m_dec   = AstroEngine.ecliptic_to_equatorial(m_l, m_b, tc)
+        m_alt_c, m_az = AstroEngine.horizontal(tc, lat, lon, "moon", elev, refraction=True)
 
-        phase = MeeusEngine.mod360(m_l - s_l)
-        illum = (1 - math.cos(math.radians(phase))) / 2.0 * 100.0
+        phase = AstroEngine.mod360(m_l - s_l)
+        illum, age = AstroEngine.moon_phase(tc)
 
         self.sun_data  = {"name": "Sun", "ra": s_ra, "dec": s_dec, "alt": s_alt,
                           "az": s_az, "dist": r_sun,
-                          "eot": MeeusEngine.equation_of_time(tc)}
+                          "eot": AstroEngine.equation_of_time(tc)}
         self.moon_data = {"name": "Moon", "ra": m_ra, "dec": m_dec, "alt": m_alt_c,
                           "az": m_az, "illum": illum, "phase": phase,
                           "dist": 6378.14 / math.sin(math.radians(m_p)),
-                          "age": phase / 360.0 * 29.530588}
+                          "age": age}
 
         # Événements du jour et courbes 24 h : seulement si la date ou le lieu change
-        key = f"{dte:%Y-%m-%d}_{lat:.4f}_{lon:.4f}"
+        key = (f"{self._local(dte):%Y-%m-%d}_{lat:.4f}_{lon:.4f}_"
+               f"{getattr(self._zone, 'key', 'UTC')}_{elev:g}")
         if key != self.last_cache_key:
-            self.sun_events  = MeeusEngine.find_events(dte, lat, lon, "sun")
-            self.moon_events = MeeusEngine.find_events(dte, lat, lon, "moon")
+            self.sun_events  = AstroEngine.find_events(dte, lat, lon, "sun", self._zone, elev)
+            self.moon_events = AstroEngine.find_events(dte, lat, lon, "moon", self._zone, elev)
             self.hours, self.sun_altitudes, self.moon_altitudes = \
-                charts.sample_day(dte, lat, lon)
+                charts.sample_day(dte, lat, lon, elevation_m=elev)
             self.last_cache_key = key
 
         self.planets = []
         for name in _PLANETS:
-            ra, dec, dist = MeeusEngine.planet_position(tc, name)
-            alt, az = MeeusEngine.equatorial_to_horizontal(jd, lat, lon, ra, dec)
+            ra, dec, dist = AstroEngine.planet_position(tc, name)
+            alt, az = AstroEngine.horizontal(tc, lat, lon, name, elev)
             self.planets.append({
                 "name": name, "ra": ra, "dec": dec, "dist": dist, "alt": alt, "az": az,
-                "elong": MeeusEngine.angular_separation(ra, dec, s_ra, s_dec),
+                "elong": AstroEngine.angular_separation(ra, dec, s_ra, s_dec),
                 "east": (ra - s_ra) % 24 < 12,
             })
 
@@ -1870,10 +1967,10 @@ class AstroApp(QMainWindow):
         self._lbl_stars.setText(
             f"{SYMBOL['star']} {tf(_plural_key('status.stars', n), n=n)}   ·   "
             f"{tf(_plural_key('status.planets', n_pl), n=n_pl)}")
-        local = self._dte + timedelta(hours=self.utc_offset)
+        local = self._local(self._dte)
         self._lbl_time.setText(
             f"{tf('status.ut', time=self._dte.strftime('%d/%m/%Y %H:%M:%S'))}   ·   "
-            f"{tf('status.local', time=self._fmt_clock(local), offset=_fmt_offset(self.utc_offset))}")
+            f"{tf('status.local', time=self._fmt_clock(local), offset=self._zone_text())}")
 
     # ──────────────────────────────────────────────────────────────────────────
     # GRAPHIQUES
@@ -1939,7 +2036,7 @@ class AstroApp(QMainWindow):
             "vernal": t("planets.orrery_vernal"),
             "planets": {n: _planet_name(n) for n in _PLANETS},
         }
-        tc = MeeusEngine.julian_century_j2000(self._dte)
+        tc = AstroEngine.julian_century_j2000(self._dte)
         charts.draw_orrery(self.fig_orrery, charts.orrery_scene(tc), labels)
         self.canvas_orrery.draw_idle()
 
@@ -2170,7 +2267,7 @@ class AstroApp(QMainWindow):
         """Recherche et affiche les éclipses des 12 prochains mois."""
         dte = self._search_start("eclipses")
         try:
-            eclipses = MeeusEngine.find_eclipses(dte, num_months=12)
+            eclipses = AstroEngine.find_eclipses(dte, num_months=12)
         except Exception as exc:
             QApplication.restoreOverrideCursor()
             self._search_failed(exc)
@@ -2200,7 +2297,7 @@ class AstroApp(QMainWindow):
         """Recherche et affiche les conjonctions et oppositions sur 12 mois."""
         dte = self._search_start("conjunctions")
         try:
-            conjs = MeeusEngine.find_conjunctions(dte, num_days=365)
+            conjs = AstroEngine.find_conjunctions(dte, num_days=365)
         except Exception as exc:
             QApplication.restoreOverrideCursor()
             self._search_failed(exc)

@@ -5,6 +5,10 @@
     "subtitle": "Observatorio astronómico",
     "version": "Céleste {version} · diseño Astræos"
   },
+  "startup": {
+    "downloading": "Primer inicio: descargando la efeméride JPL DE440 (32 MB)…",
+    "ephemeris_error": "No se pudo cargar la efeméride JPL DE440 necesaria para los cálculos.\nCompruebe la conexión a Internet o coloque de440s.bsp en la carpeta data/ de Céleste.\n\n{error}"
+  },
   "side": {
     "datetime": "Fecha y hora (UT)",
     "datetime_tip": "Fecha y hora en tiempo universal; la flecha abre el calendario",
@@ -15,7 +19,10 @@
     "longitude_tip": "Grados decimales, positivos al este (2.35 para París)",
     "geoloc_tip": "Detectar mi posición (según la dirección IP)",
     "timezone": "Huso",
-    "timezone_tip": "Desfase sumado al UT para mostrar las horas locales",
+    "timezone_tip": "Zona horaria IANA, horario de verano incluido; escriba para buscar («Paris», «Kolkata»…). «Automático» usa la del lugar",
+    "timezone_auto": "Automático (según el lugar)",
+    "elevation": "Altitud",
+    "elevation_tip": "Altura del observador sobre el horizonte (m): baja el horizonte, adelanta la salida y retrasa la puesta",
     "favorites": "Lugares favoritos",
     "favorites_placeholder": "Elegir un lugar…",
     "fav_save_tip": "Añadir este lugar a favoritos",

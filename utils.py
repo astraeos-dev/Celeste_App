@@ -12,6 +12,13 @@ class Formatters:
     """Utility functions for text formatting of astronomical coordinates."""
 
     @staticmethod
+    def utc_offset(hours):
+        """« UTC+1 », « UTC+5:30 », « UTC−3:30 » for an offset in hours."""
+        minutes = round(hours * 60)
+        h, m = divmod(abs(minutes), 60)
+        return f"UTC{'+' if minutes >= 0 else '−'}{h}" + (f":{m:02d}" if m else "")
+
+    @staticmethod
     def hms(decimal_hours):
         """
         Converts Right Ascension from decimal hours to Hours/Minutes/Seconds format.

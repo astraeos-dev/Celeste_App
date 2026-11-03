@@ -23,7 +23,8 @@ Data dict structure:
         'lat'        : float      — latitude (decimal degrees)
         'lon'        : float      — longitude (decimal degrees)
         'location'   : str        — place name
-        'utc_offset' : int        — UTC offset hours
+        'utc_offset' : float      — UTC offset hours at the date (summer time included)
+        'timezone'   : str        — IANA time zone (optional)
         'sun'        : {
             'ra': str, 'dec': str, 'alt': float, 'az': float,
             'eot': float, 'dist': str, 'status': str
@@ -255,7 +256,10 @@ def generate_report_pdf(data: dict, output_path: str = None) -> str:
     evts_sun   = data['events'].get('sun',  {})
     evts_moon  = data['events'].get('moon', {})
     dte_loc    = dte + timedelta(hours=utc_off)
-    off_str    = f"UTC{'+' if utc_off >= 0 else ''}{utc_off}"
+    from utils import Formatters
+    off_str    = Formatters.utc_offset(utc_off)
+    if data.get('timezone'):
+        off_str = f"{data['timezone']}, {off_str}"
 
     # ── HEADER ────────────────────────────────────────────────────────
     p.line(_hline())
@@ -380,7 +384,7 @@ def build_data_from_app(app) -> dict:
         ValueError: If the coordinates typed in the window are invalid.
     """
     from utils import Formatters
-    from engine import MeeusEngine
+    from engine import AstroEngine
 
     dte, lat, lon = app.current_inputs()
     location = getattr(app, "location_name", "") or "---"
@@ -392,7 +396,7 @@ def build_data_from_app(app) -> dict:
 
     def fmt_evt(dt):
         if dt is None: return "--:--"
-        return (dt + timedelta(hours=app.utc_offset)).strftime("%H:%M")
+        return app._local(dt + timedelta(seconds=30)).strftime("%H:%M")
 
     s_alt = sd.get('alt', -90)
     if   s_alt > 0:   s_status = "VISIBLE"
@@ -403,9 +407,9 @@ def build_data_from_app(app) -> dict:
 
     m_status = "VISIBLE" if md.get('alt',-90) > 0 else "BELOW HORIZON"
 
-    t_       = MeeusEngine.julian_century_j2000(dte)
-    eot      = MeeusEngine.equation_of_time(t_)
-    _, r_sun = MeeusEngine.sun_position(t_)
+    t_       = AstroEngine.julian_century_j2000(dte)
+    eot      = AstroEngine.equation_of_time(t_)
+    _, r_sun = AstroEngine.sun_position(t_)
 
     return {
         'date'      : dte,
@@ -413,6 +417,7 @@ def build_data_from_app(app) -> dict:
         'lon'       : lon,
         'location'  : location,
         'utc_offset': app.utc_offset,
+        'timezone'  : getattr(app._zone, 'key', 'UTC'),
         'sun'       : {
             'ra'    : Formatters.hms(sd.get('ra',0)),
             'dec'   : Formatters.dms(sd.get('dec',0)),

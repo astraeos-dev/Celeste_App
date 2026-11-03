@@ -563,8 +563,22 @@ class TestCoordinatesTab:
     @pytest.mark.parametrize("fmt, pattern", [("dms", r"^\d+h \d\dm \d\d,\ds$"),
                                               ("dm", r"^\d+h \d\d,\d{3}m$"),
                                               ("dd", r"^\d+,\d{5}h$")])
-    def test_angle_format_applies_everywhere(self, window, fmt, pattern):
+    def test_settings_format_applies_everywhere(self, window, fmt, pattern):
+        """Format des paramètres : tout le logiciel, et le tableau qui le suit par défaut."""
         self._open(window)
-        self._choose(window, "angle", fmt)
+        assert window.coord_menus["angle"].currentData() == "global"
+        combo = window._anglefmt_combo
+        combo.setCurrentIndex(combo.findData(fmt))
         assert re.match(pattern, window.sun_labels["ra"].text())
         assert re.match(pattern, self._row(window, "Vénus")[8])
+
+    def test_coordinates_format_only_for_the_table(self, window):
+        """Le format choisi dans l'onglet ne change que le tableau (issue #13)."""
+        self._open(window)
+        ephemeris = window.sun_labels["ra"].text()
+        self._choose(window, "angle", "dd")
+        assert re.match(r"^\d+,\d{5}h$", self._row(window, "Vénus")[8])
+        assert window.sun_labels["ra"].text() == ephemeris
+        window._anglefmt_combo.setCurrentIndex(window._anglefmt_combo.findData("dm"))
+        assert re.match(r"^\d+h \d\d,\d{3}m$", window.sun_labels["ra"].text())
+        assert re.match(r"^\d+,\d{5}h$", self._row(window, "Vénus")[8])   # garde le sien

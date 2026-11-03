@@ -15,5 +15,6 @@
   "angle_format": "dms",
   "coord_cartesian": "heliocentric",
   "coord_angular": "equatorial",
-  "coord_ecliptic_from": "sun"
+  "coord_ecliptic_from": "sun",
+  "coord_angle_format": "global"
 }

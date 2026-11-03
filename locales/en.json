@@ -55,6 +55,7 @@
     "ecliptic_from_sun": "Sun",
     "ecliptic_from_earth": "Earth",
     "angle": "Angle format",
+    "angle_global": "As in the settings",
     "angle_dms": "dd° mm′ ss″",
     "angle_dm": "dd° mm.mm′",
     "angle_dd": "dd.ddddd°",
@@ -304,6 +305,8 @@
   },
   "settings": {
     "time_format": "Time format",
+    "angle_format": "Angle format",
+    "angle_format_tip": "Angle format in the whole application; the Coordinates tab can have its own",
     "time_24h": "24-hour",
     "time_12h": "12-hour (AM/PM)",
     "language": "Interface language",

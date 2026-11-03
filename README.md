@@ -38,7 +38,9 @@ Jour et Observation), avec des graphiques interactifs et une carte du ciel.
 - **Coordonnées** — comme le *Solar System Calculator* de Don Cross (cosinekitty.com) : Soleil, Lune, planètes de
   Mercure à Pluton et Terre, avec en même temps x, y, z et distance (héliocentriques, géocentriques ou topocentriques) et
   deux angles (équatoriaux ou horizontaux vus du lieu, écliptiques vus du Soleil ou de la Terre), magnitude, angle au
-  Soleil et constellation ; angles en dd° mm′ ss″, dd° mm,mm′ ou dd,ddddd° (format appliqué à toute l'application)
+  Soleil et constellation ; angles en dd° mm′ ss″, dd° mm,mm′ ou dd,ddddd° : comme dans les paramètres, ou un format
+  propre au tableau
+- **Format des angles** — choisi dans les paramètres (dd° mm′ ss″, dd° mm,mm′ ou dd,ddddd°), pour tout le logiciel
 - **Prévision des éclipses** — éclipses de Soleil (totale, annulaire, hybride, partielle ; magnitude, durée de la phase
   centrale) et de Lune (totale, partielle, pénombrale ; magnitudes d'ombre et de pénombre, durée de chaque phase), avec
   l'heure du maximum

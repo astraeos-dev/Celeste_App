@@ -23,7 +23,7 @@ from matplotlib.figure import Figure  # noqa: E402
 
 import charts  # noqa: E402
 from config import Config  # noqa: E402
-from engine import MeeusEngine  # noqa: E402
+from engine import AstroEngine  # noqa: E402
 
 # Cherbourg, 1 November 2026, 21:30 UT (night, Moon below the horizon)
 DTE = datetime(2026, 11, 1, 21, 30, 0)
@@ -36,21 +36,21 @@ def day():
 
 
 def _bodies(dte=DTE):
-    jd = MeeusEngine.julian_day(dte)
-    t = MeeusEngine.julian_century_j2000(dte)
-    s_l, r = MeeusEngine.sun_position(t)
-    s_ra, s_dec = MeeusEngine.ecliptic_to_equatorial(s_l, 0, t)
-    s_alt, s_az = MeeusEngine.equatorial_to_horizontal(jd, LAT, LON, s_ra, s_dec)
-    m_l, m_b, m_p = MeeusEngine.moon_position(t)
-    m_ra, m_dec = MeeusEngine.ecliptic_to_equatorial(m_l, m_b, t)
-    m_alt, m_az = MeeusEngine.equatorial_to_horizontal(jd, LAT, LON, m_ra, m_dec)
+    jd = AstroEngine.julian_day(dte)
+    t = AstroEngine.julian_century_j2000(dte)
+    s_l, r = AstroEngine.sun_position(t)
+    s_ra, s_dec = AstroEngine.ecliptic_to_equatorial(s_l, 0, t)
+    s_alt, s_az = AstroEngine.equatorial_to_horizontal(jd, LAT, LON, s_ra, s_dec)
+    m_l, m_b, m_p = AstroEngine.moon_position(t)
+    m_ra, m_dec = AstroEngine.ecliptic_to_equatorial(m_l, m_b, t)
+    m_alt, m_az = AstroEngine.equatorial_to_horizontal(jd, LAT, LON, m_ra, m_dec)
     sun = {"name": "Sun", "ra": s_ra, "dec": s_dec, "alt": s_alt, "az": s_az, "dist": r}
     moon = {"name": "Moon", "ra": m_ra, "dec": m_dec, "alt": m_alt, "az": m_az,
             "illum": 50.0, "phase": 270.0, "dist": 380000.0}
     planets = []
     for name in ("Venus", "Mars", "Jupiter", "Saturn"):
-        ra, dec, dist = MeeusEngine.planet_position(t, name)
-        alt, az = MeeusEngine.equatorial_to_horizontal(jd, LAT, LON, ra, dec)
+        ra, dec, dist = AstroEngine.planet_position(t, name)
+        alt, az = AstroEngine.equatorial_to_horizontal(jd, LAT, LON, ra, dec)
         planets.append({"name": name, "ra": ra, "dec": dec, "dist": dist,
                         "alt": alt, "az": az, "elong": 0.0, "east": True})
     return jd, sun, moon, planets
@@ -102,7 +102,7 @@ class TestTwilightSegments:
         """Band edges fall within 2 minutes of the times of the Ephemeris tab."""
         hours, sun_alts, _ = day
         segs = charts.twilight_segments(hours, sun_alts)
-        events = MeeusEngine.find_events(DTE, LAT, LON, "sun")
+        events = AstroEngine.find_events(DTE, LAT, LON, "sun")
 
         def hour(dt):
             return dt.hour + dt.minute / 60 + dt.second / 3600
@@ -188,7 +188,7 @@ class TestSkyScene:
 
 class TestOrreryScene:
     def test_orbits_close_and_contain_the_planet(self):
-        scene = charts.orrery_scene(MeeusEngine.julian_century_j2000(DTE), samples=90)
+        scene = charts.orrery_scene(AstroEngine.julian_century_j2000(DTE), samples=90)
         for name, body in scene["planets"].items():
             orbit = body["orbit"]
             assert len(orbit) == 91
@@ -199,7 +199,7 @@ class TestOrreryScene:
             assert math.hypot(first[0] - body["x"], first[1] - body["y"]) < 1e-9, name
 
     def test_earth_one_au_from_the_sun(self):
-        scene = charts.orrery_scene(MeeusEngine.julian_century_j2000(DTE), samples=12)
+        scene = charts.orrery_scene(AstroEngine.julian_century_j2000(DTE), samples=12)
         earth = scene["earth"]
         assert 0.98 < math.hypot(earth["x"], earth["y"]) < 1.02
 

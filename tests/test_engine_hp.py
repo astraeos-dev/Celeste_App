@@ -15,7 +15,7 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from datetime import date, datetime, timedelta, timezone
-from engine import MeeusEngine
+from engine import AstroEngine
 
 
 def approx(value, expected, tol):
@@ -33,33 +33,33 @@ class TestSunPositionTT:
         """Longitude always in [0, 360[."""
         for year in range(2000, 2030, 5):
             for m in (1, 4, 7, 10):
-                t = MeeusEngine.julian_century_j2000(datetime(year, m, 15))
-                l, _ = MeeusEngine.sun_position_tt(t)
+                t = AstroEngine.julian_century_j2000(datetime(year, m, 15))
+                l, _ = AstroEngine.sun_position_tt(t)
                 assert 0 <= l < 360, f"L={l:.3f} out of range ({year}-{m})"
 
     def test_distance_realistic(self):
         """Earth-Sun distance in [0.980, 1.020] AU all year."""
         for m in range(1, 13):
-            t = MeeusEngine.julian_century_j2000(datetime(2024, m, 15))
-            _, r = MeeusEngine.sun_position_tt(t)
+            t = AstroEngine.julian_century_j2000(datetime(2024, m, 15))
+            _, r = AstroEngine.sun_position_tt(t)
             assert 0.980 < r < 1.020, f"r={r:.5f} AU out of range (month {m})"
 
-    def test_meeus_example_25a(self):
+    def test_reference_1992_10_13(self):
         """
         Meeus p.165: October 13, 1992.
         VSOP87 longitude expected ~199.907°, distance ~0.9976 AU.
         """
-        t = MeeusEngine.julian_century_j2000(datetime(1992, 10, 13))
-        l, r = MeeusEngine.sun_position_tt(t)
+        t = AstroEngine.julian_century_j2000(datetime(1992, 10, 13))
+        l, r = AstroEngine.sun_position_tt(t)
         assert approx(l, 199.907, 0.5), f"L={l:.3f}° (expected ~199.907°)"
         assert approx(r, 0.9976,  0.005), f"r={r:.5f} AU"
 
     def test_perihelion_less_than_aphelion(self):
         """Perihelion distance (Jan) < aphelion distance (Jul)."""
-        t_jan = MeeusEngine.julian_century_j2000(datetime(2024, 1, 3))
-        t_jul = MeeusEngine.julian_century_j2000(datetime(2024, 7, 5))
-        _, r_jan = MeeusEngine.sun_position_tt(t_jan)
-        _, r_jul = MeeusEngine.sun_position_tt(t_jul)
+        t_jan = AstroEngine.julian_century_j2000(datetime(2024, 1, 3))
+        t_jul = AstroEngine.julian_century_j2000(datetime(2024, 7, 5))
+        _, r_jan = AstroEngine.sun_position_tt(t_jan)
+        _, r_jul = AstroEngine.sun_position_tt(t_jul)
         assert r_jan < r_jul
         assert 0.981 < r_jan < 0.987, f"Perihelion r={r_jan:.5f} AU"
         assert 1.014 < r_jul < 1.020, f"Aphelion r={r_jul:.5f} AU"
@@ -68,24 +68,24 @@ class TestSunPositionTT:
         """HP and short series must agree within 0.1° for recent dates."""
         for year in (2020, 2024, 2025):
             for m in (3, 6, 9, 12):
-                t = MeeusEngine.julian_century_j2000(datetime(year, m, 21))
-                l_hp, _ = MeeusEngine.sun_position_tt(t)
-                l_sc, _ = MeeusEngine.sun_position(t)
+                t = AstroEngine.julian_century_j2000(datetime(year, m, 21))
+                l_hp, _ = AstroEngine.sun_position_tt(t)
+                l_sc, _ = AstroEngine.sun_position(t)
                 diff = abs((l_hp - l_sc + 180) % 360 - 180)
                 assert diff < 0.1, f"{year}-{m}: diff HP/SC = {diff:.4f}°"
 
     def test_j2000_longitude(self):
         """At J2000.0, geocentric Sun longitude ~280.46°."""
-        t = MeeusEngine.julian_century_j2000(datetime(2000, 1, 1, 12))
-        l, _ = MeeusEngine.sun_position_tt(t)
+        t = AstroEngine.julian_century_j2000(datetime(2000, 1, 1, 12))
+        l, _ = AstroEngine.sun_position_tt(t)
         assert approx(l, 280.46, 1.0), f"L J2000 = {l:.3f}°"
 
     def test_long_term_coherence(self):
         """Over 50 years, HP and short series within 0.5°."""
         for year in range(1980, 2030, 10):
-            t = MeeusEngine.julian_century_j2000(datetime(year, 6, 21))
-            l_hp, _ = MeeusEngine.sun_position_tt(t)
-            l_sc, _ = MeeusEngine.sun_position(t)
+            t = AstroEngine.julian_century_j2000(datetime(year, 6, 21))
+            l_hp, _ = AstroEngine.sun_position_tt(t)
+            l_sc, _ = AstroEngine.sun_position(t)
             diff = abs((l_hp - l_sc + 180) % 360 - 180)
             assert diff < 0.5, f"{year}: diff = {diff:.4f}°"
 
@@ -99,61 +99,61 @@ class TestMoonPositionTT:
 
     def test_returns_4_values(self):
         """Method must return (lon, lat, dist_km, parallax)."""
-        t = MeeusEngine.julian_century_j2000(datetime(2024, 3, 25))
-        assert len(MeeusEngine.moon_position_tt(t)) == 4
+        t = AstroEngine.julian_century_j2000(datetime(2024, 3, 25))
+        assert len(AstroEngine.moon_position_tt(t)) == 4
 
     def test_longitude_in_360(self):
         """Longitude always in [0, 360[."""
         for d in range(1, 29, 4):
-            t = MeeusEngine.julian_century_j2000(datetime(2024, 6, d))
-            lon, _, _, _ = MeeusEngine.moon_position_tt(t)
+            t = AstroEngine.julian_century_j2000(datetime(2024, 6, d))
+            lon, _, _, _ = AstroEngine.moon_position_tt(t)
             assert 0 <= lon < 360
 
     def test_latitude_bounded(self):
         """Ecliptic latitude in [-7, 7]°."""
         for m in range(1, 13):
-            t = MeeusEngine.julian_century_j2000(datetime(2024, m, 15))
-            _, lat, _, _ = MeeusEngine.moon_position_tt(t)
+            t = AstroEngine.julian_century_j2000(datetime(2024, m, 15))
+            _, lat, _, _ = AstroEngine.moon_position_tt(t)
             assert -7 <= lat <= 7, f"lat={lat:.3f}° out of range"
 
     def test_distance_realistic(self):
         """Geocentric distance between 356 000 and 407 000 km."""
         for m in range(1, 13):
-            t = MeeusEngine.julian_century_j2000(datetime(2024, m, 15))
-            _, _, dist, _ = MeeusEngine.moon_position_tt(t)
+            t = AstroEngine.julian_century_j2000(datetime(2024, m, 15))
+            _, _, dist, _ = AstroEngine.moon_position_tt(t)
             assert 356000 <= dist <= 407000, f"dist={dist:.0f} km out of range"
 
     def test_parallax_realistic(self):
         """Horizontal equatorial parallax in [0.89°, 1.02°]."""
         for m in range(1, 13):
-            t = MeeusEngine.julian_century_j2000(datetime(2024, m, 15))
-            _, _, _, par = MeeusEngine.moon_position_tt(t)
+            t = AstroEngine.julian_century_j2000(datetime(2024, m, 15))
+            _, _, _, par = AstroEngine.moon_position_tt(t)
             assert 0.89 <= par <= 1.02, f"parallax={par:.4f}° out of range"
 
-    def test_meeus_example_47a(self):
+    def test_reference_1992_04_12(self):
         """
         April 12, 1992, 0h TT (Meeus example 47.a) against JPL Horizons:
         apparent longitude 133.16671°, latitude −3.22920° (ecliptic of date).
         """
-        t = MeeusEngine.julian_century_j2000(datetime(1992, 4, 12))
-        lon, lat, dist, par = MeeusEngine.moon_position_tt(t)
+        t = AstroEngine.julian_century_j2000(datetime(1992, 4, 12))
+        lon, lat, dist, par = AstroEngine.moon_position_tt(t)
         assert approx(lon, 133.16671, 3e-4), f"lon={lon:.6f}° (ref 133.16671°)"
         assert approx(lat, -3.22920, 3e-4), f"lat={lat:.6f}° (ref -3.22920°)"
         assert approx(par, 0.991920, 1e-5), f"parallax={par:.6f}° (ref 0.991920°)"
 
     def test_distance_example_47a(self):
         """JPL Horizons: 368437.7 km (Meeus's truncated series: 368409.7 km)."""
-        t = MeeusEngine.julian_century_j2000(datetime(1992, 4, 12))
-        _, _, dist, _ = MeeusEngine.moon_position_tt(t)
+        t = AstroEngine.julian_century_j2000(datetime(1992, 4, 12))
+        _, _, dist, _ = AstroEngine.moon_position_tt(t)
         assert approx(dist, 368437.7, 3.0), f"dist={dist:.1f} km (ref 368437.7)"
 
     def test_same_series_as_moon_position(self):
         """moon_position(UT) is moon_position_tt(UT + ΔT) without the distance."""
         for m in range(1, 13):
-            t = MeeusEngine.julian_century_j2000(datetime(2024, m, 15))
-            t_tt = t + MeeusEngine.delta_t(2024 + (m - 0.5) / 12) / 86400.0 / 36525.0
-            lon, lat, _, par = MeeusEngine.moon_position_tt(t_tt)
-            for got, ref in zip(MeeusEngine.moon_position(t), (lon, lat, par)):
+            t = AstroEngine.julian_century_j2000(datetime(2024, m, 15))
+            t_tt = t + AstroEngine.delta_t(2024 + (m - 0.5) / 12) / 86400.0 / 36525.0
+            lon, lat, _, par = AstroEngine.moon_position_tt(t_tt)
+            for got, ref in zip(AstroEngine.moon_position(t), (lon, lat, par)):
                 assert approx(got, ref, 1e-4)
 
 
@@ -165,29 +165,29 @@ class TestApparentDiameters:
 
     def test_sun_at_1au(self):
         """At 1 AU, Sun semi-diameter ≈ 0.2667°."""
-        dd = MeeusEngine._sun_semi_diameter(1.0)
+        dd = AstroEngine._sun_semi_diameter(1.0)
         assert approx(dd, 0.2667, 0.002), f"dd_sun(1AU)={dd:.4f}°"
 
     def test_sun_larger_at_perihelion(self):
         """At perihelion (0.983 AU), Sun semi-diameter > 1 AU value."""
-        assert MeeusEngine._sun_semi_diameter(0.983) > MeeusEngine._sun_semi_diameter(1.0)
+        assert AstroEngine._sun_semi_diameter(0.983) > AstroEngine._sun_semi_diameter(1.0)
 
     def test_moon_at_mean_distance(self):
         """At mean distance (~384 400 km), Moon semi-diameter ≈ 0.259°."""
-        dd = MeeusEngine._moon_semi_diameter(384400.0)
+        dd = AstroEngine._moon_semi_diameter(384400.0)
         assert approx(dd, 0.259, 0.003), f"dd_moon(384400km)={dd:.4f}°"
 
     def test_moon_larger_at_perigee(self):
         """At perigee (~356 500 km), Moon semi-diameter > mean value."""
-        assert MeeusEngine._moon_semi_diameter(356500) > MeeusEngine._moon_semi_diameter(384400)
+        assert AstroEngine._moon_semi_diameter(356500) > AstroEngine._moon_semi_diameter(384400)
 
     def test_diameter_ratio_physical_range(self):
         """Diameter ratio Moon/Sun must be in [0.88, 1.08] (physical)."""
         for m in range(1, 13):
-            t = MeeusEngine.julian_century_j2000(datetime(2024, m, 15))
-            _, _, dist, _ = MeeusEngine.moon_position_tt(t)
-            _, r_sun      = MeeusEngine.sun_position_tt(t)
-            ratio = MeeusEngine._moon_semi_diameter(dist) / MeeusEngine._sun_semi_diameter(r_sun)
+            t = AstroEngine.julian_century_j2000(datetime(2024, m, 15))
+            _, _, dist, _ = AstroEngine.moon_position_tt(t)
+            _, r_sun      = AstroEngine.sun_position_tt(t)
+            ratio = AstroEngine._moon_semi_diameter(dist) / AstroEngine._sun_semi_diameter(r_sun)
             assert 0.88 <= ratio <= 1.08, f"ratio={ratio:.4f} out of range (month {m})"
 
 
@@ -216,8 +216,8 @@ NASA_PARTIAL = [            # date, γ, magnitude
 
 def _solar_eclipse_near(year, month, day):
     """_solar_eclipse() for the true new moon nearest to the given date."""
-    nm = MeeusEngine._find_syzygy_hp(datetime(year, month, day), target_phase=0)
-    return MeeusEngine._solar_eclipse(MeeusEngine.julian_day(nm))
+    nm = AstroEngine._find_syzygy_hp(datetime(year, month, day), target_phase=0)
+    return AstroEngine._solar_eclipse(AstroEngine.julian_day(nm))
 
 
 class TestSolarEclipseCircumstances:
@@ -247,7 +247,7 @@ class TestSolarEclipseCircumstances:
     def test_greatest_eclipse_time(self):
         """2027-08-02: greatest eclipse at 10:07:50 TD; ec['jd'] is in dynamical time too."""
         ec = _solar_eclipse_near(2027, 8, 2)
-        nasa = MeeusEngine.julian_day(datetime(2027, 8, 2, 10, 7, 50))
+        nasa = AstroEngine.julian_day(datetime(2027, 8, 2, 10, 7, 50))
         assert abs(ec['jd'] - nasa) * 1440 < 1, "greatest eclipse more than 1 min off"
 
     def test_no_eclipse_far_from_node(self):
@@ -260,7 +260,7 @@ class TestSolarEclipseCircumstances:
         ~7.5 min when total, ~12.5 min when annular. The formula used before
         (a lunar-eclipse formula) gave 170–200 min.
         """
-        res = MeeusEngine.find_eclipses(datetime(2001, 1, 1), num_months=371)
+        res = AstroEngine.find_eclipses(datetime(2001, 1, 1), num_months=371)
         central = [r for r in res if r['type'] == 'solar' and r['duration_min'] is not None]
         assert len(central) >= 40, f"only {len(central)} central eclipses in 30 years"
         for r in central:
@@ -299,8 +299,8 @@ NASA_LUNAR = [
 
 def _lunar_eclipse_near(year, month, day):
     """_lunar_eclipse() for the true full moon nearest to the given date."""
-    fm = MeeusEngine._find_syzygy_hp(datetime(year, month, day), target_phase=180)
-    return MeeusEngine._lunar_eclipse(MeeusEngine.julian_day(fm))
+    fm = AstroEngine._find_syzygy_hp(datetime(year, month, day), target_phase=180)
+    return AstroEngine._lunar_eclipse(AstroEngine.julian_day(fm))
 
 
 class TestLunarEclipseCircumstances:
@@ -344,12 +344,12 @@ class TestLunarEclipseCircumstances:
     def test_greatest_eclipse_time(self):
         """2026-03-03: greatest eclipse at 11:34:52 TD (NASA); ec['jd'] is in TT too."""
         ec = _lunar_eclipse_near(2026, 3, 3)
-        nasa = MeeusEngine.julian_day(datetime(2026, 3, 3, 11, 34, 52))
+        nasa = AstroEngine.julian_day(datetime(2026, 3, 3, 11, 34, 52))
         assert abs(ec['jd'] - nasa) * 1440 < 0.5, "greatest eclipse more than 30 s off"
 
     def test_search_gives_greatest_eclipse_in_ut(self):
         """find_eclipses() turns TT into UT: 11:33:42 UT for NASA (ΔT = 70 s)."""
-        found = [r for r in MeeusEngine.find_eclipses(datetime(2026, 2, 1), num_months=2)
+        found = [r for r in AstroEngine.find_eclipses(datetime(2026, 2, 1), num_months=2)
                  if r['type'] == 'lunar']
         assert len(found) == 1
         assert abs(found[0]['greatest'] - datetime(2026, 3, 3, 11, 33, 42)) < timedelta(seconds=30)
@@ -378,22 +378,22 @@ class TestDeltaT:
     ])
     def test_observed_values(self, year, observed):
         """Within 0.5 s of the measured ΔT (1 s before atomic time, 1955)."""
-        assert approx(MeeusEngine.delta_t(year), observed, 1.0 if year < 1955 else 0.5)
+        assert approx(AstroEngine.delta_t(year), observed, 1.0 if year < 1955 else 0.5)
 
     @pytest.mark.parametrize("year, table", [(0, 10580), (500, 5710), (1000, 1570), (1600, 120)])
     def test_historical_values(self, year, table):
         """Within 10 % of Morrison & Stephenson (2004), revised since by SMH 2016."""
-        assert abs(MeeusEngine.delta_t(year) - table) < 0.10 * abs(table) + 1
+        assert abs(AstroEngine.delta_t(year) - table) < 0.10 * abs(table) + 1
 
     def test_today(self):
         """69.2 s in 2026 (USNO), not the 75 s of the 2006 extrapolation."""
-        assert approx(MeeusEngine.delta_t(2026.5), 69.18, 0.1)
+        assert approx(AstroEngine.delta_t(2026.5), 69.18, 0.1)
 
     def test_continuous(self):
         """No jump larger than 0.5 s where one polynomial hands over to the next."""
         for year in (-500, 500, 1600, 1700, 1800, 1860, 1900, 1920, 1941, 1961, 1986,
                      2005, 2026.75, 2050, 2150):
-            jump = MeeusEngine.delta_t(year - 1e-9) - MeeusEngine.delta_t(year)
+            jump = AstroEngine.delta_t(year - 1e-9) - AstroEngine.delta_t(year)
             assert abs(jump) < 0.5, f"{year}: {jump:+.3f} s"
 
 
@@ -404,12 +404,12 @@ class TestDeltaT:
 class TestFindEclipsesHP:
 
     def test_returns_list(self):
-        res = MeeusEngine.find_eclipses(datetime(2024, 1, 1), num_months=3)
+        res = AstroEngine.find_eclipses(datetime(2024, 1, 1), num_months=3)
         assert isinstance(res, list)
 
     def test_solar_structure_has_new_fields(self):
         """Solar eclipses must have sub_type, diameter_ratio, magnitude, duration_min."""
-        res = MeeusEngine.find_eclipses(datetime(2024, 1, 1), num_months=12)
+        res = AstroEngine.find_eclipses(datetime(2024, 1, 1), num_months=12)
         solar = [r for r in res if r['type'] == 'solar']
         for r in solar:
             for key in ('sub_type', 'diameter_ratio', 'magnitude', 'duration_min'):
@@ -418,7 +418,7 @@ class TestFindEclipsesHP:
 
     def test_sub_type_coherent_with_ratio(self):
         """sub_type must be coherent with diameter_ratio."""
-        res = MeeusEngine.find_eclipses(datetime(2020, 1, 1), num_months=24)
+        res = AstroEngine.find_eclipses(datetime(2020, 1, 1), num_months=24)
         for r in [r for r in res if r['type'] == 'solar']:
             ratio = r['diameter_ratio']
             st    = r['sub_type']
@@ -429,7 +429,7 @@ class TestFindEclipsesHP:
 
     def test_2024_solar_eclipses(self):
         """2024 must have ≥ 2 solar eclipses (total + annular known)."""
-        res    = MeeusEngine.find_eclipses(datetime(2024, 1, 1), num_months=12)
+        res    = AstroEngine.find_eclipses(datetime(2024, 1, 1), num_months=12)
         solar  = [r for r in res if r['type'] == 'solar']
         assert len(solar) >= 2, f"Only {len(solar)} solar eclipse(s)"
         types  = [r['sub_type'] for r in solar]
@@ -437,58 +437,58 @@ class TestFindEclipsesHP:
 
     def test_magnitude_positive(self):
         """Magnitude must be > 0 for all detected eclipses."""
-        res = MeeusEngine.find_eclipses(datetime(2024, 1, 1), num_months=12)
+        res = AstroEngine.find_eclipses(datetime(2024, 1, 1), num_months=12)
         for r in res:
             if r['type'] == 'solar' and r['magnitude'] is not None:
                 assert r['magnitude'] > 0
 
     def test_duration_only_for_central_eclipses(self):
         """Partial eclipses must have duration_min = None."""
-        res = MeeusEngine.find_eclipses(datetime(2020, 1, 1), num_months=36)
+        res = AstroEngine.find_eclipses(datetime(2020, 1, 1), num_months=36)
         for r in [r for r in res if r['type'] == 'solar']:
             if r['sub_type'] == 'partial':
                 assert r['duration_min'] is None
 
     def test_diameter_ratio_physical(self):
         """Diameter ratio must be in [0.88, 1.08]."""
-        res = MeeusEngine.find_eclipses(datetime(2020, 1, 1), num_months=36)
+        res = AstroEngine.find_eclipses(datetime(2020, 1, 1), num_months=36)
         for r in [r for r in res if r['type'] == 'solar']:
             assert 0.88 <= r['diameter_ratio'] <= 1.08
 
     def test_results_sorted_by_date(self):
         """Results must be sorted chronologically."""
-        res = MeeusEngine.find_eclipses(datetime(2024, 1, 1), num_months=12)
+        res = AstroEngine.find_eclipses(datetime(2024, 1, 1), num_months=12)
         for i in range(len(res)-1):
             assert res[i]['date'] <= res[i+1]['date']
 
     def test_moon_latitude_within_threshold(self):
         """All detected eclipses must have |moon_latitude| < 1.58°."""
-        res = MeeusEngine.find_eclipses(datetime(2024, 1, 1), num_months=12)
+        res = AstroEngine.find_eclipses(datetime(2024, 1, 1), num_months=12)
         for r in res:
             assert abs(r['moon_latitude']) < 1.58
 
     def test_plausible_count(self):
         """Between 2 and 8 eclipses over 12 months."""
-        res = MeeusEngine.find_eclipses(datetime(2024, 1, 1), num_months=12)
+        res = AstroEngine.find_eclipses(datetime(2024, 1, 1), num_months=12)
         assert 2 <= len(res) <= 8
 
     def test_syzygy_hp_phase_near_zero(self):
         """HP syzygy finder must find phase very close to 0°."""
         dte = datetime(2024, 4, 8)  # close to April 2024 new moon
-        nl  = MeeusEngine._find_syzygy_hp(dte, target_phase=0)
+        nl  = AstroEngine._find_syzygy_hp(dte, target_phase=0)
         assert _phase_offset(nl, 0) < 0.01, f"HP syzygy phase not near 0: {_phase_offset(nl, 0):.4f}°"
 
 
 def _tt(dte):
     """The UT instant dte in dynamical time (TT), as the ephemerides take it."""
-    return dte + timedelta(seconds=MeeusEngine.delta_t(dte.year + (dte.month - 0.5) / 12))
+    return dte + timedelta(seconds=AstroEngine.delta_t(dte.year + (dte.month - 0.5) / 12))
 
 
 def _phase_offset(dte, target):
     """|Moon − Sun longitude − target| at dte (VSOP87 + ELP2000), degrees."""
-    t = MeeusEngine.julian_century_j2000(dte)
-    s_l, _ = MeeusEngine.sun_position_tt(t)
-    m_l, _, _, _ = MeeusEngine.moon_position_tt(t)
+    t = AstroEngine.julian_century_j2000(dte)
+    s_l, _ = AstroEngine.sun_position_tt(t)
+    m_l, _, _, _ = AstroEngine.moon_position_tt(t)
     return abs((m_l - s_l - target + 180.0) % 360.0 - 180.0)
 
 
@@ -507,22 +507,22 @@ class TestSyzygies:
     @pytest.mark.parametrize("finder", ["_find_syzygy", "_find_syzygy_hp"])
     def test_new_moon_far_from_the_guess(self, finder):
         """New moon of 2026-11-09 07:02 UT (both series)."""
-        nm = getattr(MeeusEngine, finder)(self.START, target_phase=0)
+        nm = getattr(AstroEngine, finder)(self.START, target_phase=0)
         assert abs(nm - datetime(2026, 11, 9, 7, 2)) < timedelta(minutes=5), nm
 
     @pytest.mark.parametrize("finder", ["_find_syzygy", "_find_syzygy_hp"])
     def test_full_moon_far_from_the_guess(self, finder):
         """Nearest full moon: 2026-10-26 04:12 UT, 6.7 days earlier (both series)."""
-        fm = getattr(MeeusEngine, finder)(self.START, target_phase=180)
+        fm = getattr(AstroEngine, finder)(self.START, target_phase=180)
         assert abs(fm - datetime(2026, 10, 26, 4, 12)) < timedelta(minutes=5), fm
 
     def test_first_syzygies_at_or_after_start(self):
         """_syzygies_from() starts with the first new / full moon at or after the start."""
-        jd_start = MeeusEngine.julian_day(self.START)
-        new_moons  = MeeusEngine._syzygies_from(jd_start, 0.0, 13)
-        full_moons = MeeusEngine._syzygies_from(jd_start, 0.5, 13)
-        assert MeeusEngine._jd_to_datetime(new_moons[0], self.START).date() == date(2026, 11, 9)
-        assert MeeusEngine._jd_to_datetime(full_moons[0], self.START).date() == date(2026, 11, 24)
+        jd_start = AstroEngine.julian_day(self.START)
+        new_moons  = AstroEngine._syzygies_from(jd_start, 0.0, 13)
+        full_moons = AstroEngine._syzygies_from(jd_start, 0.5, 13)
+        assert AstroEngine._jd_to_datetime(new_moons[0], self.START).date() == date(2026, 11, 9)
+        assert AstroEngine._jd_to_datetime(full_moons[0], self.START).date() == date(2026, 11, 24)
         for jds in (new_moons, full_moons):
             gaps = [b - a for a, b in zip(jds, jds[1:])]
             assert all(29.2 < g < 29.9 for g in gaps), gaps   # one lunation apart
@@ -533,8 +533,8 @@ class TestSyzygies:
         ~15:58: a search starting in between keeps that eclipse, one starting
         after it does not.
         """
-        before = MeeusEngine.find_eclipses(datetime(2027, 2, 6, 15, 0), num_months=1)
-        after  = MeeusEngine.find_eclipses(datetime(2027, 2, 6, 17, 0), num_months=1)
+        before = AstroEngine.find_eclipses(datetime(2027, 2, 6, 15, 0), num_months=1)
+        after  = AstroEngine.find_eclipses(datetime(2027, 2, 6, 17, 0), num_months=1)
         assert [r['date'].date() for r in before if r['type'] == 'solar'] == [date(2027, 2, 6)]
         assert not [r for r in after if r['type'] == 'solar']
 
@@ -549,7 +549,7 @@ NOV_2026 = datetime(2026, 11, 1, 21, 0)
 @pytest.fixture(scope="module")
 def eclipses():
     """find_eclipses() over 12 lunations from 2026-11-01 21:00 UT."""
-    return MeeusEngine.find_eclipses(NOV_2026, num_months=12)
+    return AstroEngine.find_eclipses(NOV_2026, num_months=12)
 
 
 class TestEclipseSearchFromNovember2026:
@@ -623,6 +623,6 @@ class TestEclipseSearchFromNovember2026:
 
     def test_timezone_kept(self, eclipses):
         """An aware start date gives aware dates, at the same instants."""
-        aware = MeeusEngine.find_eclipses(self.START.replace(tzinfo=timezone.utc), num_months=12)
+        aware = AstroEngine.find_eclipses(self.START.replace(tzinfo=timezone.utc), num_months=12)
         assert [r['date'] for r in aware] == [r['date'].replace(tzinfo=timezone.utc)
                                               for r in eclipses]

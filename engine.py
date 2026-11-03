@@ -129,14 +129,14 @@ _sky = load_ephemeris
 # MAIN ENGINE
 # ==========================================================
 
-class MeeusEngine:
+class AstroEngine:
     """
     Encapsulates all astronomical calculations, independent of the interface.
 
     All methods are class methods or static methods: no internal state is
-    preserved (the ephemeris is loaded once, on first use). The name is kept
-    for compatibility: the positions now come from JPL DE440 (Skyfield), and
-    the eclipse geometry still follows Meeus, chap. 54.
+    preserved (the ephemeris is loaded once, on first use). The positions
+    come from JPL DE440 (Skyfield); the eclipse geometry follows Meeus,
+    chap. 54.
     """
 
     @staticmethod

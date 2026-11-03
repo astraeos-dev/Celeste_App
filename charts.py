@@ -36,7 +36,7 @@ from matplotlib.ticker import FuncFormatter, MultipleLocator
 
 from config import Config, FONT_SANS, mix
 from constellations import CONSTELLATIONS, STARS
-from engine import MeeusEngine, _HORIZON_CORRECTION_SUN
+from engine import AstroEngine, _HORIZON_CORRECTION_SUN
 
 # Astronomical symbols (Astraeos Symboles). Matplotlib never draws emoji, so
 # they go without the U+FE0E selector here.
@@ -86,7 +86,7 @@ def configure_fonts(fonts_dir=_FONTS_DIR):
 # PHASES OF THE DAY
 # ──────────────────────────────────────────────────────────────────────────────
 
-# Same convention as MeeusEngine.find_events, so the bands line up with the
+# Same convention as AstroEngine.find_events, so the bands line up with the
 # times listed in the Ephemeris tab: day from sunrise (geometric centre at
 # −0.833°: refraction and semi-diameter), then the twilights of the geometric
 # centre at −6, −12 and −18°.
@@ -215,7 +215,7 @@ def sample_day(dte, lat, lon, step_min=5):
     """
     base = dte.replace(hour=0, minute=0, second=0, microsecond=0)
     minutes = range(0, 1441, step_min)
-    sun_alts, moon_alts = MeeusEngine.altitudes(
+    sun_alts, moon_alts = AstroEngine.altitudes(
         [base + timedelta(minutes=minute) for minute in minutes], lat, lon)
     return [minute / 60.0 for minute in minutes], sun_alts.tolist(), moon_alts.tolist()
 
@@ -330,7 +330,7 @@ def sky_scene(jd, lat, lon, mag_limit, sun, moon, planets):
     for name, (ra, dec, mag) in STARS.items():
         if mag > mag_limit:
             continue
-        alt, az = MeeusEngine.equatorial_to_horizontal(jd, lat, lon, ra, dec)
+        alt, az = AstroEngine.equatorial_to_horizontal(jd, lat, lon, ra, dec)
         if alt <= 0:
             continue
         x, y = sky_xy(alt, az)
@@ -346,7 +346,7 @@ def sky_scene(jd, lat, lon, mag_limit, sun, moon, planets):
             for star in (a, b):
                 if star not in horizontal:
                     ra, dec, _ = STARS[star]
-                    horizontal[star] = MeeusEngine.equatorial_to_horizontal(
+                    horizontal[star] = AstroEngine.equatorial_to_horizontal(
                         jd, lat, lon, ra, dec)
             (alt1, az1), (alt2, az2) = horizontal[a], horizontal[b]
             if max(alt1, alt2) <= 0:
@@ -519,8 +519,8 @@ def orrery_scene(t, samples=180):
         and "orbit" (list of (x, y)).
     """
     def body(name, period_years):
-        x, y, _ = MeeusEngine.planet_heliocentric(t, name)
-        ox, oy, _ = MeeusEngine.planet_heliocentric(               # one orbit, at once
+        x, y, _ = AstroEngine.planet_heliocentric(t, name)
+        ox, oy, _ = AstroEngine.planet_heliocentric(               # one orbit, at once
             t + np.linspace(0.0, period_years / 100.0, samples + 1), name)
         return {"x": float(x), "y": float(y), "orbit": list(zip(ox.tolist(), oy.tolist()))}
 

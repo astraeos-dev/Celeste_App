@@ -147,7 +147,7 @@ Le projet suit le modèle **MVC (modèle-vue-contrôleur)** :
 ```
 Celeste_App/
 ├── main.py              # Point d'entrée — options --lang / --theme, fenêtre Qt
-├── engine.py            # Modèle — calculs astronomiques purs (MeeusEngine)
+├── engine.py            # Modèle — calculs astronomiques purs (AstroEngine)
 ├── gui.py               # Vue + contrôleur — interface PyQt6 et logique applicative
 ├── charts.py            # Graphiques matplotlib — trajectoires, carte du ciel, système solaire
 ├── utils.py             # Utilitaires — formats HMS/DMS, noms des phases
@@ -168,10 +168,10 @@ Celeste_App/
 └── tests/               # Tests unitaires (moteur, graphiques, interface, thèmes, i18n, utilitaires)
 ```
 
-### Modèle : `MeeusEngine`
+### Modèle : `AstroEngine`
 
-Moteur de calcul entièrement découplé : uniquement des méthodes de classe ou statiques, sans état interne. Le nom est
-conservé pour la compatibilité, mais les positions viennent de l'éphéméride **JPL DE440** (fichier `de440s.bsp`,
+Moteur de calcul entièrement découplé : uniquement des méthodes de classe ou statiques, sans état interne. Les positions
+viennent de l'éphéméride **JPL DE440** (fichier `de440s.bsp`,
 1850–2149) par [Skyfield] : précession IAU 2006, nutation IAU 2000A, temps de lumière, aberration, déflexion ; TU1 et ΔT
 de l'IERS. Précision : planètes à 0,07″ de JPL Horizons, levers et couchers à la seconde (à moins de 30 s des heures
 arrondies de l'USNO).

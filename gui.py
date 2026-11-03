@@ -56,7 +56,7 @@ import icons  # noqa: E402
 import settings as prefs  # noqa: E402
 from config import FONT_MONO, FONT_SANS, THEME_NAMES, Config, mix  # noqa: E402
 from constellations import STAR_CONSTELLATION  # noqa: E402
-from engine import EPHEMERIS_YEARS, MeeusEngine  # noqa: E402
+from engine import EPHEMERIS_YEARS, AstroEngine  # noqa: E402
 from i18n import (  # noqa: E402
     available_langs, get_lang, lang_name, resolve_lang, switch_lang, t, tf,
 )
@@ -1722,24 +1722,24 @@ class AstroApp(QMainWindow):
         dte, lat, lon = self.current_inputs()
         self._dte, self._lat, self._lon = dte, lat, lon
 
-        jd = MeeusEngine.julian_day(dte)
-        tc = MeeusEngine.julian_century_j2000(dte)
+        jd = AstroEngine.julian_day(dte)
+        tc = AstroEngine.julian_century_j2000(dte)
 
-        s_l, r_sun  = MeeusEngine.sun_position(tc)
-        s_ra, s_dec = MeeusEngine.ecliptic_to_equatorial(s_l, 0, tc)
-        s_alt, s_az = MeeusEngine.equatorial_to_horizontal(jd, lat, lon, s_ra, s_dec)
+        s_l, r_sun  = AstroEngine.sun_position(tc)
+        s_ra, s_dec = AstroEngine.ecliptic_to_equatorial(s_l, 0, tc)
+        s_alt, s_az = AstroEngine.equatorial_to_horizontal(jd, lat, lon, s_ra, s_dec)
 
-        m_l, m_b, m_p = MeeusEngine.moon_position(tc)
-        m_ra, m_dec   = MeeusEngine.ecliptic_to_equatorial(m_l, m_b, tc)
-        m_alt, m_az   = MeeusEngine.equatorial_to_horizontal(jd, lat, lon, m_ra, m_dec)
-        m_alt_c       = MeeusEngine.elevation_correction(m_alt, m_p)
+        m_l, m_b, m_p = AstroEngine.moon_position(tc)
+        m_ra, m_dec   = AstroEngine.ecliptic_to_equatorial(m_l, m_b, tc)
+        m_alt, m_az   = AstroEngine.equatorial_to_horizontal(jd, lat, lon, m_ra, m_dec)
+        m_alt_c       = AstroEngine.elevation_correction(m_alt, m_p)
 
-        phase = MeeusEngine.mod360(m_l - s_l)
+        phase = AstroEngine.mod360(m_l - s_l)
         illum = (1 - math.cos(math.radians(phase))) / 2.0 * 100.0
 
         self.sun_data  = {"name": "Sun", "ra": s_ra, "dec": s_dec, "alt": s_alt,
                           "az": s_az, "dist": r_sun,
-                          "eot": MeeusEngine.equation_of_time(tc)}
+                          "eot": AstroEngine.equation_of_time(tc)}
         self.moon_data = {"name": "Moon", "ra": m_ra, "dec": m_dec, "alt": m_alt_c,
                           "az": m_az, "illum": illum, "phase": phase,
                           "dist": 6378.14 / math.sin(math.radians(m_p)),
@@ -1748,19 +1748,19 @@ class AstroApp(QMainWindow):
         # Événements du jour et courbes 24 h : seulement si la date ou le lieu change
         key = f"{dte:%Y-%m-%d}_{lat:.4f}_{lon:.4f}_{self.utc_offset}"
         if key != self.last_cache_key:
-            self.sun_events  = MeeusEngine.find_events(dte, lat, lon, "sun", self.utc_offset)
-            self.moon_events = MeeusEngine.find_events(dte, lat, lon, "moon", self.utc_offset)
+            self.sun_events  = AstroEngine.find_events(dte, lat, lon, "sun", self.utc_offset)
+            self.moon_events = AstroEngine.find_events(dte, lat, lon, "moon", self.utc_offset)
             self.hours, self.sun_altitudes, self.moon_altitudes = \
                 charts.sample_day(dte, lat, lon)
             self.last_cache_key = key
 
         self.planets = []
         for name in _PLANETS:
-            ra, dec, dist = MeeusEngine.planet_position(tc, name)
-            alt, az = MeeusEngine.equatorial_to_horizontal(jd, lat, lon, ra, dec)
+            ra, dec, dist = AstroEngine.planet_position(tc, name)
+            alt, az = AstroEngine.equatorial_to_horizontal(jd, lat, lon, ra, dec)
             self.planets.append({
                 "name": name, "ra": ra, "dec": dec, "dist": dist, "alt": alt, "az": az,
-                "elong": MeeusEngine.angular_separation(ra, dec, s_ra, s_dec),
+                "elong": AstroEngine.angular_separation(ra, dec, s_ra, s_dec),
                 "east": (ra - s_ra) % 24 < 12,
             })
 
@@ -1943,7 +1943,7 @@ class AstroApp(QMainWindow):
             "vernal": t("planets.orrery_vernal"),
             "planets": {n: _planet_name(n) for n in _PLANETS},
         }
-        tc = MeeusEngine.julian_century_j2000(self._dte)
+        tc = AstroEngine.julian_century_j2000(self._dte)
         charts.draw_orrery(self.fig_orrery, charts.orrery_scene(tc), labels)
         self.canvas_orrery.draw_idle()
 
@@ -2174,7 +2174,7 @@ class AstroApp(QMainWindow):
         """Recherche et affiche les éclipses des 12 prochains mois."""
         dte = self._search_start("eclipses")
         try:
-            eclipses = MeeusEngine.find_eclipses(dte, num_months=12)
+            eclipses = AstroEngine.find_eclipses(dte, num_months=12)
         except Exception as exc:
             QApplication.restoreOverrideCursor()
             self._search_failed(exc)
@@ -2204,7 +2204,7 @@ class AstroApp(QMainWindow):
         """Recherche et affiche les conjonctions et oppositions sur 12 mois."""
         dte = self._search_start("conjunctions")
         try:
-            conjs = MeeusEngine.find_conjunctions(dte, num_days=365)
+            conjs = AstroEngine.find_conjunctions(dte, num_days=365)
         except Exception as exc:
             QApplication.restoreOverrideCursor()
             self._search_failed(exc)

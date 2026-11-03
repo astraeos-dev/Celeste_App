@@ -380,7 +380,7 @@ def build_data_from_app(app) -> dict:
         ValueError: If the coordinates typed in the window are invalid.
     """
     from utils import Formatters
-    from engine import MeeusEngine
+    from engine import AstroEngine
 
     dte, lat, lon = app.current_inputs()
     location = getattr(app, "location_name", "") or "---"
@@ -403,9 +403,9 @@ def build_data_from_app(app) -> dict:
 
     m_status = "VISIBLE" if md.get('alt',-90) > 0 else "BELOW HORIZON"
 
-    t_       = MeeusEngine.julian_century_j2000(dte)
-    eot      = MeeusEngine.equation_of_time(t_)
-    _, r_sun = MeeusEngine.sun_position(t_)
+    t_       = AstroEngine.julian_century_j2000(dte)
+    eot      = AstroEngine.equation_of_time(t_)
+    _, r_sun = AstroEngine.sun_position(t_)
 
     return {
         'date'      : dte,

@@ -40,10 +40,11 @@ htmlcov/
 *.spec
 /dist_exe/
 
-# ── Données utilisateur (générées au runtime) ─────────────
-# favorites.json est versionné volontairement (données initiales)
-# Décommenter la ligne ci-dessous pour l'ignorer si souhaité :
-# favorites.json
+# ── Données utilisateur ───────────────────────────────────
+# Préférences et favoris vivent dans ~/.celeste (settings.py) ; les copies
+# laissées ici par les versions ≤ 4.1 sont reprises puis ignorées.
+/settings.json
+/favorites.json
 
 # ── Claude Code ───────────────────────────────────────────
 .claude/

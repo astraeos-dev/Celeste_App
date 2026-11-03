@@ -54,7 +54,7 @@ Jour et Observation), avec des graphiques interactifs et une carte du ciel.
   de la barre latérale sans redémarrer (ou `--theme`)
 - **Raccourcis clavier** — `F5` calculer, `Ctrl+L` temps réel, `Ctrl+E` export PDF
 - **Réglages persistants** — thème, langue, format de l'heure, lieu de démarrage, magnitude limite, intervalle temps réel
-  (`settings.json`)
+  (`~/.celeste/settings.json`, hors du dépôt)
 
 ---
 
@@ -162,11 +162,10 @@ Celeste_App/
 ├── config.py            # Design Astræos — couleurs des thèmes Nuit, Jour et Observation, espacements, styles de texte
 ├── icons.py             # Icônes Material Design (SVG) et symbole Astræos aux couleurs du thème
 ├── i18n.py              # Internationalisation — traductions par clé avec repli
-├── settings.py          # Préférences persistantes (settings.json)
+├── settings.py          # Préférences persistantes (~/.celeste/settings.json)
 ├── constellations.py    # Catalogue d'étoiles et tracés des constellations
 ├── export_pdf.py        # Export PDF des éphémérides
-├── favorites.json       # Lieux préchargés (37 villes)
-├── settings.json        # Préférences (générées automatiquement)
+├── favorites_default.json # Lieux préchargés (36 villes), copiés dans ~/.celeste au premier enregistrement
 ├── locales/             # Traductions (fr.json est la référence)
 ├── fonts/               # Polices IBM Plex Sans, IBM Plex Mono et Astraeos Symboles (licence OFL)
 ├── assets/              # Symbole et icône Astræos (SVG), licence des icônes
@@ -275,12 +274,12 @@ avec le projet (`fonts/`, `assets/`) : rien à installer.
 
 ### Confort d'utilisation
 
-- [x] Favoris — enregistrement des lieux (`favorites.json`)
+- [x] Favoris — enregistrement des lieux (`~/.celeste/favorites.json`)
 - [x] Fuseaux horaires IANA, heure d'été comprise ; « Automatique » prend celui du lieu (timezonefinder)
 - [x] Altitude de l'observateur (abaissement de l'horizon), positions topocentriques, phase exacte de la Lune
 - [x] **Export** — éphémérides du jour en PDF
 - [x] **Interface multilingue** — FR / EN / ES / DE
-- [x] **Réglages persistants** — langue, thème, lieu, intervalle temps réel (`settings.json`)
+- [x] **Réglages persistants** — langue, thème, lieu, intervalle temps réel (`~/.celeste/settings.json`)
 - [ ] **Historique des calculs** — derniers calculs rechargeables en un clic
 - [ ] **Recherche de lieu** — géocodage par nom de ville
 - [ ] **Calendrier lunaire mensuel** — vue du mois avec la phase de chaque jour

@@ -7,8 +7,8 @@ Observation) sans redémarrer, favoris, recherche d'événements, info-bulles
 et fiches de la carte du ciel, temps réel, export PDF ; vérifie aussi deux
 règles du design Astræos (pas d'emoji, symboles suivis de U+FE0E).
 
-Les préférences et les favoris sont écrits dans un dossier temporaire : le
-settings.json et le favorites.json du dépôt ne sont jamais modifiés.
+Les préférences et les favoris sont écrits dans un dossier temporaire : ceux
+de l'utilisateur (~/.celeste) ne sont jamais modifiés.
 Les tests sont ignorés si PyQt6 (ou les bibliothèques système de Qt)
 manquent.
 
@@ -582,3 +582,43 @@ class TestCoordinatesTab:
         window._anglefmt_combo.setCurrentIndex(window._anglefmt_combo.findData("dm"))
         assert re.match(r"^\d+h \d\d,\d{3}m$", window.sun_labels["ra"].text())
         assert re.match(r"^\d+,\d{5}h$", self._row(window, "Vénus")[8])   # garde le sien
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Préférences et favoris hors du dépôt (~/.celeste)
+# ──────────────────────────────────────────────────────────────────────
+
+class TestUserFiles:
+    def test_settings_live_in_the_user_folder(self, tmp_path, monkeypatch):
+        """Écrites dans le dossier de l'utilisateur, créé au besoin."""
+        import settings as prefs
+        target = tmp_path / "celeste" / "settings.json"
+        monkeypatch.setattr(prefs, "_SETTINGS_FILE", str(target))
+        monkeypatch.setattr(prefs, "_LEGACY_SETTINGS_FILE", str(tmp_path / "absent.json"))
+        prefs.load()
+        prefs.set("theme", "jour")
+        assert json.loads(target.read_text(encoding="utf-8"))["theme"] == "jour"
+
+    def test_settings_of_a_previous_version_are_taken_over(self, tmp_path, monkeypatch):
+        """Un settings.json resté dans le dossier de l'application est repris."""
+        import settings as prefs
+        legacy = tmp_path / "settings.json"
+        legacy.write_text(json.dumps({"theme": "observation", "default_utc": 2}), encoding="utf-8")
+        monkeypatch.setattr(prefs, "_SETTINGS_FILE", str(tmp_path / "user" / "settings.json"))
+        monkeypatch.setattr(prefs, "_LEGACY_SETTINGS_FILE", str(legacy))
+        prefs.load()
+        assert prefs.get("theme") == "observation"
+        assert prefs.get("default_tz") == "Etc/GMT-2"
+
+    def test_favorites_start_from_the_default_list(self, window, tmp_path, monkeypatch):
+        """Sans favoris enregistrés, la liste de départ (36 villes) ; enregistrés chez l'utilisateur."""
+        import gui
+        monkeypatch.setattr(gui, "_FAVORITES_FILE", str(tmp_path / "user" / "favorites.json"))
+        monkeypatch.setattr(gui, "_LEGACY_FAVORITES_FILE", str(tmp_path / "absent.json"))
+        favorites = window._load_favorites()
+        assert len(favorites) == 36 and "Paris" in favorites
+        window.favorites = {"Ici": {"lat": 1.0, "lon": 2.0, "elev": 0}}
+        window._save_favorites()
+        assert json.loads((tmp_path / "user" / "favorites.json").read_text(encoding="utf-8")) == \
+            window.favorites
+

@@ -6,7 +6,7 @@ Usage :
     python main.py --lang fr        (auto, fr, en, es, de)
     python main.py --theme jour     (nuit, jour, observation)
 
-Sans option, la langue et le thème viennent de settings.json ; la langue
+Sans option, la langue et le thème viennent des préférences (~/.celeste/settings.json) ; la langue
 « auto » (par défaut) suit celle du système, ou l'anglais si elle n'est pas
 traduite. La langue se change ensuite dans l'onglet Paramètres et le thème
 en bas de la barre latérale, sans redémarrer.

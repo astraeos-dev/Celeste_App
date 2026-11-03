@@ -494,6 +494,18 @@ class TestCoordinatesTab:
         menu = window.coord_menus[key]
         menu.setCurrentIndex(menu.findData(value))
 
+    def test_short_lists_show_every_choice(self, window, qapp):
+        """Listes en mode liste : aucun choix caché derrière des flèches de défilement."""
+        self._open(window)
+        for menu in window.coord_menus.values():
+            menu.showPopup()
+            qapp.processEvents()
+            view = menu.view()
+            last = view.visualRect(menu.model().index(menu.count() - 1, 0))
+            assert last.bottom() <= view.viewport().height(), menu.currentText()
+            assert not view.verticalScrollBar().isVisible()
+            menu.hidePopup()
+
     def test_default_geocentric_equatorial(self, window):
         self._open(window)
         table = window.coord_table

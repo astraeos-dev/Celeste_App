@@ -729,10 +729,16 @@ QFrame#champBoite QLineEdit, QFrame#champBoite QComboBox, QFrame#champBoite QDat
 QLineEdit[numerique="true"], QDateTimeEdit {{ font-family: {mono}; font-weight: 500; }}
 QDateTimeEdit[readOnly="true"] {{ color: {C.ENCRE_ATTENUEE}; }}
 QLabel#champUnite {{ padding-right: 12px; }}
+/* Listes déroulantes en mode liste : hauteur ajustée au contenu, barre de
+   défilement seulement si la liste est longue (le mode « menu » de Qt
+   cachait des choix derrière des flèches de défilement). */
+QComboBox {{ combobox-popup: 0; }}
 QComboBox QAbstractItemView {{
     background: {C.CIEL_100}; border: 1px solid {C.CIEL_200}; outline: 0;
     selection-background-color: {C.CIEL_200}; selection-color: {C.ENCRE};
 }}
+QComboBox QAbstractItemView::item {{ min-height: 30px; padding: 0 10px; }}
+QComboBox QAbstractItemView::item:disabled {{ color: {C.ENCRE_ATTENUEE}; }}
 
 QTabWidget::pane {{ border: none; border-top: 1px solid {C.CIEL_200}; top: -1px; background: {C.CIEL_000}; }}
 QTabBar::tab {{
@@ -996,6 +1002,7 @@ class AstroApp(QMainWindow):
         self.tz_menu = QComboBox()
         self.tz_menu.setEditable(True)
         self.tz_menu.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        self.tz_menu.setMaxVisibleItems(14)
         self.tz_menu.addItem(t("side.timezone_auto"), _AUTO_ZONE)
         for name in _zone_names():
             self.tz_menu.addItem(name, name)

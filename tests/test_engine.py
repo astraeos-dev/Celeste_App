@@ -532,7 +532,7 @@ class TestFindEventsUSNO:
     @pytest.mark.parametrize("ymd, lat, lon, tz, body, expected", CASES)
     def test_against_usno(self, ymd, lat, lon, tz, body, expected):
         local_noon = datetime(*ymd, 12)
-        events = AstroEngine.find_events(local_noon - timedelta(hours=tz), lat, lon, body, utc_offset=tz)
+        events = AstroEngine.find_events(local_noon - timedelta(hours=tz), lat, lon, body, tz=tz)
         for name, hhmm in expected.items():
             ref = datetime(*ymd, *map(int, hhmm.split(":")))
             got = events[name] + timedelta(hours=tz)
@@ -540,11 +540,76 @@ class TestFindEventsUSNO:
 
     def test_no_astronomical_night_in_june_in_paris(self):
         """At 48.9° N on 21 June, the Sun never gets 18° below the horizon."""
-        events = AstroEngine.find_events(datetime(2026, 6, 21, 10), 48.8566, 2.3522, "sun", utc_offset=2)
+        events = AstroEngine.find_events(datetime(2026, 6, 21, 10), 48.8566, 2.3522, "sun", tz=2)
         assert events["dawn_astro"] is None and events["dusk_astro"] is None
 
     def test_local_day_far_from_greenwich(self):
         """Los Angeles (UTC−8): the sunset at 16:59 local is 00:59 UT the next day."""
         events = AstroEngine.find_events(datetime(2026, 11, 2, 20), 34.0522, -118.2437, "sun",
-                                         utc_offset=-8)
+                                         tz=-8)
         assert events["set"].date() == datetime(2026, 11, 3).date()
+
+
+# ──────────────────────────────────────────────────────────────────────
+# IANA time zones, observer height, topocentric positions, Moon phase
+# ──────────────────────────────────────────────────────────────────────
+
+class TestZonesAndObserver:
+    """References: USNO (rises and sets), JPL Horizons (positions, illumination)."""
+
+    PARIS = (48.8566, 2.3522)
+
+    @pytest.mark.parametrize("ymd, expected", [
+        # summer time ends at 3 h on 25 October (25-hour day), begins on 29 March
+        ((2026, 10, 25), {"dawn_civ": "06:54", "rise": "07:26", "transit": "12:35",
+                          "set": "17:42", "dusk_civ": "18:15"}),
+        ((2026, 3, 29), {"dawn_civ": "07:03", "rise": "07:35", "transit": "13:55",
+                         "set": "20:17", "dusk_civ": "20:49"}),
+    ])
+    def test_summer_time_changes(self, ymd, expected):
+        from zoneinfo import ZoneInfo
+        paris = ZoneInfo("Europe/Paris")
+        events = AstroEngine.find_events(datetime(*ymd, 12), *self.PARIS, "sun", tz=paris)
+        for name, hhmm in expected.items():
+            got = events[name].replace(tzinfo=ZoneInfo("UTC")).astimezone(paris)
+            ref = datetime(*ymd, *map(int, hhmm.split(":")), tzinfo=paris)
+            assert abs((got - ref).total_seconds()) <= 45, f"{name}: {got:%H:%M:%S} (USNO {hhmm})"
+
+    def test_half_hour_zone(self):
+        """Kolkata, UTC+5:30 (USNO, 2 November 2026)."""
+        from zoneinfo import ZoneInfo
+        events = AstroEngine.find_events(datetime(2026, 11, 2, 6), 22.5726, 88.3639, "sun",
+                                         tz=ZoneInfo("Asia/Kolkata"))
+        for name, hhmm in {"dawn_civ": "05:18", "rise": "05:41", "transit": "11:20",
+                           "set": "16:59", "dusk_civ": "17:22"}.items():
+            got = events[name] + timedelta(hours=5.5)
+            ref = datetime(2026, 11, 2, *map(int, hhmm.split(":")))
+            assert abs((got - ref).total_seconds()) <= 45, f"{name}: {got:%H:%M:%S} (USNO {hhmm})"
+
+    def test_local_day_of_a_summer_time_change_lasts_25_hours(self):
+        from zoneinfo import ZoneInfo
+        start, end = AstroEngine._local_day(datetime(2026, 10, 25, 12), ZoneInfo("Europe/Paris"))
+        assert (end - start) == timedelta(hours=25)
+        assert start == datetime(2026, 10, 24, 22)           # local midnight, summer time
+
+    def test_height_lowers_the_horizon(self):
+        """From 1000 m (dip 0.93°), the Sun rises ~6 min earlier and sets ~6 min later."""
+        low  = AstroEngine.find_events(datetime(2026, 11, 2, 12), *self.PARIS, "sun", tz=1)
+        high = AstroEngine.find_events(datetime(2026, 11, 2, 12), *self.PARIS, "sun", tz=1,
+                                       elevation_m=1000)
+        assert 4 * 60 < (low["rise"] - high["rise"]).total_seconds() < 8 * 60
+        assert 4 * 60 < (high["set"] - low["set"]).total_seconds() < 8 * 60
+        assert high["dawn_civ"] == low["dawn_civ"]           # twilights: geometric centre
+
+    def test_topocentric_positions_match_horizons(self):
+        """Paris, 2 November 2026 12h UT: airless apparent azimuth and altitude (JPL Horizons)."""
+        t = AstroEngine.julian_century_j2000(datetime(2026, 11, 2, 12))
+        for body, (az, alt) in {"sun": (186.955686, 26.045381), "moon": (275.664805, 15.575444)}.items():
+            h, a = AstroEngine.horizontal(t, *self.PARIS, body)
+            assert abs(h - alt) < 1 / 3600 and abs(a - az) * math.cos(math.radians(alt)) < 1 / 3600, body
+
+    def test_moon_phase_matches_horizons(self):
+        """Geocentric illuminated fraction 42.90961 % (JPL Horizons); new moon of 10 October."""
+        illum, age = AstroEngine.moon_phase(AstroEngine.julian_century_j2000(datetime(2026, 11, 2, 12)))
+        assert abs(illum - 42.90961) < 0.02
+        assert 22.5 < age < 23.0

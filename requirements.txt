@@ -2,3 +2,5 @@ PyQt6>=6.5
 matplotlib>=3.10.8
 reportlab>=4.0
 skyfield>=1.47
+timezonefinder>=6.5
+tzdata

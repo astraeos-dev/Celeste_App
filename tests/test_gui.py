@@ -53,6 +53,7 @@ def window(qapp, tmp_path, monkeypatch):
 
     monkeypatch.setattr(prefs, "_SETTINGS_FILE", str(tmp_path / "settings.json"))
     prefs.reset()
+    prefs.set("default_tz", "UTC")      # heures attendues en TU ; l'automatique a ses tests
     favorites = tmp_path / "favorites.json"
     favorites.write_text(json.dumps({
         "Paris": {"lat": 48.8566, "lon": 2.3522},
@@ -131,9 +132,28 @@ class TestCalculation:
         assert window.card_moon_illum.detail.text() == "Dernier quartier"
 
     def test_timezone_shifts_local_times(self, window):
-        window.offset_menu.setCurrentIndex(window.offset_menu.findData(2))
+        window.tz_menu.setCurrentIndex(window.tz_menu.findData("Etc/GMT-2"))
         assert window.sun_labels["rise"].text() == "08:55"
         assert "UTC+2" in window._sun_events_title.text()
+
+    def test_automatic_zone_follows_the_place(self, window):
+        """Cherbourg on 1 November: Europe/Paris, in winter time (UTC+1)."""
+        window.tz_menu.setCurrentIndex(window.tz_menu.findData("auto"))
+        assert window.sun_labels["rise"].text() == "07:55"
+        assert "UTC+1" in window._sun_events_title.text()
+        assert "Europe/Paris" in window._lbl_time.text()
+
+    def test_half_hour_zone(self, window):
+        """Asia/Kolkata is UTC+5:30: its local day is 2 November."""
+        window.tz_menu.setCurrentIndex(window.tz_menu.findData("Asia/Kolkata"))
+        assert "UTC+5:30" in window._sun_events_title.text()
+        assert window.sun_labels["rise"].text() == "12:27"
+
+    def test_elevation_brings_sunrise_forward(self, window):
+        """From 1000 m, the horizon is 0.93° lower: the Sun rises ~6 min earlier."""
+        window.entry_elev.setText("1000")
+        window.calculate()
+        assert window.sun_labels["rise"].text() == "06:49"
 
     def test_twelve_hour_format(self, window):
         window._timefmt_combo.setCurrentIndex(window._timefmt_combo.findData("12h"))
@@ -223,7 +243,7 @@ class TestFavorites:
         monkeypatch.setattr(gui, "QInputDialog", Input)
         window.save_location()
         with open(gui._FAVORITES_FILE, encoding="utf-8") as f:
-            assert json.load(f)["Maison"] == {"lat": 49.6333, "lon": -1.6167}
+            assert json.load(f)["Maison"] == {"lat": 49.6333, "lon": -1.6167, "elev": 0}
         assert window.combo_fav.currentText() == "Maison"
 
         monkeypatch.setattr(gui, "QMessageBox", _yes_box(gui))

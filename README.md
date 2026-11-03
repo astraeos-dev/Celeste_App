@@ -190,8 +190,10 @@ est téléchargée depuis le serveur JPL/NAIF au premier lancement.
 | `ecliptic_to_equatorial(l, b, t)` | Écliptique → équatorial (AD, Déc), obliquité vraie (IAU 2006 + nutation) |
 | `equatorial_to_horizontal(jd, lat, lon, ra, dec)` | Équatorial → horizontal (hauteur, azimut), temps sidéral apparent |
 | `elevation_correction(h, p)` | Parallaxe en hauteur (π cos h), puis réfraction atmosphérique |
-| `find_events(dte, lat, lon, body, utc_offset)` | Lever, coucher (bord supérieur), culmination, crépuscules sur le jour local, à la seconde |
-| `altitudes(dtes, lat, lon)` | Hauteurs du Soleil et de la Lune à une série d'instants, en un calcul vectorisé |
+| `find_events(dte, lat, lon, body, tz, elevation_m)` | Lever, coucher (bord supérieur), culmination, crépuscules sur le jour local (fuseau IANA, heure d'été comprise), à la seconde ; l'altitude abaisse l'horizon |
+| `horizontal(t, lat, lon, body, elevation_m, refraction)` | Hauteur et azimut topocentriques (vus du lieu, parallaxe comprise) |
+| `moon_phase(t)` | Fraction éclairée de la Lune (%) et âge depuis la dernière nouvelle lune vraie |
+| `altitudes(dtes, lat, lon, elevation_m)` | Hauteurs du Soleil et de la Lune à une série d'instants, en un calcul vectorisé |
 | `planet_heliocentric(t, name)` | Position héliocentrique écliptique J2000 (x, y, z en UA), Terre comprise |
 | `planet_position(t, name)` | Position géocentrique apparente : AD, Déc et distance (Vénus, Mars, Jupiter, Saturne) |
 | `equation_of_time(t)` | Équation du temps en minutes |
@@ -203,7 +205,7 @@ est téléchargée depuis le serveur JPL/NAIF au premier lancement.
 
 ### Cache
 
-Un cache indexé par `AAAA-MM-JJ_lat_lon_fuseau` évite de recalculer les événements du jour tant que la date, le lieu et le
+Un cache indexé par la date locale, le lieu, le fuseau et l'altitude évite de recalculer les événements du jour tant que la date, le lieu et le
 fuseau ne changent pas, ce qui est précieux en mode temps réel. Pour la même raison, seul le graphique de l'onglet
 affiché est redessiné ; les autres le sont quand on les ouvre.
 
@@ -231,6 +233,8 @@ affiché est redessiné ; les autres le sont quand on les ouvre.
 | [matplotlib](https://matplotlib.org/) | 3.10.8 | Graphiques astronomiques interactifs |
 | [reportlab](https://www.reportlab.com/) | 4.0 | Export PDF |
 | [Skyfield](https://rhodesmill.org/skyfield/) | 1.47 | Éphéméride JPL DE440, temps (TU1, ΔT), levers et couchers (installe NumPy) |
+| [timezonefinder](https://github.com/jannikmi/timezonefinder) | 6.5 | Fuseau IANA d'un lieu, hors ligne (mode « Automatique ») |
+| [tzdata](https://pypi.org/project/tzdata/) | — | Base des fuseaux IANA pour `zoneinfo` (indispensable sous Windows) |
 
 `urllib`, `json` et `argparse` font partie de la bibliothèque standard de Python. Les polices et les icônes sont fournies
 avec le projet (`fonts/`, `assets/`) : rien à installer.
@@ -262,7 +266,8 @@ avec le projet (`fonts/`, `assets/`) : rien à installer.
 ### Confort d'utilisation
 
 - [x] Favoris — enregistrement des lieux (`favorites.json`)
-- [x] Fuseaux horaires (TU → heure locale par sélecteur UTC±N)
+- [x] Fuseaux horaires IANA, heure d'été comprise ; « Automatique » prend celui du lieu (timezonefinder)
+- [x] Altitude de l'observateur (abaissement de l'horizon), positions topocentriques, phase exacte de la Lune
 - [x] **Export** — éphémérides du jour en PDF
 - [x] **Interface multilingue** — FR / EN / ES / DE
 - [x] **Réglages persistants** — langue, thème, lieu, intervalle temps réel (`settings.json`)

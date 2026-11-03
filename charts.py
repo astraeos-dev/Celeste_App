@@ -204,7 +204,7 @@ def _title(fig, ax, text):
 # 24 H TRAJECTORIES
 # ──────────────────────────────────────────────────────────────────────────────
 
-def sample_day(dte, lat, lon, step_min=5):
+def sample_day(dte, lat, lon, step_min=5, elevation_m=0.0):
     """
     Altitude of the Sun (geometric centre) and the Moon (seen from the
     observer, refraction included) over the UT day of *dte*, computed at once
@@ -216,7 +216,7 @@ def sample_day(dte, lat, lon, step_min=5):
     base = dte.replace(hour=0, minute=0, second=0, microsecond=0)
     minutes = range(0, 1441, step_min)
     sun_alts, moon_alts = AstroEngine.altitudes(
-        [base + timedelta(minutes=minute) for minute in minutes], lat, lon)
+        [base + timedelta(minutes=minute) for minute in minutes], lat, lon, elevation_m)
     return [minute / 60.0 for minute in minutes], sun_alts.tolist(), moon_alts.tolist()
 
 

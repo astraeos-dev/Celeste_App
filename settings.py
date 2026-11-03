@@ -35,7 +35,8 @@ _DEFAULTS = {
     "default_place":  "Cherbourg-en-Cotentin",
     "default_lat":    49.6333,      # latitude par défaut
     "default_lon":    -1.6167,      # longitude par défaut
-    "default_utc":    0,            # offset UTC (-12 → +14)
+    "default_tz":     "auto",       # fuseau IANA (Europe/Paris…) ou auto (selon le lieu)
+    "default_elevation": 0,         # altitude de l'observateur, m
     "auto_geoloc":    False,        # géoloc auto au lancement
 
     # Unités
@@ -64,6 +65,10 @@ def load() -> dict:
             for k, v in user.items():
                 if k in _DEFAULTS:
                     _settings[k] = v
+            # ancien réglage UTC±N : zone IANA fixe équivalente (UTC+2 → Etc/GMT-2)
+            offset = user.get("default_utc")
+            if "default_tz" not in user and isinstance(offset, int) and offset:
+                _settings["default_tz"] = f"Etc/GMT{-offset:+d}"
         except (json.JSONDecodeError, OSError):
             pass
     return _settings

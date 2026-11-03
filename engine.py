@@ -24,9 +24,10 @@ server the first time (load_ephemeris()).
 This module is completely independent from the graphical interface (MVC model).
 """
 
+import functools
 import math
 import os
-from datetime import timedelta
+from datetime import timedelta, timezone
 
 import numpy as np
 from skyfield import almanac
@@ -60,6 +61,13 @@ _REFRACTION_B = 5.11
 
 # Twilights: depth of the Sun's geometric centre below the horizon
 _TWILIGHTS = ((6.0, "civ"), (12.0, "naut"), (18.0, "astro"))
+
+# Rises and sets seen from a height: standard refraction at the horizon,
+# radii of the Sun and the Moon, and dip of the horizon (1.76′ √h, h in m,
+# refraction included, as in the nautical almanacs)
+_HORIZON_REFRACTION = 34.0 / 60.0               # degrees
+_BODY_RADIUS_KM     = {"sun": 696000.0, "moon": 1737.4}
+_HORIZON_DIP        = 1.76 / 60.0               # degrees per √metre
 
 # Solar eclipse geometry (Besselian elements); lengths in Earth equatorial radii
 _EARTH_RADIUS_KM = 6378.14
@@ -585,24 +593,45 @@ class AstroEngine:
     # DAILY EVENTS
     # ──────────────────────────────────────────────────────────────────
 
+    @staticmethod
+    def _local_day(dte_ref, tz):
+        """
+        UT bounds of the local day of dte_ref: tz is a number of hours east
+        of UT, or a tzinfo (zoneinfo), which gives the 23 or 25 hour days of
+        the changes to and from summer time. Naive datetimes are UT; aware
+        ones come back in UTC.
+        """
+        if isinstance(tz, (int, float)):
+            offset = timedelta(hours=tz)
+            start  = (dte_ref + offset).replace(hour=0, minute=0, second=0, microsecond=0) - offset
+            return start, start + timedelta(days=1)
+        aware    = dte_ref if dte_ref.tzinfo else dte_ref.replace(tzinfo=timezone.utc)
+        midnight = aware.astimezone(tz).replace(hour=0, minute=0, second=0, microsecond=0)
+        start, end = (m.astimezone(timezone.utc) for m in (midnight, midnight + timedelta(days=1)))
+        if dte_ref.tzinfo is None:
+            return start.replace(tzinfo=None), end.replace(tzinfo=None)
+        return start, end
+
     @classmethod
-    def find_events(cls, dte_ref, lat, lon, body="sun", utc_offset=0):
+    def find_events(cls, dte_ref, lat, lon, body="sun", tz=0, elevation_m=0.0):
         """
         Rises, sets, transit and twilights over the local day of dte_ref,
         to the second (Skyfield almanac, DE440).
 
         Rises and sets are those of the upper limb with the standard
         refraction (34′), the Moon seen from the observer (its parallax);
-        the transit is the upper meridian transit; the twilights begin and
-        end when the Sun's geometric centre is 6, 12 or 18° below the
-        horizon.
+        from a height, the horizon is lowered by its dip (1.76′ √h). The
+        transit is the upper meridian transit; the twilights begin and end
+        when the Sun's geometric centre is 6, 12 or 18° below the horizon.
 
         Args:
             dte_ref (datetime): instant of the day, UT (naive or aware).
             lat, lon (float): degrees, east positive.
             body (str): "sun" or "moon".
-            utc_offset (float): hours of the local time zone; the day searched
+            tz (float | tzinfo): local time zone, hours east of UT or a
+                zoneinfo.ZoneInfo (summer time included); the day searched
                 runs from local midnight to midnight.
+            elevation_m (float): observer's height above the horizon, metres.
 
         Returns:
             dict with keys: rise, set, transit,
@@ -612,13 +641,18 @@ class AstroEngine:
         """
         events = dict.fromkeys(('rise', 'set', 'transit', 'dawn_civ', 'dusk_civ',
                                 'dawn_naut', 'dusk_naut', 'dawn_astro', 'dusk_astro'))
-        offset = timedelta(hours=utc_offset)
-        start  = (dte_ref + offset).replace(hour=0, minute=0, second=0, microsecond=0) - offset
+        start, end = cls._local_day(dte_ref, tz)
         t0 = cls._time_ut(cls.julian_century_j2000(start))
-        t1 = cls._time_ut(cls.julian_century_j2000(start + timedelta(days=1)))
+        t1 = cls._time_ut(cls.julian_century_j2000(end))
         sky      = _sky()
-        observer = sky["earth"] + wgs84.latlon(lat, lon)
+        observer = sky["earth"] + wgs84.latlon(lat, lon, elevation_m=elevation_m)
         target   = sky[body]
+        horizon  = None                                 # Skyfield's standard horizon
+        if elevation_m > 0:
+            middle = cls._time_ut(cls.julian_century_j2000(start + (end - start) / 2))
+            km = sky["earth"].at(middle).observe(target).distance().km
+            horizon = -(_HORIZON_REFRACTION + math.degrees(math.asin(_BODY_RADIUS_KM[body] / km))
+                        + _HORIZON_DIP * math.sqrt(elevation_m))
 
         def first(times, crosses=None):
             for i in range(len(times)):
@@ -626,8 +660,8 @@ class AstroEngine:
                     return cls._jd_to_datetime(times[i].ut1, start)
             return None
 
-        events['rise']    = first(*almanac.find_risings(observer, target, t0, t1))
-        events['set']     = first(*almanac.find_settings(observer, target, t0, t1))
+        events['rise']    = first(*almanac.find_risings(observer, target, t0, t1, horizon))
+        events['set']     = first(*almanac.find_settings(observer, target, t0, t1, horizon))
         events['transit'] = first(almanac.find_transits(observer, target, t0, t1))
         if body == "sun":
             for depth, name in _TWILIGHTS:
@@ -638,7 +672,7 @@ class AstroEngine:
         return events
 
     @classmethod
-    def altitudes(cls, dtes, lat, lon):
+    def altitudes(cls, dtes, lat, lon, elevation_m=0.0):
         """
         Altitudes of the Sun (geometric centre) and of the Moon (seen from the
         observer, standard refraction) at the UT datetimes dtes, in one
@@ -649,11 +683,49 @@ class AstroEngine:
         """
         sky  = _sky()
         time = cls._time_ut(np.array([cls.julian_century_j2000(d) for d in dtes]))
-        here = (sky["earth"] + wgs84.latlon(lat, lon)).at(time)
+        here = (sky["earth"] + wgs84.latlon(lat, lon, elevation_m=elevation_m)).at(time)
         sun_alt, _, _  = here.observe(sky["sun"]).apparent().altaz()
         moon_alt, _, _ = here.observe(sky["moon"]).apparent().altaz(temperature_C=10.0,
                                                                      pressure_mbar=1010.0)
         return sun_alt.degrees, moon_alt.degrees
+
+    @classmethod
+    def horizontal(cls, t, lat, lon, body, elevation_m=0.0, refraction=False):
+        """
+        Apparent altitude and azimuth (degrees) of a body seen from the
+        observer (topocentric, DE440): its parallax included, which lowers the
+        Moon by up to 1°.
+
+        Args:
+            t (float): Julian centuries of UT since J2000.0.
+            body (str): "sun", "moon", "Venus", "Mars", "Jupiter" or "Saturn".
+            refraction (bool): add the standard refraction (10 °C, 1010 hPa).
+        """
+        sky    = _sky()
+        here   = (sky["earth"] + wgs84.latlon(lat, lon, elevation_m=elevation_m)).at(cls._time_ut(t))
+        target = sky[body] if body in ("sun", "moon") else sky["eph"][_PLANETS[body]]
+        air    = {"temperature_C": 10.0, "pressure_mbar": 1010.0} if refraction else {}
+        alt, az, _ = here.observe(target).apparent().altaz(**air)
+        return alt.degrees, az.degrees
+
+    @classmethod
+    def moon_phase(cls, t):
+        """
+        Illuminated fraction of the Moon (%, from the Sun–Moon–Earth angle,
+        DE440) and its age (days since the last true new moon).
+
+        Args:
+            t (float): Julian centuries of UT since J2000.0.
+
+        Returns:
+            tuple[float, float]: (illumination %, age in days)
+        """
+        sky  = _sky()
+        time = cls._time_ut(t)
+        illumination = 100.0 * float(almanac.fraction_illuminated(sky["eph"], "moon", time))
+        jd = float(time.tt)
+        last_new_moon = max(j for j in _new_moons(int(jd // 10)) if j <= jd)
+        return illumination, jd - last_new_moon
 
     # ──────────────────────────────────────────────────────────────────
     # PLANETS
@@ -954,3 +1026,15 @@ class AstroEngine:
 
         results.sort(key=lambda r: r['date'])
         return results
+
+
+@functools.lru_cache(maxsize=32)
+def _new_moons(bucket):
+    """
+    TT Julian Days of the true new moons from 40 days before to 20 days after
+    the start of a 10-day bucket (bucket × 10): always one before any instant
+    of the bucket, for AstroEngine.moon_phase().
+    """
+    start = bucket * 10.0
+    jds, phases = AstroEngine._phases_between(start - 40.0, start + 20.0)
+    return tuple(jd for jd, i in zip(jds, phases) if i == 0)

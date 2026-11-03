@@ -17,6 +17,13 @@ model of Stephenson, Morrison & Hohenkerk (2016).
   • ecliptic_to_equatorial(), equatorial_to_horizontal() — true obliquity
     (IAU 2006 + nutation) and apparent sidereal time, for the interface
 
+v4.1:
+  • find_events(tz=ZoneInfo) — local day of an IANA time zone (summer time);
+    elevation_m lowers the horizon
+  • horizontal(), moon_phase() — topocentric positions, exact phase
+  • stars_horizontal() — J2000 catalogue stars brought to the date
+    (precession, nutation, aberration) for the sky map
+
 The ephemeris (32 MB) is looked for in data/ next to this module, then in
 ~/.celeste (or $CELESTE_DATA), where it is downloaded from the JPL/NAIF
 server the first time (load_ephemeris()).
@@ -31,7 +38,7 @@ from datetime import timedelta, timezone
 
 import numpy as np
 from skyfield import almanac
-from skyfield.api import Loader, wgs84
+from skyfield.api import Loader, Star, wgs84
 from skyfield.framelib import ecliptic_J2000_frame, true_equator_and_equinox_of_date
 
 # ==========================================================
@@ -706,6 +713,29 @@ class AstroEngine:
         target = sky[body] if body in ("sun", "moon") else sky["eph"][_PLANETS[body]]
         air    = {"temperature_C": 10.0, "pressure_mbar": 1010.0} if refraction else {}
         alt, az, _ = here.observe(target).apparent().altaz(**air)
+        return alt.degrees, az.degrees
+
+    @classmethod
+    def stars_horizontal(cls, t, lat, lon, ra_hours, dec_degrees, elevation_m=0.0):
+        """
+        Altitudes and azimuths (degrees, geometric) of stars given by their
+        J2000 coordinates (ICRS): precession, nutation and aberration to the
+        date in one vectorised computation. Without them, a J2000 position is
+        off by 50″ a year (0.37° in 2026).
+
+        Args:
+            t (float): Julian centuries of UT since J2000.0.
+            ra_hours, dec_degrees (sequence): J2000 right ascensions (h) and
+                declinations (°).
+
+        Returns:
+            tuple[numpy.ndarray, numpy.ndarray]: (altitudes, azimuths)
+        """
+        sky   = _sky()
+        stars = Star(ra_hours=np.asarray(ra_hours, dtype=float),
+                     dec_degrees=np.asarray(dec_degrees, dtype=float))
+        here  = (sky["earth"] + wgs84.latlon(lat, lon, elevation_m=elevation_m)).at(cls._time_ut(t))
+        alt, az, _ = here.observe(stars).apparent().altaz()
         return alt.degrees, az.degrees
 
     @classmethod

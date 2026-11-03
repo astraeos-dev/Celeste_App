@@ -15,6 +15,7 @@ manquent.
 Lancer avec :  pytest tests/test_gui.py -v
 """
 
+import io
 import json
 import os
 import sys
@@ -417,3 +418,65 @@ class TestAstraeosRules:
         assert window._lbl_live.isVisibleTo(window)
         assert window._lbl_live.text().endswith("En direct")
         window.btn_live.toggle()
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Géolocalisation : service de l'appareil, adresse IP en secours
+# ──────────────────────────────────────────────────────────────────────
+
+class _FakeSource:
+    """Service de localisation simulé : répond une position, ou une erreur."""
+    def __init__(self, coord):
+        from PyQt6.QtCore import QObject, pyqtSignal
+
+        class Source(QObject):
+            positionUpdated = pyqtSignal(object)
+            errorOccurred = pyqtSignal(int)
+
+            def requestUpdate(self, _timeout):
+                if coord is None:
+                    self.errorOccurred.emit(2)              # UpdateTimeoutError
+                else:
+                    from PyQt6.QtCore import QDateTime
+                    from PyQt6.QtPositioning import QGeoCoordinate, QGeoPositionInfo
+                    info = QGeoPositionInfo(QGeoCoordinate(*coord), QDateTime.currentDateTime())
+                    info.setAttribute(QGeoPositionInfo.Attribute.HorizontalAccuracy, 25.0)
+                    self.positionUpdated.emit(info)
+
+        self.cls = Source
+
+    def createDefaultSource(self, parent):
+        return self.cls(parent)
+
+
+class _FakeResponse(io.BytesIO):
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+class TestGeolocation:
+    def test_device_position_is_used(self, window, monkeypatch):
+        """Cherbourg donné par le service de l'appareil, nommé par OpenStreetMap."""
+        import gui
+        monkeypatch.setattr(gui, "QGeoPositionInfoSource", _FakeSource((49.6386, -1.6164)))
+        monkeypatch.setattr(gui, "_place_name", lambda lat, lon: "Cherbourg-en-Cotentin")
+        window.geolocate()
+        assert window.entry_lat.text().replace(",", ".") == "49.6386"
+        assert window.location_name == "Cherbourg-en-Cotentin"
+        assert "±25 m" in window.statusBar().currentMessage()
+
+    def test_ip_address_only_as_a_fallback(self, window, monkeypatch):
+        """Service muet : position de l'adresse IP, annoncée comme approximative."""
+        import gui
+        monkeypatch.setattr(gui, "QGeoPositionInfoSource", _FakeSource(None))
+        answer = {"status": "success", "city": "Paris", "country": "France",
+                  "lat": 48.8566, "lon": 2.3522, "timezone": "Europe/Paris"}
+        monkeypatch.setattr(gui.urllib.request, "urlopen",
+                            lambda *a, **k: _FakeResponse(json.dumps(answer).encode()))
+        window.geolocate()
+        assert window.location_name == "Paris"
+        assert "approximative" in window.statusBar().currentMessage()
+

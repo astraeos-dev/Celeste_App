@@ -46,6 +46,8 @@ Dependencies: reportlab
 import os
 from datetime import datetime, timedelta, timezone
 
+from config import APP_VERSION
+
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.pdfgen import canvas as rl_canvas
@@ -266,7 +268,7 @@ def generate_report_pdf(data: dict, output_path: str = None) -> str:
     p.blank()
     p.center("C E L E S T E   --   A S T R O N O M I C A L   O B S E R V A T O R Y",
              color=_FG_BLACK, bold=True, fs=_FS_TITLE)
-    p.center("EPHEMERIS REPORT  --  v3.3  --  VSOP87 + ELP2000-82B",
+    p.center(f"EPHEMERIS REPORT  --  v{APP_VERSION}  --  JPL DE440",
              color=_FG_DKGRAY)
     p.blank()
     p.line(_hline())
@@ -350,7 +352,7 @@ def generate_report_pdf(data: dict, output_path: str = None) -> str:
     # ── FOOTER ────────────────────────────────────────────────────────
     gen_ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     p.line(_hline())
-    p.center(f"Generated {gen_ts} UT  |  Celeste v3.3", color=_FG_GRAY)
+    p.center(f"Generated {gen_ts} UT  |  Celeste v{APP_VERSION}", color=_FG_GRAY)
     p.center("Jean Meeus — Astronomical Algorithms, 2nd ed.", color=_FG_GRAY)
     p.center("VSOP87 (Sun ~1\")  |  ELP2000-82B (Moon ~10\")", color=_FG_GRAY)
     p.blank()

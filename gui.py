@@ -39,6 +39,7 @@ from PyQt6.QtGui import (
     QBrush, QColor, QDesktopServices, QFont, QFontDatabase, QKeySequence,
     QPainter, QPainterPath, QPalette, QPen, QRegularExpressionValidator, QShortcut,
 )
+from PyQt6.QtPositioning import QGeoPositionInfo, QGeoPositionInfoSource
 from PyQt6.QtWidgets import (
     QAbstractItemView, QApplication, QButtonGroup, QCheckBox, QComboBox, QCompleter,
     QDateTimeEdit, QDialog, QDialogButtonBox, QFileDialog, QFrame, QGridLayout,
@@ -56,7 +57,7 @@ from matplotlib.figure import Figure  # noqa: E402
 import charts  # noqa: E402
 import icons  # noqa: E402
 import settings as prefs  # noqa: E402
-from config import FONT_MONO, FONT_SANS, THEME_NAMES, Config, mix  # noqa: E402
+from config import APP_VERSION, FONT_MONO, FONT_SANS, THEME_NAMES, Config, mix  # noqa: E402
 from constellations import STAR_CONSTELLATION  # noqa: E402
 from engine import EPHEMERIS_YEARS, AstroEngine  # noqa: E402
 from i18n import (  # noqa: E402
@@ -66,13 +67,13 @@ from utils import Formatters  # noqa: E402
 
 # ── Constantes ────────────────────────────────────────────────────────────────
 
-APP_VERSION = "3.3"
 
 _FAVORITES_FILE = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "favorites.json")
 _FONTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts")
 
 _AUTO_ZONE = "auto"           # fuseau déduit du lieu (timezonefinder)
+_GEOLOC_TIMEOUT_MS = 15000    # attente du service de localisation de l'appareil
 _PLANETS = ("Venus", "Mars", "Jupiter", "Saturn")
 _QT_DATETIME_FORMAT = "dd/MM/yyyy HH:mm:ss"
 
@@ -189,6 +190,24 @@ def _zone(name, lat=None, lon=None):
 
 def _elev_text(metres):
     return str(int(round(metres)))
+
+
+def _place_name(lat, lon):
+    """Nom de la commune d'un point (OpenStreetMap Nominatim) ; « » sans réponse."""
+    url = ("https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=10"
+           f"&lat={lat:.5f}&lon={lon:.5f}&accept-language={get_lang()}")
+    try:
+        req = urllib.request.Request(url, headers={
+            "User-Agent": f"Celeste/{APP_VERSION} (+https://github.com/astraeos-dev/Celeste_App)"})
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except Exception:  # réseau, délai, JSON : les coordonnées suffisent
+        return ""
+    address = data.get("address") or {}
+    for key in ("city", "town", "village", "municipality", "hamlet"):
+        if address.get(key):
+            return address[key]
+    return data.get("name") or ""
 
 
 def _fmt_lat(lat):
@@ -822,6 +841,8 @@ class AstroApp(QMainWindow):
         self.visible_stars       = []
         self.visible_planets_map = []
         self.hours               = []
+        self._day_start          = None      # minuit local du jour calculé, en TU
+        self._geo_source         = None      # requête au service de localisation en cours
         self.sun_altitudes       = []
         self.moon_altitudes      = []
         self.last_cache_key      = ""
@@ -1674,6 +1695,11 @@ class AstroApp(QMainWindow):
         dte = getattr(self, "_dte", None) or _utc_now()
         return dte.replace(tzinfo=timezone.utc).astimezone(self._zone).utcoffset().total_seconds() / 3600
 
+    def _midnight_offset(self):
+        """Décalage du fuseau au minuit local du jour calculé, en heures."""
+        start = self._day_start or self._dte
+        return (self._local(start) - start).total_seconds() / 3600
+
     def _zone_text(self):
         """« Europe/Paris · UTC+1 » : le fuseau et son décalage à l'instant calculé."""
         return f"{getattr(self._zone, 'key', 'UTC')} · {_fmt_offset(self.utc_offset)}"
@@ -1694,6 +1720,64 @@ class AstroApp(QMainWindow):
     # ──────────────────────────────────────────────────────────────────────────
 
     def geolocate(self):
+        """
+        Position de l'appareil par le service de localisation du système
+        (GPS, Wi-Fi : QtPositioning) ; s'il est absent, refusé ou muet, position
+        approximative d'après l'adresse IP, annoncée comme telle.
+        """
+        if self._geo_source is not None:                     # une requête est en cours
+            return
+        source = QGeoPositionInfoSource.createDefaultSource(self)
+        if source is None:
+            self._geolocate_by_ip()
+            return
+        self._geo_source = source
+        source.positionUpdated.connect(self._on_device_position)
+        source.errorOccurred.connect(self._on_device_position_error)
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        self.statusBar().showMessage(t("errors.geoloc_waiting"))
+        source.requestUpdate(_GEOLOC_TIMEOUT_MS)
+
+    def _end_device_request(self):
+        source, self._geo_source = self._geo_source, None
+        if source is not None:
+            source.positionUpdated.disconnect(self._on_device_position)
+            source.errorOccurred.disconnect(self._on_device_position_error)
+            source.deleteLater()
+            QApplication.restoreOverrideCursor()
+
+    def _on_device_position(self, info):
+        self._end_device_request()
+        coord = info.coordinate()
+        if not coord.isValid():
+            self._geolocate_by_ip()
+            return
+        lat, lon = coord.latitude(), coord.longitude()
+        name = _place_name(lat, lon)
+        self._set_place(lat, lon, name, _zone_at(round(lat, 3), round(lon, 3)))
+        accuracy = info.attribute(QGeoPositionInfo.Attribute.HorizontalAccuracy)
+        precision = f" (±{_num(accuracy)} m)" if accuracy == accuracy and accuracy > 0 else ""
+        self.statusBar().showMessage(
+            tf("errors.geoloc_device", place=name or f"{_fmt_lat(lat)}, {_fmt_lon(lon)}",
+               precision=precision), 8000)
+
+    def _on_device_position_error(self, _error):
+        self._end_device_request()
+        self._geolocate_by_ip()
+
+    def _set_place(self, lat, lon, name, zone=None):
+        """Lieu trouvé par la géolocalisation : coordonnées, nom, fuseau, puis calcul."""
+        self.entry_lat.setText(_coord_text(lat))
+        self.entry_lon.setText(_coord_text(lon))
+        if zone and self.tz_name != _AUTO_ZONE and self.tz_menu.findData(zone) >= 0:
+            self.tz_name = zone
+            self._select_zone(zone)
+        self.location_name = name
+        self.combo_fav.setCurrentIndex(-1)
+        self.calculate()
+
+    def _geolocate_by_ip(self):
+        """Secours : position de l'adresse IP, souvent celle du fournisseur d'accès."""
         url = ("http://ip-api.com/json/"
                "?fields=status,message,country,city,lat,lon,timezone")
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
@@ -1711,18 +1795,11 @@ class AstroApp(QMainWindow):
         if data.get("status") != "success":
             QMessageBox.warning(self, t("errors.geoloc_title"), t("errors.geoloc_fail"))
             return
-        self.entry_lat.setText(_coord_text(float(data["lat"])))
-        self.entry_lon.setText(_coord_text(float(data["lon"])))
-        zone = data.get("timezone")
-        if zone and self.tz_name != _AUTO_ZONE and self.tz_menu.findData(zone) >= 0:
-            self.tz_name = zone
-            self._select_zone(zone)
-        self.location_name = data.get("city") or ""
-        self.combo_fav.setCurrentIndex(-1)
-        self.calculate()
+        self._set_place(float(data["lat"]), float(data["lon"]), data.get("city") or "",
+                        data.get("timezone"))
         self.statusBar().showMessage(
-            tf("errors.geoloc_success", city=data.get("city", "?"),
-               country=data.get("country", "?")), 8000)
+            tf("errors.geoloc_ip", city=data.get("city", "?"),
+               country=data.get("country", "?")), 12000)
 
     def toggle_live(self, checked):
         self.live_mode = bool(checked)
@@ -1844,7 +1921,8 @@ class AstroApp(QMainWindow):
             self.sun_events  = AstroEngine.find_events(dte, lat, lon, "sun", self._zone, elev)
             self.moon_events = AstroEngine.find_events(dte, lat, lon, "moon", self._zone, elev)
             self.hours, self.sun_altitudes, self.moon_altitudes = \
-                charts.sample_day(dte, lat, lon, elevation_m=elev)
+                charts.sample_day(dte, lat, lon, elevation_m=elev, tz=self._zone)
+            self._day_start = AstroEngine._local_day(dte, self._zone)[0]
             self.last_cache_key = key
 
         self.planets = []
@@ -1992,21 +2070,21 @@ class AstroApp(QMainWindow):
     def _draw_trajectory(self):
         if not self.hours:
             return
-        dte = self._dte
+        dte, start = self._dte, self._day_start
+        offset = self._midnight_offset()
         labels = {
-            "title": tf("chart.trajectory_title", date=dte.strftime("%d/%m/%Y")),
-            "xlabel": t("chart.hour_ut"),
+            "title": tf("chart.trajectory_title", date=self._local(start).strftime("%d/%m/%Y")),
+            "xlabel": tf("chart.hour_local", offset=_fmt_offset(offset)),
             "ylabel": t("chart.altitude"),
-            "local_axis": tf("chart.hour_local", offset=_fmt_offset(self.utc_offset)),
+            "top_axis": t("chart.hour_ut"),
             "sun": t("chart.sun"),
             "moon": t("chart.moon"),
         }
         labels.update({p: t(f"chart.phase_{p}") for p in charts.DAY_PHASES})
-        now_h = dte.hour + dte.minute / 60 + dte.second / 3600
+        now_h = (dte - start).total_seconds() / 3600       # depuis minuit local
         self._traj_ax, tip = charts.draw_trajectory(
             self.fig_traj, self.hours, self.sun_altitudes, self.moon_altitudes,
-            now_h, self.sun_data["alt"], self.moon_data["alt"], labels,
-            self.utc_offset)
+            now_h, self.sun_data["alt"], self.moon_data["alt"], labels, offset)
         self._traj_tip.attach(tip)
         self.canvas_traj.draw_idle()
 
@@ -2051,13 +2129,13 @@ class AstroApp(QMainWindow):
             return
         step = self.hours[1] - self.hours[0]
         i = max(0, min(len(self.hours) - 1, int(round(event.xdata / step))))
-        hour = self.hours[i]
-        base = datetime(2000, 1, 1)
-        ut = self._fmt_clock(base + timedelta(hours=hour))
+        hour = self.hours[i]                                  # depuis minuit local
+        base, offset = datetime(2000, 1, 1), self._midnight_offset()
+        ut = self._fmt_clock(base + timedelta(hours=hour - offset))
         first = f"{ut} {t('chart.ut')}"
-        if self.utc_offset:
-            local = self._fmt_clock(base + timedelta(hours=hour + self.utc_offset))
-            first += f"  ·  {local} {t('chart.local')}"
+        if offset:
+            local = self._fmt_clock(base + timedelta(hours=hour))
+            first = f"{local} {t('chart.local')}  ·  {first}"
         tip.set_text(f"{first}\n"
                      f"{charts.SYMBOL['Sun']} {t('chart.sun')}  {_deg(self.sun_altitudes[i], 1, True)}\n"
                      f"{charts.SYMBOL['Moon']} {t('chart.moon')}  {_deg(self.moon_altitudes[i], 1, True)}")

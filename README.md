@@ -26,10 +26,12 @@ Jour et Observation), avec des graphiques interactifs et une carte du ciel.
 - **Événements du jour** — lever, coucher, culmination, durée du jour ; crépuscules civil (−6°), nautique (−12°) et astronomique (−18°)
 - **Phase de la Lune** — nom de la phase, fraction éclairée, âge et distance de la Lune
 - **Mode temps réel** — mise à jour automatique toutes les 2 s (réglable)
-- **Géolocalisation automatique** — position et fuseau détectés via ip-api.com
+- **Géolocalisation** — position de l'appareil par le service de localisation du système (GPS, Wi-Fi), nom de la
+  commune par OpenStreetMap ; à défaut, position approximative d'après l'adresse IP (ip-api.com), signalée comme telle
 - **Trajectoire sur 24 h** — courbes de hauteur sur un fond coloré selon le moment de la journée (jour, crépuscules, nuit),
-  heure locale en haut, info-bulle au survol
-- **Carte du ciel polaire** — zénith au centre, étoiles à la taille de leur magnitude, constellations, planètes ;
+  sur le jour local (heure locale en bas, TU en haut), info-bulle au survol
+- **Carte du ciel polaire** — zénith au centre, étoiles (ramenées à la date : précession, nutation, aberration) à la
+  taille de leur magnitude, constellations, planètes ;
   info-bulle au survol et fiche détaillée au clic (constellation, magnitude, coordonnées)
 - **Planètes** — tableau de Vénus, Mars, Jupiter et Saturne (coordonnées, distance, élongation, visibilité) et système
   solaire vu de dessus, en vue rapprochée et en vue d'ensemble
@@ -95,7 +97,8 @@ Changer la date recalcule tout au bout d'un instant.
 **Boutons :**
 
 - Horloge, à droite de la date — revient à l'instant présent
-- Viseur, à droite de la longitude — remplit la latitude, la longitude et le fuseau à partir de l'adresse IP
+- Viseur, à droite de la longitude — remplit la latitude, la longitude et le fuseau à partir du service de localisation
+  de l'appareil (à autoriser dans les réglages de confidentialité de Windows ou de macOS) ; sinon, de l'adresse IP
 - **Calculer** (`F5`) — lance les calculs pour la date et le lieu saisis
 - **Suivre en temps réel** (`Ctrl+L`) — bouton à bascule : suit l'heure actuelle tant qu'il reste enfoncé (intervalle
   réglable dans les paramètres)

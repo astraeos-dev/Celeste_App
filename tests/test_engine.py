@@ -613,3 +613,62 @@ class TestZonesAndObserver:
         illum, age = AstroEngine.moon_phase(AstroEngine.julian_century_j2000(datetime(2026, 11, 2, 12)))
         assert abs(illum - 42.90961) < 0.02
         assert 22.5 < age < 23.0
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Catalogue stars brought to the date (sky map)
+# ──────────────────────────────────────────────────────────────────────
+
+class TestStarsOfTheDate:
+    """J2000 star positions precessed to the date, checked by Meeus's rigorous precession (chap. 21)."""
+
+    ALDEBARAN = (4.5988, 16.5093)                    # J2000, constellations.py
+    WHEN, PARIS = datetime(2026, 11, 2, 22), (48.8566, 2.3522)
+
+    @staticmethod
+    def _precess_meeus(ra_h, dec_deg, t):
+        """Equatorial precession J2000 → date (Meeus 21.2 and 21.3), without nutation nor aberration."""
+        arcsec = lambda x: math.radians(x / 3600.0)
+        zeta  = arcsec(2306.2181 * t + 0.30188 * t * t + 0.017998 * t ** 3)
+        z     = arcsec(2306.2181 * t + 1.09468 * t * t + 0.018203 * t ** 3)
+        theta = arcsec(2004.3109 * t - 0.42665 * t * t - 0.041833 * t ** 3)
+        a0, d0 = math.radians(ra_h * 15.0), math.radians(dec_deg)
+        A = math.cos(d0) * math.sin(a0 + zeta)
+        B = math.cos(theta) * math.cos(d0) * math.cos(a0 + zeta) - math.sin(theta) * math.sin(d0)
+        C = math.sin(theta) * math.cos(d0) * math.cos(a0 + zeta) + math.cos(theta) * math.sin(d0)
+        return (math.degrees(math.atan2(A, B) + z) % 360.0) / 15.0, math.degrees(math.asin(C))
+
+    def _separation_arcsec(self, alt1, az1, alt2, az2):
+        return AstroEngine.angular_separation(az1 / 15.0, alt1, az2 / 15.0, alt2) * 3600.0
+
+    def test_matches_rigorous_precession(self):
+        """Within 1′ of Meeus's precession (the rest: nutation and aberration, ~40″ at most)."""
+        t = AstroEngine.julian_century_j2000(self.WHEN)
+        jd = AstroEngine.julian_day(self.WHEN)
+        alt, az = AstroEngine.stars_horizontal(t, *self.PARIS, [self.ALDEBARAN[0]], [self.ALDEBARAN[1]])
+        ra, dec = self._precess_meeus(*self.ALDEBARAN, t)
+        ref_alt, ref_az = AstroEngine.equatorial_to_horizontal(jd, *self.PARIS, ra, dec)
+        assert self._separation_arcsec(alt[0], az[0], ref_alt, ref_az) < 60.0
+
+    def test_j2000_position_is_a_third_of_a_degree_off(self):
+        """The bug fixed: the J2000 coordinates used as such are ~0.37° off in 2026."""
+        t = AstroEngine.julian_century_j2000(self.WHEN)
+        jd = AstroEngine.julian_day(self.WHEN)
+        alt, az = AstroEngine.stars_horizontal(t, *self.PARIS, [self.ALDEBARAN[0]], [self.ALDEBARAN[1]])
+        old_alt, old_az = AstroEngine.equatorial_to_horizontal(jd, *self.PARIS, *self.ALDEBARAN)
+        assert self._separation_arcsec(alt[0], az[0], old_alt, old_az) > 0.3 * 3600
+
+    def test_whole_catalogue_at_once(self):
+        from constellations import STARS
+        t = AstroEngine.julian_century_j2000(self.WHEN)
+        alts, azs = AstroEngine.stars_horizontal(t, *self.PARIS, [s[0] for s in STARS.values()],
+                                                 [s[1] for s in STARS.values()])
+        assert len(alts) == len(azs) == len(STARS)
+        assert all(-90 <= a <= 90 for a in alts) and all(0 <= z < 360 for z in azs)
+
+
+def test_version_is_single_sourced():
+    """The engine's docstring describes the version the interface and the PDF show."""
+    import engine
+    from config import APP_VERSION
+    assert f"v{APP_VERSION}" in engine.__doc__

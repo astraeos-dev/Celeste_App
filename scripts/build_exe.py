@@ -6,7 +6,10 @@ scripts/build_exe.py — Construit Céleste.exe pour Windows
 2. dessine l'icône (build/icons/celeste.ico) depuis assets/astraeos-icone.svg ;
 3. lance PyInstaller avec celeste.spec ;
 4. vérifie que l'application construite démarre (--self-test) ;
-5. réunit le résultat dans dist/Celeste-<version>-Windows.zip.
+5. réunit le résultat dans dist/Celeste-<version>-Windows.zip ;
+6. avec Inno Setup 6, construit le programme d'installation
+   dist/Celeste-<version>-Setup.exe (installer/celeste.iss), à l'icône de
+   Céleste.
 
 Usage, sous Windows : python scripts/build_exe.py      (pip install pyinstaller)
 """
@@ -74,6 +77,29 @@ def package():
     print("archive :", archive)
 
 
+def iscc():
+    """Compilateur d'Inno Setup 6 : $ISCC, le PATH, puis son dossier d'installation."""
+    candidates = [os.environ.get("ISCC"), shutil.which("ISCC"), shutil.which("iscc")]
+    for base in (os.environ.get("ProgramFiles(x86)"), os.environ.get("ProgramFiles")):
+        if base:
+            candidates.append(os.path.join(base, "Inno Setup 6", "ISCC.exe"))
+    return next((c for c in candidates if c and os.path.isfile(c)), None)
+
+
+def make_installer():
+    """Programme d'installation Inno Setup, si le compilateur est là (Windows)."""
+    from config import APP_VERSION
+    compiler = iscc()
+    if compiler is None:
+        print("Inno Setup 6 introuvable : pas de programme d'installation")
+        return None
+    subprocess.check_call([compiler, f"/DAppVersion={APP_VERSION}",
+                           os.path.join(ROOT, "installer", "celeste.iss")], cwd=ROOT)
+    setup = os.path.join(ROOT, "dist", f"Celeste-{APP_VERSION}-Setup.exe")
+    print("installation :", setup)
+    return setup
+
+
 def main():
     print("éphéméride :", ensure_ephemeris())
     make_icons()
@@ -81,6 +107,7 @@ def main():
                            "celeste.spec"], cwd=ROOT)
     self_test()
     package()
+    make_installer()
 
 
 if __name__ == "__main__":

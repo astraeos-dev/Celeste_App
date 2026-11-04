@@ -1,7 +1,8 @@
 name: Build — application Windows
 
 # Construit Céleste.exe pour Windows (PyInstaller, éphéméride incluse),
-# vérifie que l'application démarre, et publie l'archive en artefact.
+# vérifie que l'application démarre, puis publie en artefacts le programme
+# d'installation (Inno Setup) et le dossier de l'application.
 # À lancer depuis l'onglet Actions, ou en poussant un tag v*.
 on:
   workflow_dispatch:
@@ -34,14 +35,30 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt "pyinstaller>=6"
 
-      - name: Build, self-test and zip
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) {
+            choco install innosetup -y --no-progress
+          }
+
+      - name: Build, self-test, zip and installer
         env:
           QT_QPA_PLATFORM: offscreen
         run: python scripts/build_exe.py
 
-      - name: Upload the application
+      # Les artefacts sont téléchargés en .zip : l'installateur tel quel, et le
+      # dossier de l'application (sans second zip à l'intérieur)
+      - name: Upload the installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: Celeste-Windows-Setup
+          path: dist/Celeste-*-Setup.exe
+          if-no-files-found: error
+
+      - name: Upload the application folder
         uses: actions/upload-artifact@v4
         with:
           name: Celeste-Windows
-          path: dist/Celeste-*.zip
+          path: dist/Celeste/
           if-no-files-found: error

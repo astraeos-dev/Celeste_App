@@ -201,6 +201,7 @@ Celeste_App/
 ├── assets/              # Symbole et icône Astræos (SVG), terres, planètes mineures (JPL Horizons), licence des icônes
 ├── scripts/             # Construction de l'application, catalogue d'étoiles, table des planètes mineures
 ├── celeste.spec         # Recette PyInstaller de Celeste.exe (Windows)
+├── installer/           # Programme d'installation Inno Setup (celeste.iss)
 ├── requirements.txt     # Dépendances d'exécution
 ├── requirements-dev.txt # Dépendances de développement (pytest)
 └── tests/               # Tests unitaires (moteur, graphiques, interface, thèmes, i18n, utilitaires)
@@ -286,8 +287,9 @@ Céleste se construit en application Windows autonome (`Celeste.exe`) avec [PyIn
 l'application fonctionne hors ligne dès le premier lancement.
 
 - **Depuis GitHub** : onglet *Actions*, workflow « Build — application Windows », bouton *Run workflow* (ou pousser un
-  tag `v*`). L'archive `Celeste-<version>-Windows.zip` est dans les artefacts du run : la décompresser, puis lancer
-  `Celeste\Celeste.exe`.
+  tag `v*`). Deux artefacts : `Celeste-Windows-Setup`, le programme d'installation `Celeste-<version>-Setup.exe`
+  (raccourcis du menu Démarrer et du Bureau, désinstallation depuis les paramètres de Windows), et `Celeste-Windows`,
+  le dossier de l'application à lancer sans installer (`Celeste.exe`).
 - **Sur un PC Windows** :
 
 ```bash
@@ -296,9 +298,11 @@ python scripts/build_exe.py
 ```
 
 Le script place l'éphéméride dans `data/`, dessine l'icône depuis `assets/astraeos-icone.svg`, lance PyInstaller
-(`celeste.spec`), vérifie que l'application démarre (`--self-test`) et crée l'archive dans `dist/`. L'application n'est
-pas signée : au premier lancement, SmartScreen affiche « Windows a protégé votre ordinateur » (*Informations
-complémentaires*, puis *Exécuter quand même*).
+(`celeste.spec`), vérifie que l'application démarre (`--self-test`) et crée l'archive dans `dist/`. Si
+[Inno Setup 6](https://jrsoftware.org/isinfo.php) est installé, il construit aussi le programme d'installation
+(`installer/celeste.iss`, à l'icône de Céleste). Ni l'un ni l'autre n'est signé : au premier lancement, SmartScreen
+affiche « Windows a protégé votre ordinateur » (*Informations complémentaires*, puis *Exécuter quand même*). Les
+préférences et les favoris (`%USERPROFILE%\.celeste`) survivent à une désinstallation.
 
 [PyInstaller]: https://pyinstaller.org/
 

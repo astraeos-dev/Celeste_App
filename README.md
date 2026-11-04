@@ -188,6 +188,10 @@ sous licence SIL Open Font License 1.1 ; icônes Material Design Icons (Pictogra
 
 ## Architecture
 
+> **Modifier Céleste** : des fiches pratiques (textes et infobulles, ajouter une planète mineure, une comète, une
+> étoile, une langue, tester, publier une version) sont dans [`docs/wiki`](docs/wiki/Home.md) et dans le
+> [wiki](https://github.com/astraeos-dev/Celeste_App/wiki) du dépôt.
+
 Le projet suit le modèle **MVC (modèle-vue-contrôleur)** :
 
 ```

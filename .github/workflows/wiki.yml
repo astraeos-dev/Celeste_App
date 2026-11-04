@@ -1,0 +1,47 @@
+name: Wiki — publication des fiches
+
+# Recopie docs/wiki/ dans le wiki GitHub du dépôt à chaque modification sur
+# master (ou depuis l'onglet Actions). Les fiches se modifient dans le dépôt :
+# une page changée directement dans le wiki serait écrasée.
+#
+# Une seule fois avant la première publication : activer le wiki (Settings ›
+# General › Features › Wikis) et y créer une première page, quelle qu'elle soit.
+on:
+  push:
+    branches: [ master ]
+    paths: [ "docs/wiki/**" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    name: Publier le wiki
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Copy docs/wiki to the wiki
+        env:
+          # un jeton personnel (secret WIKI_TOKEN) si GITHUB_TOKEN ne peut pas écrire dans le wiki
+          TOKEN: ${{ secrets.WIKI_TOKEN || github.token }}
+        run: |
+          if ! git clone --depth 1 "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.wiki.git" wiki; then
+            echo "::error::Wiki introuvable : activez-le (Settings › Features › Wikis) et créez-y une première page."
+            exit 1
+          fi
+          rsync -a --delete --exclude .git docs/wiki/ wiki/
+          # liens entre fiches : « Page.md » dans le dépôt, « Page » dans le wiki
+          sed -i -E 's/\]\(([A-Za-z0-9_-]+)\.md(#[^)]*)?\)/](\1\2)/g' wiki/*.md
+          cd wiki
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Le wiki est déjà à jour."
+            exit 0
+          fi
+          git commit -m "Fiches de docs/wiki (${GITHUB_SHA::7})"
+          git push

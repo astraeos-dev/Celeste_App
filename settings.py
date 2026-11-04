@@ -60,6 +60,9 @@ _DEFAULTS = {
     "coord_angular":   "equatorial",     # angles : ecliptic | equatorial | horizontal
     "coord_ecliptic_from": "sun",        # angles écliptiques vus du : sun | earth
     "coord_angle_format": "global",      # angles du tableau : global (paramètres) | dms | dm | dd
+    # Onglet Planètes
+    "planet_group":   "planets",    # astres du tableau : all | planets | minor
+    "planet_visible_only": False,   # seulement les astres au-dessus de l'horizon
 }
 
 # ── État interne ───────────────────────────────────────────────────────────────

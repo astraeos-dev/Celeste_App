@@ -227,7 +227,13 @@
     "group_planets_tip": "Mercure à Neptune",
     "group_minor": "Planètes mineures",
     "group_minor_tip": "Cérès, Pallas, Junon, Vesta et les planètes naines Pluton, Éris, Haumea et Makemake (positions JPL)",
-    "group_legend": "Astres affichés"
+    "group_legend": "Astres affichés",
+    "group_all": "Tous",
+    "group_all_tip": "Planètes et planètes mineures",
+    "visible_only": "Visibles seulement",
+    "visible_only_tip": "Seulement les astres au-dessus de l'horizon à l'instant calculé ; cliquez sur un en-tête pour trier",
+    "sorted_ascending": "Trié par ordre croissant (cliquez pour inverser)",
+    "sorted_descending": "Trié par ordre décroissant (cliquez pour inverser)"
   },
   "chart": {
     "trajectory_title": "Hauteur du Soleil et de la Lune — {date}",

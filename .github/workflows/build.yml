@@ -35,6 +35,17 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt "pyinstaller>=6"
 
+      # Pour un tag v<version>, le tag et APP_VERSION (config.py) doivent concorder
+      - name: Check the version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $version = python -c "from config import APP_VERSION; print(APP_VERSION)"
+          if ("v$version" -ne "${{ github.ref_name }}") {
+            Write-Error "Tag ${{ github.ref_name }} != APP_VERSION $version (config.py)"
+            exit 1
+          }
+
       - name: Install Inno Setup
         shell: pwsh
         run: |

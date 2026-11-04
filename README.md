@@ -290,6 +290,9 @@ l'application fonctionne hors ligne dès le premier lancement.
   tag `v*`). Deux artefacts : `Celeste-Windows-Setup`, le programme d'installation `Celeste-<version>-Setup.exe`
   (raccourcis du menu Démarrer et du Bureau, désinstallation depuis les paramètres de Windows), et `Celeste-Windows`,
   le dossier de l'application à lancer sans installer (`Celeste.exe`).
+- **Nouvelle version** : changer `APP_VERSION` dans `config.py` (seul endroit : fenêtre, installateur, demandes
+  GitHub), fusionner, puis pousser le tag correspondant (`git tag v4.2 && git push origin v4.2`) ; le workflow vérifie
+  que le tag et `APP_VERSION` concordent.
 - **Sur un PC Windows** :
 
 ```bash

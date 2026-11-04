@@ -312,6 +312,24 @@ def _ics_calendar(items, stamp):
     return "".join(_ics_fold(line) + "\r\n" for line in lines)
 
 
+# Groupes d'astres de l'onglet Planètes, dans leur ordre : un nouveau groupe
+# (comètes, ciel profond…) s'ajoute ici avec ses noms, et une clé
+# planets.group_<clé> dans les traductions
+_BODY_GROUPS = (("planets", PLANETS), ("minor", MINOR_PLANETS))
+_SORT_ROLE = Qt.ItemDataRole.UserRole          # valeur numérique du tri d'une cellule
+_NAME_ROLE = Qt.ItemDataRole.UserRole + 1      # nom de l'astre d'une ligne
+
+
+class _SortItem(QTableWidgetItem):
+    """Cellule triée selon sa valeur numérique (_SORT_ROLE), pas selon son texte."""
+
+    def __lt__(self, other):
+        mine, theirs = self.data(_SORT_ROLE), other.data(_SORT_ROLE)
+        if mine is None or theirs is None:
+            return (mine is None) < (theirs is None)            # « — » à la fin
+        return mine < theirs
+
+
 def _issue_url(template):
     """Nouvelle demande sur GitHub, formulaire *template* (bug, feature, body) prérempli
     avec la version de Céleste et le système."""
@@ -1325,20 +1343,31 @@ class AstroApp(QMainWindow):
         lay.setContentsMargins(0, 16, 0, 16)
         lay.setSpacing(16)
 
-        # planètes ou planètes mineures, au choix
-        self._planet_group = "planets"
-        self._planet_selector = SelecteurTheme(
-            self._planet_group, self._on_planet_group,
-            [("planets", t("planets.group_planets"), t("planets.group_planets_tip")),
-             ("minor", t("planets.group_minor"), t("planets.group_minor_tip"))],
-            t("planets.group_legend"))
-        self._planet_selector.setMaximumWidth(460)
-        lay.addWidget(self._planet_selector)
+        # tous les astres, ou un groupe ; seulement ceux au-dessus de l'horizon
+        self._planet_group = prefs.get("planet_group") or "planets"
+        if self._planet_group not in ("all",) + tuple(k for k, _names in _BODY_GROUPS):
+            self._planet_group = "planets"
+        options = [("all", t("planets.group_all"), t("planets.group_all_tip"))]
+        options += [(key, t(f"planets.group_{key}"), t(f"planets.group_{key}_tip"))
+                    for key, _names in _BODY_GROUPS]
+        self._planet_selector = SelecteurTheme(self._planet_group, self._on_planet_group, options,
+                                               t("planets.group_legend"))
+        self._planet_selector.setMaximumWidth(620)
+        self._planet_visible = QCheckBox(t("planets.visible_only"))
+        self._planet_visible.setToolTip(t("planets.visible_only_tip"))
+        self._planet_visible.setChecked(bool(prefs.get("planet_visible_only")))
+        self._planet_visible.toggled.connect(self._on_planet_visible)
+        bar = QHBoxLayout()
+        bar.setSpacing(24)
+        bar.addWidget(self._planet_selector, stretch=1)
+        bar.addWidget(self._planet_visible)
+        bar.addStretch()
+        lay.addLayout(bar)
 
         # la visibilité se lit à la couleur du nom (vive au-dessus de l'horizon)
         columns = ["col_planet", "col_ra", "col_dec", "col_alt", "col_az", "col_dist",
                    "col_elong", "col_mag", "col_rise", "col_transit", "col_set"]
-        bodies = _PLANETS + MINOR_PLANETS
+        bodies = tuple(name for _key, names in _BODY_GROUPS for name in names)
         table = QTableWidget(len(bodies), len(columns))
         table.setHorizontalHeaderLabels([t(f"planets.{c}") for c in columns])
         table.verticalHeader().setVisible(False)
@@ -1360,7 +1389,8 @@ class AstroApp(QMainWindow):
         for r, name in enumerate(bodies):
             items = {}
             for c, col in enumerate(columns):
-                item = QTableWidgetItem("—")
+                item = _SortItem("—")
+                item.setData(_NAME_ROLE, name)
                 item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
                 if col == "col_planet":
                     item.setText(_planet_name(name, symbol=True))
@@ -1373,8 +1403,18 @@ class AstroApp(QMainWindow):
                     item.setFont(mono)
                 table.setItem(r, c, item)
                 items[col] = item
+            items["col_planet"].setData(_SORT_ROLE, r)                # ordre du Système solaire
             self._planet_items[name] = items
         self.planet_table = table
+        # la dernière colonne s'étire : jamais de défilement horizontal pour quelques pixels
+        table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._planet_alt = {}
+        # clic sur un en-tête : tri croissant puis décroissant ; « Planète » : ordre naturel.
+        # La colonne triée a son en-tête en or (la flèche de Qt élargirait toutes les colonnes)
+        table.setSortingEnabled(True)
+        header.setSortIndicatorShown(False)
+        table.sortItems(0, Qt.SortOrder.AscendingOrder)
+        header.sortIndicatorChanged.connect(self._on_planet_sort)
         self._show_planet_group()
         lay.addWidget(table)
 
@@ -1390,16 +1430,42 @@ class AstroApp(QMainWindow):
 
     def _on_planet_group(self, key):
         self._planet_group = key
+        prefs.set("planet_group", key)
         self._show_planet_group()
 
+    def _on_planet_visible(self, checked):
+        prefs.set("planet_visible_only", bool(checked))
+        self._show_planet_group()
+
+    def _on_planet_sort(self, column, order):
+        table = self.planet_table
+        for c in range(table.columnCount()):
+            item = table.horizontalHeaderItem(c)
+            sorted_here = c == column and c != 0
+            item.setForeground(QBrush(QColor(Config.OR)) if sorted_here else QBrush())
+            item.setToolTip(t("planets.sorted_" + ("ascending" if order == Qt.SortOrder.AscendingOrder
+                                                    else "descending")) if sorted_here else "")
+        self._show_planet_group()
+
+    _PLANET_ROWS_MAX = 8            # au-delà, le tableau défile
+
     def _show_planet_group(self):
-        """N'affiche que les lignes du groupe choisi : planètes ou planètes mineures."""
-        shown = _PLANETS if self._planet_group == "planets" else MINOR_PLANETS
-        for r, name in enumerate(_PLANETS + MINOR_PLANETS):
-            self.planet_table.setRowHidden(r, name not in shown)
-        self.planet_table.resizeColumnsToContents()
-        header = self.planet_table.horizontalHeader()
-        self.planet_table.setFixedHeight(40 * len(shown) + header.sizeHint().height() + 4)
+        """N'affiche que les astres du groupe choisi, et seulement ceux au-dessus
+        de l'horizon si « Visibles seulement » est cochée."""
+        group = dict(_BODY_GROUPS).get(self._planet_group)
+        visible_only = self._planet_visible.isChecked()
+        table = self.planet_table
+        shown = 0
+        for r in range(table.rowCount()):
+            name = table.item(r, 0).data(_NAME_ROLE)
+            hide = bool((group is not None and name not in group) or (
+                visible_only and float(self._planet_alt.get(name, 0.0)) <= 0.0))
+            table.setRowHidden(r, hide)
+            shown += not hide
+        table.resizeColumnsToContents()
+        header = table.horizontalHeader()
+        rows = max(1, min(shown, self._PLANET_ROWS_MAX))
+        table.setFixedHeight(40 * rows + header.sizeHint().height() + 4)
 
     # ── Onglet Coordonnées ────────────────────────────────────────────────────
     #    x, y, z et distance selon l'origine « cartésiennes » ; deux angles selon
@@ -2342,8 +2408,15 @@ class AstroApp(QMainWindow):
             _set_pastille(self._lbl_moon_state, t("common.below_horizon"), "neutre")
 
     def _update_planet_table(self):
+        table = self.planet_table
+        table.setSortingEnabled(False)                   # pas de tri pendant la mise à jour
         for p in self.planets + self.minor_planets:
             items = self._planet_items[p["name"]]
+            self._planet_alt[p["name"]] = float(p["alt"])
+            for col, value in (("col_ra", p["ra"]), ("col_dec", p["dec"]), ("col_alt", p["alt"]),
+                               ("col_az", p["az"]), ("col_dist", p["dist"]), ("col_elong", p["elong"]),
+                               ("col_mag", p["mag"])):
+                items[col].setData(_SORT_ROLE, float(value))
             items["col_mag"].setText(_num(p["mag"], 1))
             side = t("coords.east") if p["east"] else t("coords.west")
             items["col_ra"].setText(_ra(p["ra"]))
@@ -2355,10 +2428,17 @@ class AstroApp(QMainWindow):
             events = self.planet_events.get(p["name"], {})
             for key in ("rise", "transit", "set"):
                 items[f"col_{key}"].setText(self._format_event(events.get(key)))
+                when = events.get(key)
+                items[f"col_{key}"].setData(_SORT_ROLE, when.timestamp() if when is not None
+                                            and when.tzinfo else (when - datetime(1970, 1, 1)).total_seconds()
+                                            if when is not None else None)
             up = p["alt"] > 0
             name = items["col_planet"]
             name.setForeground(QBrush(QColor(Config.ENCRE if up else Config.ENCRE_ATTENUEE)))
             name.setToolTip(t("common.visible" if up else "common.below_horizon"))
+        table.setSortingEnabled(True)
+        table.horizontalHeader().setSortIndicatorShown(False)     # setSortingEnabled la remet
+        self._show_planet_group()
 
     def _update_status(self):
         if self._lat is None:

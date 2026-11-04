@@ -31,6 +31,7 @@ pytest.importorskip("PyQt6.QtWidgets", reason="PyQt6 ou les bibliothèques de Qt
 pytest.importorskip("matplotlib")
 
 from matplotlib.backend_bases import MouseEvent  # noqa: E402
+from PyQt6.QtCore import Qt  # noqa: E402
 from PyQt6.QtWidgets import (  # noqa: E402
     QAbstractButton, QApplication, QDialog, QFrame, QLabel,
 )
@@ -126,7 +127,37 @@ class TestCalculation:
         assert re.match(r"^\d,\d$", vesta["col_mag"].text())               # Vesta : magnitude 6 à 8
         assert re.match(r"^\d\d:\d\d$", vesta["col_rise"].text())
         window._planet_selector.buttons["planets"].click()
-        assert table.isRowHidden(list(window._planet_items).index("Vesta"))
+        vesta_row = window._planet_items["Vesta"]["col_planet"].row()
+        assert table.isRowHidden(vesta_row)
+
+    def _shown(self, window):
+        table = window.planet_table
+        return [table.item(r, 0).data(Qt.ItemDataRole.UserRole + 1) for r in range(table.rowCount())
+                if not table.isRowHidden(r)]
+
+    def test_all_bodies_and_visible_only(self, window):
+        """Issue #21 : tous les astres, ou seulement ceux au-dessus de l'horizon."""
+        window._planet_selector.buttons["all"].click()
+        assert len(self._shown(window)) == 15
+        window._planet_visible.setChecked(True)
+        up = self._shown(window)
+        assert 0 < len(up) < 15
+        assert all(window._planet_alt[name] > 0 for name in up)
+        window._planet_visible.setChecked(False)
+        window._planet_selector.buttons["planets"].click()
+
+    def test_sort_by_magnitude(self, window):
+        """Clic sur « Mag. » : du plus brillant au plus faible ; « Planète » : ordre du Système solaire."""
+        table = window.planet_table
+        window._planet_selector.buttons["all"].click()
+        mag = [table.horizontalHeaderItem(c).text() for c in range(table.columnCount())].index("Mag.")
+        table.sortItems(mag, Qt.SortOrder.AscendingOrder)
+        names = self._shown(window)
+        values = [window._planet_items[n]["col_mag"].data(Qt.ItemDataRole.UserRole) for n in names]
+        assert values == sorted(values) and names[0] == "Venus"
+        table.sortItems(0, Qt.SortOrder.AscendingOrder)
+        assert self._shown(window)[:3] == ["Mercury", "Venus", "Mars"]
+        window._planet_selector.buttons["planets"].click()
 
     def test_invalid_latitude_is_flagged_without_dialog(self, window):
         """L'erreur s'affiche sous le champ (ChampSaisie), sans fenêtre."""
@@ -808,7 +839,8 @@ class TestLinks:
         window._propose_body.click()
         assert opened[0] == "https://buymeacoffee.com/gregorychau"
         assert opened[1].startswith("https://github.com/astraeos-dev/Celeste_App/issues/new?template=bug.yml")
-        assert "version=4.1" in opened[1] and "system=" in opened[1]
+        from config import APP_VERSION
+        assert f"version={APP_VERSION}" in opened[1] and "system=" in opened[1]
         assert "template=body.yml" in opened[2]
 
     def test_every_issue_form_exists(self):

@@ -33,6 +33,14 @@ v4.1:
     totality or annularity and zone of partiality of a solar eclipse; where
     the Moon is up during a lunar eclipse
 
+v4.2:
+  • MINOR_PLANETS — Ceres, Pallas, Juno, Vesta (JPL Horizons tables) and the
+    dwarf planets Pluto (DE440), Eris, Haumea, Makemake; H, G magnitudes
+  • find_moon_events(), find_seasons() — the Moon's conjunctions with planets
+    and bright stars, perigees, apogees; equinoxes, solstices, apsides
+  • event_visibility(), moon_occultation() — when an event is seen from the
+    observer, occultations; eclipse_local() — local circumstances
+
 The ephemeris (32 MB) is looked for in data/ next to this module, then in
 ~/.celeste (or $CELESTE_DATA), where it is downloaded from the JPL/NAIF
 server the first time (load_ephemeris()).

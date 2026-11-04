@@ -1,8 +1,8 @@
 ﻿; installer/celeste.iss — programme d'installation de Céleste pour Windows (Inno Setup 6)
 ;
 ; Construit par scripts/build_exe.py après PyInstaller (dist/Celeste/) :
-;   ISCC.exe /DAppVersion=4.1 installer\celeste.iss
-; donne dist\Celeste-4.1-Setup.exe. Le fichier est en UTF-8 avec BOM (accents).
+;   ISCC.exe /DAppVersion=4.2 installer\celeste.iss
+; donne dist\Celeste-4.2-Setup.exe. Le fichier est en UTF-8 avec BOM (accents).
 
 #ifndef AppVersion
   #define AppVersion "dev"

@@ -112,7 +112,21 @@ class TestCalculation:
         assert re.match(r"^\d+,\d{4}$", items["col_dist"].text())      # l'unité est dans l'en-tête
         assert items["col_planet"].toolTip() == "Visible"
         assert re.match(r"^\d\d:\d\d$", items["col_rise"].text())
-        assert window.planet_table.rowCount() == 7                         # Mercure à Neptune
+        shown = [r for r in range(window.planet_table.rowCount()) if not window.planet_table.isRowHidden(r)]
+        assert len(shown) == 7                                             # Mercure à Neptune
+
+    def test_minor_planets_of_the_planet_table(self, window):
+        """Le choix « Planètes mineures » montre Cérès … Makemake, magnitude comprise."""
+        window._planet_selector.buttons["minor"].click()
+        table = window.planet_table
+        shown = [table.item(r, 0).text().split(" ", 1)[-1] for r in range(table.rowCount())
+                 if not table.isRowHidden(r)]
+        assert shown == ["Cérès", "Pallas", "Junon", "Vesta", "Pluton", "Éris", "Haumea", "Makemake"]
+        vesta = window._planet_items["Vesta"]
+        assert re.match(r"^\d,\d$", vesta["col_mag"].text())               # Vesta : magnitude 6 à 8
+        assert re.match(r"^\d\d:\d\d$", vesta["col_rise"].text())
+        window._planet_selector.buttons["planets"].click()
+        assert table.isRowHidden(list(window._planet_items).index("Vesta"))
 
     def test_invalid_latitude_is_flagged_without_dialog(self, window):
         """L'erreur s'affiche sous le champ (ChampSaisie), sans fenêtre."""
@@ -315,13 +329,75 @@ class TestEvents:
         from PyQt6.QtWidgets import QPushButton
         window._search_conjunctions_gui()
         qapp.processEvents()
-        buttons = [b for b in window.findChildren(QPushButton) if b.text() == "Carte"]
-        assert len(buttons) == len(_event_cards(window))
+        buttons = [b for card in _event_cards(window) for b in card.findChildren(QPushButton)
+                   if b.text() == "Carte"]
+        assert 0 < len(buttons) < len(_event_cards(window))     # saisons, périgées : sans carte
         buttons[0].click()
         qapp.processEvents()
         dlg = window._event_dialog
         assert dlg.isVisible() and dlg.windowTitle() == "Carte de l'évènement"
         dlg.close()
+
+    def _texts(self, window):
+        return [" ".join(lbl.text() for lbl in c.findChildren(QLabel)) for c in _event_cards(window)]
+
+    def test_moon_seasons_and_minor_planets(self, window):
+        """Lune, saisons et planètes mineures parmi les évènements de l'année."""
+        window._search_conjunctions_gui()
+        texts = self._texts(window)
+        assert any("Solstice de décembre" in x and "21/12/2026 20:50 TU" in x for x in texts)
+        assert any("Lune au périgée" in x and "Super lune" in x for x in texts)     # 24/12/2026
+        assert any("Lune et" in x for x in texts)
+        assert any("Vesta à l'opposition" in x for x in texts) is False           # en 2027 : non
+        assert any(x.startswith("☍") or "à l'opposition" in x for x in texts)
+
+    def test_visibility_line(self, window):
+        """Chaque conjonction dit si on la voit d'ici, et quand."""
+        window._search_conjunctions_gui()
+        for text in self._texts(window):
+            if "Lune et" in text:
+                assert "Visible" in text or "Inobservable" in text
+                break
+        else:
+            pytest.fail("aucune conjonction de la Lune")
+
+    def test_filters(self, window):
+        window._search_conjunctions_gui()
+        everything = len(_event_cards(window))
+        window._evt_filters["moon"].setChecked(False)
+        without_moon = self._texts(window)
+        assert len(without_moon) < everything and not any("Lune et" in x for x in without_moon)
+        window._evt_filters["visible"].setChecked(True)
+        visible = self._texts(window)
+        assert len(visible) < len(without_moon)
+        assert not any("Inobservable" in x for x in visible)
+        window._evt_filters["moon"].setChecked(True)
+        window._evt_filters["visible"].setChecked(False)
+        assert len(_event_cards(window)) == everything
+
+    def test_export_ics(self, window, tmp_path, monkeypatch):
+        """Les évènements affichés vont dans un agenda iCalendar."""
+        import gui
+        target = tmp_path / "agenda"
+        monkeypatch.setattr(gui.QFileDialog, "getSaveFileName",
+                            staticmethod(lambda *a, **k: (str(target), "")))
+        window._evt_filters["moon"].setChecked(False)
+        window._search_conjunctions_gui()
+        assert window._btn_ics.isEnabled()
+        window._btn_ics.click()
+        text = (tmp_path / "agenda.ics").read_bytes().decode("utf-8")      # CRLF gardés
+        assert text.startswith("BEGIN:VCALENDAR\r\n") and text.endswith("END:VCALENDAR\r\n")
+        assert text.count("BEGIN:VEVENT") == len(_event_cards(window))
+        assert "SUMMARY:Solstice de décembre\r\n" in text and "DTSTART:20261221T205014Z" in text
+        assert all(len(line.encode("utf-8")) <= 75 for line in text.split("\r\n"))
+        window._evt_filters["moon"].setChecked(True)
+
+    def test_eclipses_seen_from_here(self, window):
+        """Cherbourg : l'éclipse annulaire du 06/02/2027 n'y passe pas, celle du 02/08/2027 oui."""
+        window._search_eclipses_gui()
+        texts = self._texts(window)
+        assert "Ici : pas d'éclipse" in texts[0]
+        assert "Ici, heure locale : début" in texts[3] and "% du Soleil caché" in texts[3]
 
     def test_conjunction_search_replaces_previous_results(self, window):
         window._search_eclipses_gui()
@@ -514,8 +590,9 @@ class TestGeolocation:
 class TestCoordinatesTab:
     """Onglet Coordonnées : x, y, z et angles en même temps."""
 
-    BODIES = ["Soleil", "Lune", "Mercure", "Vénus", "Terre", "Mars", "Jupiter", "Saturne",
-              "Uranus", "Neptune", "Pluton"]
+    BODIES = ["Soleil", "Lune", "Mercure", "Vénus", "Terre", "Mars", "Cérès", "Pallas", "Junon",
+              "Vesta", "Jupiter", "Saturne", "Uranus", "Neptune", "Pluton", "Haumea", "Makemake",
+              "Éris"]
 
     def _open(self, window):
         window.tabs.setCurrentWidget(window._coord_page)
@@ -549,8 +626,8 @@ class TestCoordinatesTab:
         """Par défaut : x, y, z héliocentriques, angles équatoriaux."""
         self._open(window)
         assert self._headers(window) == [
-            "Astre", "x (UA)", "y (UA)", "z (UA)", "Distance (UA)", "Mag.",
-            "Angle Soleil", "Const.", "Ascension droite α", "Déclinaison δ"]
+            "Astre", "x (UA)", "y (UA)", "z (UA)", "Dist. (UA)", "Mag.",
+            "Angle Soleil", "Const.", "Asc. droite α", "Déclinaison δ"]
         rows = [window.coord_table.item(r, 0).text() for r in range(window.coord_table.rowCount())]
         assert [r.split(" ", 1)[-1] for r in rows] == self.BODIES
         sun, earth = self._row(window, "Soleil"), self._row(window, "Terre")

@@ -545,6 +545,207 @@ class TestFindConjunctions:
         assert 0.26 < scene["sun_radius"] < 0.28
 
 
+class TestMinorPlanets:
+    """Minor planets: JPL Horizons tables (asteroids, dwarf planets) and DE440 (Pluto)."""
+
+    # JPL Horizons, astrometric RA/Dec (ICRF, quantity 1) and visual magnitude (quantity 9), UT
+    @pytest.mark.parametrize("body, when, ra, dec, mag", [
+        ("Ceres", datetime(1900, 3, 1), 297.672747950, -23.928223019, 9.199),
+        ("Ceres", datetime(2026, 11, 3, 12), 114.662060988, 24.112152375, 8.197),
+        ("Vesta", datetime(2026, 11, 3, 12), None, None, None),
+        ("Eris", datetime(2026, 11, 3, 12), None, None, None),
+    ])
+    def test_positions_and_magnitudes_match_horizons(self, body, when, ra, dec, mag):
+        from engine import _sky
+        t = AstroEngine.julian_century_j2000(when)
+        astrometric = _sky()["earth"].at(AstroEngine._time_ut(t)).observe(AstroEngine._target(body))
+        ra_, dec_, _ = astrometric.radec()
+        if ra is None:                                   # the table covers it: a finite position
+            assert math.isfinite(ra_.hours) and math.isfinite(dec_.degrees)
+            return
+        assert abs(((ra_._degrees - ra + 180) % 360 - 180) * math.cos(math.radians(dec)) * 3600) < 0.01
+        assert abs(dec_.degrees - dec) * 3600 < 0.01
+        assert AstroEngine.observations(t, [body])[body]["mag"] == pytest.approx(mag, abs=0.02)
+
+    def test_vesta_and_eris_magnitudes(self):
+        """Horizons, 3 November 2026 12h UT: Vesta 6.74, Eris 18.57, Haumea 17.25."""
+        t = AstroEngine.julian_century_j2000(datetime(2026, 11, 3, 12))
+        seen = AstroEngine.observations(t, ["Vesta", "Eris", "Haumea"])
+        assert seen["Vesta"]["mag"] == pytest.approx(6.74, abs=0.02)
+        assert seen["Eris"]["mag"] == pytest.approx(18.57, abs=0.02)
+        assert seen["Haumea"]["mag"] == pytest.approx(17.25, abs=0.02)
+
+    def test_rise_and_set_of_a_minor_planet(self):
+        events = AstroEngine.find_events(datetime(2026, 11, 1, 21), 49.6, -1.6, "Vesta", 0, 0.0)
+        assert events["rise"] is not None and events["set"] is not None
+
+    def test_outside_the_tables(self):
+        with pytest.raises(ValueError):
+            AstroEngine.planet_position(AstroEngine.julian_century_j2000(datetime(1849, 1, 1)), "Ceres")
+
+    def test_oppositions_of_minor_planets(self):
+        """Vesta at opposition on 13 October 2026, magnitude 6.4; none for Ceres in 2026."""
+        events = [e for e in AstroEngine.find_conjunctions(datetime(2026, 1, 1), 365)
+                  if e["group"] == "minor"]
+        vesta = next(e for e in events if e["bodies"] == ("Vesta", "Sun"))
+        assert vesta["type"] == "opposition" and vesta["date"].strftime("%d/%m") == "13/10"
+        assert vesta["mag"] == pytest.approx(6.4, abs=0.1)
+        assert not [e for e in events if e["bodies"][0] == "Ceres"]
+
+
+class TestMoonAndSeasons:
+    @pytest.fixture(scope="class")
+    @classmethod
+    def moon_2026(cls):
+        return AstroEngine.find_moon_events(datetime(2026, 1, 1), num_days=365)
+
+    @pytest.mark.parametrize("other, instant", [
+        # JPL Horizons: crossing of the ecliptic longitudes (quantity 31), minute sampling
+        ("Jupiter", datetime(2026, 1, 3, 22, 54, 25)),
+        ("Saturn", datetime(2026, 2, 19, 20, 48, 6)),
+        ("Venus", datetime(2026, 9, 14, 11, 32, 41)),
+    ])
+    def test_moon_conjunctions_match_horizons(self, moon_2026, other, instant):
+        event = next(e for e in moon_2026 if e["bodies"] == ("Moon", other)
+                     and abs((e["date"] - instant).total_seconds()) < 86400)
+        assert abs((event["date"] - instant).total_seconds()) < 30
+
+    def test_moon_and_bright_stars(self, moon_2026):
+        stars = {e["bodies"][1] for e in moon_2026 if e["bodies"][1:] and e["bodies"][1] in AstroEngine.MOON_STARS}
+        assert stars <= set(AstroEngine.MOON_STARS) and len(stars) >= 4   # Aldebaran: > 5° in 2026
+        assert all(e["separation"] <= 5.0 for e in moon_2026 if e["type"] == "conjunction")
+
+    def test_perigee_matches_horizons(self, moon_2026):
+        """Horizons: least distance 360 361 km on 1 January 2026 at 21:51 UT."""
+        perigee = moon_2026[0]
+        assert perigee["type"] == "perigee"
+        assert abs((perigee["date"] - datetime(2026, 1, 1, 21, 51)).total_seconds()) < 300
+        assert perigee["distance_km"] == pytest.approx(360361, abs=5)
+        assert sum(e["type"] == "apogee" for e in moon_2026) in (13, 14)
+
+    def test_supermoon(self):
+        """24 December 2026: perigee (356 648 km) within a day of the full moon; not in November."""
+        events = AstroEngine.find_moon_events(datetime(2026, 11, 20), num_days=40)
+        november, december = [e for e in events if e["type"] == "perigee"]
+        assert november["syzygy"] is None and december["syzygy"] == "full"
+
+    @pytest.mark.parametrize("kind, instant", [
+        # USNO, Earth's seasons and apsides 2026 (UT, to the minute)
+        ("perihelion", datetime(2026, 1, 3, 17, 16)),
+        ("march_equinox", datetime(2026, 3, 20, 14, 46)),
+        ("june_solstice", datetime(2026, 6, 21, 8, 24)),
+        ("aphelion", datetime(2026, 7, 6, 17, 31)),
+        ("september_equinox", datetime(2026, 9, 23, 0, 5)),
+        ("december_solstice", datetime(2026, 12, 21, 20, 50)),
+    ])
+    def test_seasons_match_usno(self, kind, instant):
+        events = AstroEngine.find_seasons(datetime(2026, 1, 1), num_days=365)
+        event = next(e for e in events if kind in (e["type"], e["kind"]))
+        assert abs((event["date"] - instant).total_seconds()) <= 60
+
+
+class TestLocalVisibility:
+    PARIS = (48.8566, 2.3522, 35.0)
+
+    @pytest.fixture(scope="class")
+    @classmethod
+    def year_2026(cls):
+        from zoneinfo import ZoneInfo
+        events = AstroEngine.find_conjunctions(datetime(2026, 1, 1), num_days=365)
+        events += AstroEngine.find_moon_events(datetime(2026, 1, 1), num_days=365)
+        return AstroEngine.event_visibility(events, *cls.PARIS, ZoneInfo("Europe/Paris"))
+
+    def test_opposition_visible_all_night(self, year_2026):
+        """Jupiter at opposition, 10 January 2026: up all night, 63° high to the south at midnight."""
+        jupiter = next(e for e in year_2026 if e["type"] == "opposition" and e["bodies"][0] == "Jupiter")
+        vis = jupiter["visibility"]
+        assert vis["period"] == "night" and vis["alt"] == pytest.approx(63, abs=1.5)
+        assert 170 < vis["az"] < 190
+
+    def test_superior_conjunction_not_observable(self, year_2026):
+        venus = next(e for e in year_2026 if e["bodies"] == ("Venus", "Sun") and e["kind"] == "superior")
+        assert venus["visibility"]["period"] is None and venus["visibility"]["reason"] == "daylight"
+
+    def test_greatest_elongations_evening_and_morning(self, year_2026):
+        east = next(e for e in year_2026 if e["type"] == "greatest_elongation" and e["side"] == "east")
+        west = next(e for e in year_2026 if e["type"] == "greatest_elongation" and e["side"] == "west")
+        assert east["visibility"]["period"] == "evening"
+        assert west["visibility"]["period"] in ("morning", None)
+
+    def test_no_dark_night_in_the_arctic_summer(self):
+        events = [e for e in AstroEngine.find_conjunctions(datetime(2026, 6, 1), num_days=20)
+                  if e["bodies"] == ("Venus", "Jupiter")]
+        AstroEngine.event_visibility(events, 69.65, 18.96, 0.0, 1)        # Tromsø, 9 June
+        assert events[0]["visibility"]["reason"] == "no_night"
+
+    def test_occultation_of_regulus_from_paris(self, year_2026):
+        """29 March 2026: the Moon hides Regulus seen from Paris, at dusk."""
+        event = next(e for e in year_2026 if e["bodies"] == ("Moon", "Regulus")
+                     and e["date"].strftime("%d/%m") == "29/03")
+        occ = event["occultation"]
+        assert occ["start"] < event["date"] < occ["end"] + timedelta(hours=1)
+        assert 30 < occ["moon_alt_start"] < 45 and occ["sun_alt_start"] < 0
+        # at the disappearance, the star is on the Moon's limb
+        from engine import _sky
+        from skyfield.api import wgs84
+        sky = _sky()
+        here = (sky["earth"] + wgs84.latlon(48.8566, 2.3522, elevation_m=35.0)).at(
+            sky["ts"].ut1_jd(AstroEngine.julian_day(occ["start"])))
+        moon = here.observe(sky["moon"]).apparent()
+        star = here.observe(AstroEngine._target("Regulus")).apparent()
+        limb = math.degrees(math.asin(1737.4 / moon.distance().km))
+        assert abs(star.separation_from(moon).degrees - limb) * 3600 < 2.0
+
+
+class TestLocalEclipses:
+    @pytest.fixture(scope="class")
+    @classmethod
+    def eclipses(cls):
+        return AstroEngine.find_eclipses(datetime(2026, 1, 1), num_months=12)
+
+    @pytest.mark.parametrize("lat, lon, seconds, maximum", [
+        # NASA, path of the total eclipse of 12 August 2026: central line and duration
+        (73 + 41.0 / 60, -(27 + 47.3 / 60), 135.4, "17:30"),
+        (67 + 12.6 / 60, -(26 + 1.9 / 60), 138.1, "17:42"),
+    ])
+    def test_totality_on_the_central_line(self, eclipses, lat, lon, seconds, maximum):
+        solar = next(e for e in eclipses if e["type"] == "solar" and e["greatest"].month == 8)
+        local = AstroEngine.eclipse_local(solar, lat, lon)
+        assert local["central"] == "total"
+        assert local["duration_s"] == pytest.approx(seconds, abs=0.5)
+        assert local["contacts"]["max"].strftime("%H:%M") == maximum
+
+    def test_partial_in_paris_ends_at_sunset(self, eclipses):
+        solar = next(e for e in eclipses if e["type"] == "solar" and e["greatest"].month == 8)
+        local = AstroEngine.eclipse_local(solar, 48.8566, 2.3522)
+        assert local["central"] is None and local["visible"]
+        assert local["magnitude"] == pytest.approx(0.93, abs=0.01)
+        assert local["obscuration"] == pytest.approx(0.92, abs=0.01)
+        assert local["altitudes"]["c4"] < 0 < local["altitudes"]["c1"]
+
+    def test_dallas_2024(self):
+        """NASA: 3 min 51 s of totality in Dallas on 8 April 2024."""
+        solar = next(e for e in AstroEngine.find_eclipses(datetime(2024, 3, 1), 3) if e["type"] == "solar")
+        local = AstroEngine.eclipse_local(solar, 32.7767, -96.7970)
+        assert local["duration_s"] == pytest.approx(231, abs=2)
+
+    def test_no_eclipse_far_away(self, eclipses):
+        solar = next(e for e in eclipses if e["type"] == "solar" and e["greatest"].month == 8)
+        assert AstroEngine.eclipse_local(solar, -33.87, 151.21) is None        # Sydney
+
+    def test_lunar_eclipse_contacts(self, eclipses):
+        """3 March 2026 (NASA: U1 09:50, U2 11:04, U3 12:03, U4 13:17): set in Paris, up in Hawaii."""
+        lunar = next(e for e in eclipses if e["type"] == "lunar" and e["greatest"].month == 3)
+        paris = AstroEngine.eclipse_local(lunar, 48.8566, 2.3522)
+        assert not paris["visible"]
+        hawaii = AstroEngine.eclipse_local(lunar, 21.31, -157.86)
+        assert hawaii["visible"]
+        c = hawaii["contacts"]
+        for key, expected in (("u1", "09:50"), ("u2", "11:04"), ("u3", "12:03"), ("u4", "13:17")):
+            assert abs((c[key] - c[key].replace(hour=int(expected[:2]), minute=int(expected[3:]),
+                                                 second=0)).total_seconds()) < 60, key
+
+
 # ──────────────────────────────────────────────────────────────────────
 # Eclipse Search Tests
 # ──────────────────────────────────────────────────────────────────────

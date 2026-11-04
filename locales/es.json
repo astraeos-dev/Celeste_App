@@ -403,7 +403,15 @@
     "geoloc_device": "Posición del equipo: {place}{precision}",
     "geoloc_ip": "Posición aproximada según la dirección IP: {city}, {country} — a menudo la del proveedor de Internet. Active el servicio de ubicación del sistema o introduzca sus coordenadas.",
     "geoloc_fail": "No se ha podido determinar la posición.",
-    "geoloc_network": "No se puede contactar con el servicio de geolocalización. Compruebe su conexión.\n\nDetalle: {detail}"
+    "geoloc_network": "No se puede contactar con el servicio de geolocalización. Compruebe su conexión.\n\nDetalle: {detail}",
+    "geoloc_ip_short": "Posición aproximada según la dirección IP: {city}, {country} (a menudo la del proveedor de acceso).",
+    "geoloc_reason_no_source": "No hay ningún servicio de ubicación en este dispositivo. Introduzca sus coordenadas o elija un favorito.",
+    "geoloc_reason_access": "Windows niega la posición a Céleste. En Configuración › Privacidad y seguridad › Ubicación, active «Servicios de ubicación» y «Permitir que las aplicaciones de escritorio accedan a tu ubicación», y vuelva a intentarlo.",
+    "geoloc_reason_closed": "El servicio de ubicación del dispositivo está desactivado. Actívelo en la configuración del sistema y vuelva a intentarlo.",
+    "geoloc_reason_timeout": "El servicio de ubicación no encontró ninguna posición en 15 s (¿Wi-Fi desactivado, ordenador sin GPS ni Wi-Fi?). Compruebe que está activado y vuelva a intentarlo.",
+    "geoloc_reason_invalid": "El servicio de ubicación respondió sin una posición válida.",
+    "geoloc_reason_unknown": "El servicio de ubicación indicó un error.",
+    "geoloc_open_settings": "Abrir la configuración de ubicación"
   },
   "settings": {
     "time_format": "Formato de hora",

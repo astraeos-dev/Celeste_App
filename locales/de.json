@@ -403,7 +403,15 @@
     "geoloc_device": "Position des Geräts: {place}{precision}",
     "geoloc_ip": "Ungefähre Position nach der IP-Adresse: {city}, {country} — oft die des Internetanbieters. Aktivieren Sie den Ortungsdienst des Systems oder geben Sie Ihre Koordinaten ein.",
     "geoloc_fail": "Der Standort konnte nicht bestimmt werden.",
-    "geoloc_network": "Der Dienst zur Standortbestimmung ist nicht erreichbar. Prüfen Sie Ihre Verbindung.\n\nDetail: {detail}"
+    "geoloc_network": "Der Dienst zur Standortbestimmung ist nicht erreichbar. Prüfen Sie Ihre Verbindung.\n\nDetail: {detail}",
+    "geoloc_ip_short": "Ungefähre Position nach der IP-Adresse: {city}, {country} (oft die des Internetanbieters).",
+    "geoloc_reason_no_source": "Auf diesem Gerät ist kein Ortungsdienst verfügbar. Geben Sie Ihre Koordinaten ein oder wählen Sie einen Favoriten.",
+    "geoloc_reason_access": "Windows verweigert Céleste die Position. Aktivieren Sie unter Einstellungen › Datenschutz und Sicherheit › Position „Ortungsdienste“ und „Desktop-Apps den Zugriff auf Ihre Position erlauben“ und versuchen Sie es erneut.",
+    "geoloc_reason_closed": "Der Ortungsdienst des Geräts ist ausgeschaltet. Schalten Sie ihn in den Systemeinstellungen ein und versuchen Sie es erneut.",
+    "geoloc_reason_timeout": "Der Ortungsdienst hat in 15 s keine Position gefunden (WLAN aus, Computer ohne GPS oder WLAN?). Prüfen Sie, ob er eingeschaltet ist, und versuchen Sie es erneut.",
+    "geoloc_reason_invalid": "Der Ortungsdienst hat ohne gültige Position geantwortet.",
+    "geoloc_reason_unknown": "Der Ortungsdienst hat einen Fehler gemeldet.",
+    "geoloc_open_settings": "Ortungseinstellungen öffnen"
   },
   "settings": {
     "time_format": "Zeitformat",

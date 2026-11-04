@@ -403,7 +403,15 @@
     "geoloc_device": "Device position: {place}{precision}",
     "geoloc_ip": "Approximate position from the IP address: {city}, {country} — often the Internet provider's. Turn on the system's location service, or enter your coordinates.",
     "geoloc_fail": "Unable to determine the location.",
-    "geoloc_network": "Cannot reach the geolocation service. Check your connection.\n\nDetail: {detail}"
+    "geoloc_network": "Cannot reach the geolocation service. Check your connection.\n\nDetail: {detail}",
+    "geoloc_ip_short": "Approximate position from the IP address: {city}, {country} (often the internet provider's).",
+    "geoloc_reason_no_source": "No location service is available on this device. Enter your coordinates, or choose a favourite.",
+    "geoloc_reason_access": "Windows denies Céleste the position. In Settings › Privacy & security › Location, turn on “Location services” and “Let desktop apps access your location”, then try again.",
+    "geoloc_reason_closed": "The device's location service is turned off. Turn it on in the system settings, then try again.",
+    "geoloc_reason_timeout": "The location service found no position within 15 s (Wi-Fi off, computer without GPS or Wi-Fi?). Check that it is on, then try again.",
+    "geoloc_reason_invalid": "The location service answered without a valid position.",
+    "geoloc_reason_unknown": "The location service reported an error.",
+    "geoloc_open_settings": "Open location settings"
   },
   "settings": {
     "time_format": "Time format",

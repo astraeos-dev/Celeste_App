@@ -527,17 +527,26 @@ class TestAstraeosRules:
 # ──────────────────────────────────────────────────────────────────────
 
 class _FakeSource:
-    """Service de localisation simulé : répond une position, ou une erreur."""
-    def __init__(self, coord):
+    """Service de localisation simulé : répond une position, ou l'erreur *error*
+    (0 accès refusé, 1 fermé, 2 inconnue, 4 délai dépassé), avec ou sans dernière
+    position connue."""
+    def __init__(self, coord, error=2, last=None):
         from PyQt6.QtCore import QObject, pyqtSignal
 
         class Source(QObject):
             positionUpdated = pyqtSignal(object)
             errorOccurred = pyqtSignal(int)
 
+            def lastKnownPosition(self, *_args):
+                from PyQt6.QtCore import QDateTime
+                from PyQt6.QtPositioning import QGeoCoordinate, QGeoPositionInfo
+                if last is None:
+                    return QGeoPositionInfo()
+                return QGeoPositionInfo(QGeoCoordinate(*last), QDateTime.currentDateTime())
+
             def requestUpdate(self, _timeout):
                 if coord is None:
-                    self.errorOccurred.emit(2)              # UpdateTimeoutError
+                    self.errorOccurred.emit(error)
                 else:
                     from PyQt6.QtCore import QDateTime
                     from PyQt6.QtPositioning import QGeoCoordinate, QGeoPositionInfo
@@ -580,6 +589,49 @@ class TestGeolocation:
                             lambda *a, **k: _FakeResponse(json.dumps(answer).encode()))
         window.geolocate()
         assert window.location_name == "Paris"
+        assert "approximative" in window.statusBar().currentMessage()
+
+    def _ip_answer(self, monkeypatch):
+        import gui
+        answer = {"status": "success", "city": "Paris", "country": "France",
+                  "lat": 48.8566, "lon": 2.3522, "timezone": "Europe/Paris"}
+        monkeypatch.setattr(gui.urllib.request, "urlopen",
+                            lambda *a, **k: _FakeResponse(json.dumps(answer).encode()))
+
+    def test_access_denied_is_explained(self, window, monkeypatch):
+        """Issue #19 : accès refusé par Windows — la fenêtre le dit et ouvre les réglages."""
+        import gui
+        monkeypatch.setattr(gui, "QGeoPositionInfoSource", _FakeSource(None, error=0))
+        monkeypatch.setattr(gui.sys, "platform", "win32")
+        opened = []
+        monkeypatch.setattr(gui.QDesktopServices, "openUrl", staticmethod(lambda url: opened.append(url)))
+        self._ip_answer(monkeypatch)
+        window.geolocate()
+        box = window._geo_dialog
+        assert box.isVisible() and "Paris" in box.text()
+        assert "Autoriser les applications de bureau" in box.informativeText()
+        button = next(b for b in box.buttons() if b.text() == "Ouvrir les réglages de localisation")
+        button.click()
+        assert opened and opened[0].toString() == "ms-settings:privacy-location"
+
+    def test_last_known_position_before_the_ip_address(self, window, monkeypatch):
+        """Délai dépassé : la dernière position connue de l'appareil plutôt que l'adresse IP."""
+        import gui
+        monkeypatch.setattr(gui, "QGeoPositionInfoSource",
+                            _FakeSource(None, error=4, last=(49.6386, -1.6164)))
+        monkeypatch.setattr(gui, "_place_name", lambda lat, lon: "Cherbourg-en-Cotentin")
+        monkeypatch.setattr(gui.urllib.request, "urlopen", lambda *a, **k: pytest.fail("adresse IP"))
+        window.geolocate()
+        assert window.location_name == "Cherbourg-en-Cotentin"
+
+    def test_no_window_at_startup(self, window, monkeypatch):
+        """Au démarrage (géolocalisation automatique), la barre d'état seulement."""
+        import gui
+        monkeypatch.setattr(gui, "QGeoPositionInfoSource", _FakeSource(None, error=4))
+        self._ip_answer(monkeypatch)
+        window._geo_dialog = None
+        window.geolocate(interactive=False)
+        assert window._geo_dialog is None
         assert "approximative" in window.statusBar().currentMessage()
 
 

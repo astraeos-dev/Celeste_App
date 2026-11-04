@@ -91,13 +91,16 @@ def main(argv=None):
         from engine import AstroEngine
         from config import APP_VERSION
         AstroEngine.find_eclipses(window._dte, num_months=1)
+        from PyQt6.QtPositioning import QGeoPositionInfoSource
+        sources = ", ".join(QGeoPositionInfoSource.availableSources()) or "none"
         print(f"Céleste {APP_VERSION} self-test OK: {window.tz_menu.currentText()}, "
-              f"{len(window.visible_stars)} stars, {len(window.minor_planets)} minor planets")
+              f"{len(window.visible_stars)} stars, {len(window.minor_planets)} minor planets, "
+              f"location sources: {sources}")
         return 0
 
     # Géolocalisation au démarrage si elle est activée dans les paramètres
     if prefs.get("auto_geoloc"):
-        QTimer.singleShot(800, window.geolocate)
+        QTimer.singleShot(800, lambda: window.geolocate(interactive=False))
 
     return app.exec()
 

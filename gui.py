@@ -27,6 +27,7 @@ import json
 import math
 import os
 import re
+import sys
 import urllib.request
 import functools
 from datetime import datetime, timedelta, timezone
@@ -34,10 +35,10 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError, available_timezones
 
 from PyQt6.QtCore import (
     QDate, QDateTime, QEvent, QLocale, QPointF, QRectF, QRegularExpression, QSize,
-    Qt, QTime, QTimer, QTimeZone,
+    Qt, QTime, QTimer, QTimeZone, QUrl,
 )
 from PyQt6.QtGui import (
-    QBrush, QColor, QFont, QFontDatabase, QKeySequence,
+    QBrush, QColor, QDesktopServices, QFont, QFontDatabase, QKeySequence,
     QPainter, QPainterPath, QPalette, QPen, QRegularExpressionValidator, QShortcut,
 )
 from PyQt6.QtPositioning import QGeoPositionInfo, QGeoPositionInfoSource
@@ -79,6 +80,14 @@ _FONTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts")
 
 _AUTO_ZONE = "auto"           # fuseau déduit du lieu (timezonefinder)
 _GEOLOC_TIMEOUT_MS = 15000    # attente du service de localisation de l'appareil
+
+_ALL_POSITIONING_METHODS = QGeoPositionInfoSource.PositioningMethod.AllPositioningMethods
+
+# Réglages de la localisation du système, ouverts quand l'accès est refusé
+_LOCATION_SETTINGS = {
+    "win32": "ms-settings:privacy-location",
+    "darwin": "x-apple.systempreferences:com.apple.preference.security?Privacy_LocationServices",
+}
 _PLANETS = PLANETS        # Mercure à Neptune (engine.PLANETS)
 _QT_DATETIME_FORMAT = "dd/MM/yyyy HH:mm:ss"
 
@@ -1037,7 +1046,7 @@ class AstroApp(QMainWindow):
             edit.textEdited.connect(self._on_coords_edited)
         lay.addWidget(self.field_lat)
         btn_geo = _bouton_icone("geolocate", t("side.geoloc_tip"))
-        btn_geo.clicked.connect(self.geolocate)
+        btn_geo.clicked.connect(lambda _checked=False: self.geolocate())
         lay.addLayout(self._with_button(self.field_lon, btn_geo))
 
         self.entry_elev = QLineEdit(_elev_text(_pref_float("default_elevation", 0.0)))
@@ -1986,18 +1995,23 @@ class AstroApp(QMainWindow):
     # GÉOLOCALISATION / TEMPS RÉEL
     # ──────────────────────────────────────────────────────────────────────────
 
-    def geolocate(self):
+    def geolocate(self, interactive=True):
         """
         Position de l'appareil par le service de localisation du système
-        (GPS, Wi-Fi : QtPositioning) ; s'il est absent, refusé ou muet, position
-        approximative d'après l'adresse IP, annoncée comme telle.
+        (GPS, Wi-Fi : QtPositioning) ; s'il est absent, refusé ou muet, sa
+        dernière position connue, sinon la position approximative de l'adresse
+        IP. *interactive* (bouton) : une fenêtre dit alors pourquoi le service
+        n'a pas répondu et ouvre ses réglages ; au démarrage, la barre d'état.
         """
         if self._geo_source is not None:                     # une requête est en cours
             return
+        self._geo_interactive = interactive
         source = QGeoPositionInfoSource.createDefaultSource(self)
         if source is None:
-            self._geolocate_by_ip()
+            self._geolocate_by_ip("no_source")
             return
+        if hasattr(source, "setPreferredPositioningMethods"):           # GPS, Wi-Fi, réseau
+            source.setPreferredPositioningMethods(_ALL_POSITIONING_METHODS)
         self._geo_source = source
         source.positionUpdated.connect(self._on_device_position)
         source.errorOccurred.connect(self._on_device_position_error)
@@ -2017,7 +2031,7 @@ class AstroApp(QMainWindow):
         self._end_device_request()
         coord = info.coordinate()
         if not coord.isValid():
-            self._geolocate_by_ip()
+            self._geolocate_by_ip("invalid")
             return
         lat, lon = coord.latitude(), coord.longitude()
         name = _place_name(lat, lon)
@@ -2028,9 +2042,16 @@ class AstroApp(QMainWindow):
             tf("errors.geoloc_device", place=name or f"{_fmt_lat(lat)}, {_fmt_lon(lon)}",
                precision=precision), 8000)
 
-    def _on_device_position_error(self, _error):
+    def _on_device_position_error(self, error):
+        source = self._geo_source
+        last = source.lastKnownPosition() if hasattr(source, "lastKnownPosition") else None
         self._end_device_request()
-        self._geolocate_by_ip()
+        if last is not None and last.isValid() and last.coordinate().isValid():
+            self._on_device_position(last)                    # dernière position connue
+            return
+        code = getattr(error, "value", error)
+        reason = {0: "access", 1: "closed", 4: "timeout"}.get(code, "unknown")
+        self._geolocate_by_ip(reason)
 
     def _set_place(self, lat, lon, name, zone=None):
         """Lieu trouvé par la géolocalisation : coordonnées, nom, fuseau, puis calcul."""
@@ -2043,8 +2064,9 @@ class AstroApp(QMainWindow):
         self.combo_fav.setCurrentIndex(-1)
         self.calculate()
 
-    def _geolocate_by_ip(self):
-        """Secours : position de l'adresse IP, souvent celle du fournisseur d'accès."""
+    def _geolocate_by_ip(self, reason=None):
+        """Secours : position de l'adresse IP, souvent celle du fournisseur d'accès ;
+        *reason* : pourquoi le service de l'appareil n'a pas répondu."""
         url = ("http://ip-api.com/json/"
                "?fields=status,message,country,city,lat,lon,timezone")
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
@@ -2067,6 +2089,26 @@ class AstroApp(QMainWindow):
         self.statusBar().showMessage(
             tf("errors.geoloc_ip", city=data.get("city", "?"),
                country=data.get("country", "?")), 12000)
+        if reason and getattr(self, "_geo_interactive", False):
+            self._explain_geolocation(reason, data.get("city", "?"), data.get("country", "?"))
+
+    def _explain_geolocation(self, reason, city, country):
+        """Fenêtre (non bloquante) : position de l'IP, pourquoi, et les réglages à ouvrir."""
+        box = QMessageBox(QMessageBox.Icon.Information, t("errors.geoloc_title"),
+                          tf("errors.geoloc_ip_short", city=city, country=country), parent=self)
+        box.setInformativeText(t(f"errors.geoloc_reason_{reason}"))
+        url = _LOCATION_SETTINGS.get(sys.platform)
+        settings = None
+        if url and reason in ("access", "closed", "no_source", "timeout"):
+            settings = box.addButton(t("errors.geoloc_open_settings"), QMessageBox.ButtonRole.ActionRole)
+        box.addButton(QMessageBox.StandardButton.Close)
+
+        def done(_result):
+            if settings is not None and box.clickedButton() is settings:
+                QDesktopServices.openUrl(QUrl(url))
+        box.finished.connect(done)
+        self._geo_dialog = box
+        box.open()
 
     def toggle_live(self, checked):
         self.live_mode = bool(checked)

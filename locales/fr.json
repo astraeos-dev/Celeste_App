@@ -435,7 +435,7 @@
     "reset_title": "Réinitialiser",
     "reset_confirm": "Restaurer tous les réglages par défaut (thème, langue, lieu de démarrage, temps réel) ?",
     "reset_done": "Réglages par défaut restaurés.",
-    "about": "Céleste {version} calcule les positions du Soleil, de la Lune et des planètes d'après Jean Meeus, Astronomical Algorithms (2e édition). Les favoris sont enregistrés dans favorites.json, les réglages dans settings.json.",
+    "about": "Céleste {version} calcule les positions du Soleil, de la Lune, des planètes et des planètes mineures avec les éphémérides JPL DE440 et JPL Horizons. Réglages et favoris sont dans le dossier .celeste de votre profil.",
     "display_section": "Langue et affichage",
     "theme_hint": "Le thème se choisit en bas de la barre latérale : Nuit, Jour ou Observation (rouge sur noir, pour observer dehors la nuit).",
     "reset_hint": "Remet le thème, la langue, le format de l'heure, le lieu de démarrage et le temps réel à leurs valeurs d'origine. Les favoris sont conservés.",
@@ -469,5 +469,20 @@
     "azimuth": "Azimut {value}",
     "set_at": "Coucher à {time}",
     "rise_at": "Lever à {time}"
+  },
+  "links": {
+    "site": "Site web",
+    "site_tip": "Astræos et les autres applications de la famille Ganymede",
+    "source": "Code source",
+    "source_tip": "Céleste sur GitHub",
+    "coffee": "Offrir un café",
+    "coffee_tip": "Soutenir le développement de Céleste (Buy Me a Coffee)",
+    "bug": "Signaler un problème",
+    "bug_tip": "Formulaire sur GitHub, avec la version de Céleste et le système",
+    "feature": "Proposer une fonctionnalité",
+    "feature_tip": "Une idée pour Céleste, sur GitHub",
+    "body": "Proposer un astre",
+    "body_tip": "Un astre à ajouter à Céleste (planète mineure, comète, étoile…), sur GitHub",
+    "body_more": "Proposer un autre astre…"
   }
 }

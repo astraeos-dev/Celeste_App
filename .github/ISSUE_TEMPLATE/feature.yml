@@ -1,0 +1,21 @@
+name: Proposer une fonctionnalité
+description: Une idée pour Céleste
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: idee
+    attributes:
+      label: Votre idée
+      description: Ce que Céleste devrait faire, et pour quelle observation ou quel usage.
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: Détails
+      description: Exemples, références, maquettes…
+  - type: input
+    id: version
+    attributes:
+      label: Version de Céleste
+      placeholder: "4.1"

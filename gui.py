@@ -83,6 +83,11 @@ _GEOLOC_TIMEOUT_MS = 15000    # attente du service de localisation de l'appareil
 
 _ALL_POSITIONING_METHODS = QGeoPositionInfoSource.PositioningMethod.AllPositioningMethods
 
+# Liens : site, code source, soutien ; demandes sur GitHub (formulaires de .github/ISSUE_TEMPLATE)
+_URL_SITE = "https://astraeos-dev.github.io/personnal-site/"
+_URL_REPO = "https://github.com/astraeos-dev/Celeste_App"
+_URL_COFFEE = "https://buymeacoffee.com/gregorychau"
+
 # Réglages de la localisation du système, ouverts quand l'accès est refusé
 _LOCATION_SETTINGS = {
     "win32": "ms-settings:privacy-location",
@@ -305,6 +310,20 @@ def _ics_calendar(items, stamp):
                   f"DESCRIPTION:{_ics_text(description)}", "TRANSP:TRANSPARENT", "END:VEVENT"]
     lines.append("END:VCALENDAR")
     return "".join(_ics_fold(line) + "\r\n" for line in lines)
+
+
+def _issue_url(template):
+    """Nouvelle demande sur GitHub, formulaire *template* (bug, feature, body) prérempli
+    avec la version de Céleste et le système."""
+    import platform
+    from urllib.parse import urlencode
+    query = {"template": f"{template}.yml", "version": APP_VERSION,
+             "system": f"{platform.system()} {platform.release()}".strip()}
+    return f"{_URL_REPO}/issues/new?{urlencode(query)}"
+
+
+def _open_url(url):
+    QDesktopServices.openUrl(QUrl(url))
 
 
 def _duration(minutes):
@@ -1440,6 +1459,14 @@ class AstroApp(QMainWindow):
         lay.addWidget(table)
         self._coord_note = _label("", "legende", wrap=True)
         lay.addWidget(self._coord_note)
+        propose = _bouton(t("links.body_more"), variante="discret", compact=True)
+        propose.setToolTip(t("links.body_tip"))
+        propose.clicked.connect(lambda _checked=False: _open_url(_issue_url("body")))
+        self._propose_body = propose
+        row = QHBoxLayout()
+        row.addWidget(propose)
+        row.addStretch()
+        lay.addLayout(row)
         lay.addStretch(1)
         self._coord_page = page
         self._sync_coord_menus()
@@ -1668,10 +1695,24 @@ class AstroApp(QMainWindow):
         buttons.addStretch()
         box.addLayout(buttons)
 
-        # À propos
+        # À propos : liens
         box = section(t("settings.about_section"))
         box.addWidget(_label(tf("settings.about", version=APP_VERSION), "corps", wrap=True))
         box.addWidget(_label(t("settings.credits"), "legende", wrap=True))
+        self._link_buttons = {}
+        for links in ((("site", _URL_SITE), ("source", _URL_REPO), ("coffee", _URL_COFFEE)),
+                      (("bug", _issue_url("bug")), ("feature", _issue_url("feature")),
+                       ("body", _issue_url("body")))):
+            row = QHBoxLayout()
+            row.setSpacing(8)
+            for key, url in links:
+                btn = _bouton(t(f"links.{key}"), variante="secondaire", compact=True)
+                btn.setToolTip(t(f"links.{key}_tip"))
+                btn.clicked.connect(lambda _checked=False, u=url: _open_url(u))
+                self._link_buttons[key] = btn
+                row.addWidget(btn)
+            row.addStretch()
+            box.addLayout(row)
 
         lay.addStretch()
         self.tabs.addTab(scroll, t("tabs.settings"))

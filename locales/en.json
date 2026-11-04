@@ -435,7 +435,7 @@
     "reset_title": "Reset",
     "reset_confirm": "Restore all default settings (theme, language, startup location, live mode)?",
     "reset_done": "Default settings restored.",
-    "about": "Céleste {version} computes the positions of the Sun, the Moon and the planets with Jean Meeus, Astronomical Algorithms (2nd edition). Favourites are saved in favorites.json, settings in settings.json.",
+    "about": "Céleste {version} computes the positions of the Sun, the Moon, the planets and the minor planets with the JPL DE440 and JPL Horizons ephemerides. Settings and favourites are in the .celeste folder of your profile.",
     "display_section": "Language and display",
     "theme_hint": "Choose the theme at the bottom of the sidebar: Night, Day or Observation (red on black, for observing outdoors at night).",
     "reset_hint": "Restores the theme, language, time format, startup location and live mode to their original values. Favourites are kept.",
@@ -469,5 +469,20 @@
     "azimuth": "Azimuth {value}",
     "set_at": "Sets at {time}",
     "rise_at": "Rises at {time}"
+  },
+  "links": {
+    "site": "Website",
+    "site_tip": "Astræos and the other apps of the Ganymede family",
+    "source": "Source code",
+    "source_tip": "Céleste on GitHub",
+    "coffee": "Buy me a coffee",
+    "coffee_tip": "Support the development of Céleste (Buy Me a Coffee)",
+    "bug": "Report a problem",
+    "bug_tip": "Form on GitHub, with the version of Céleste and the system",
+    "feature": "Suggest a feature",
+    "feature_tip": "An idea for Céleste, on GitHub",
+    "body": "Suggest a body",
+    "body_tip": "A body to add to Céleste (minor planet, comet, star…), on GitHub",
+    "body_more": "Suggest another body…"
   }
 }

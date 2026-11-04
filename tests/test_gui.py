@@ -791,3 +791,28 @@ class TestEclipseMap:
         assert dlg.isVisible() and dlg.windowTitle() == "Éclipse projetée au sol"
         dlg.close()
 
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Liens : site, code source, café, demandes sur GitHub (issue #22)
+# ──────────────────────────────────────────────────────────────────────
+
+class TestLinks:
+    def test_links_open_in_the_browser(self, window, monkeypatch):
+        import gui
+        opened = []
+        monkeypatch.setattr(gui.QDesktopServices, "openUrl",
+                            staticmethod(lambda url: opened.append(url.toString())))
+        window._link_buttons["coffee"].click()
+        window._link_buttons["bug"].click()
+        window._propose_body.click()
+        assert opened[0] == "https://buymeacoffee.com/gregorychau"
+        assert opened[1].startswith("https://github.com/astraeos-dev/Celeste_App/issues/new?template=bug.yml")
+        assert "version=4.1" in opened[1] and "system=" in opened[1]
+        assert "template=body.yml" in opened[2]
+
+    def test_every_issue_form_exists(self):
+        """Chaque lien vers GitHub a son formulaire dans .github/ISSUE_TEMPLATE."""
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        for template in ("bug", "feature", "body"):
+            assert os.path.isfile(os.path.join(root, ".github", "ISSUE_TEMPLATE", f"{template}.yml"))

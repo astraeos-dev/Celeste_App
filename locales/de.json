@@ -435,7 +435,7 @@
     "reset_title": "Zurücksetzen",
     "reset_confirm": "Alle Standardeinstellungen wiederherstellen (Design, Sprache, Startort, Echtzeit)?",
     "reset_done": "Standardeinstellungen wiederhergestellt.",
-    "about": "Céleste {version} berechnet die Positionen von Sonne, Mond und Planeten nach Jean Meeus, Astronomical Algorithms (2. Auflage). Favoriten werden in favorites.json gespeichert, Einstellungen in settings.json.",
+    "about": "Céleste {version} berechnet die Positionen von Sonne, Mond, Planeten und Kleinplaneten mit den Ephemeriden JPL DE440 und JPL Horizons. Einstellungen und Favoriten liegen im Ordner .celeste Ihres Profils.",
     "display_section": "Sprache und Anzeige",
     "theme_hint": "Das Design wählt man unten in der Seitenleiste: Nacht, Tag oder Beobachtung (Rot auf Schwarz, um nachts draußen zu beobachten).",
     "reset_hint": "Setzt Design, Sprache, Zeitformat, Startort und Echtzeit auf ihre ursprünglichen Werte zurück. Die Favoriten bleiben erhalten.",
@@ -469,5 +469,20 @@
     "azimuth": "Azimut {value}",
     "set_at": "Untergang um {time}",
     "rise_at": "Aufgang um {time}"
+  },
+  "links": {
+    "site": "Website",
+    "site_tip": "Astræos und die anderen Apps der Ganymede-Familie",
+    "source": "Quellcode",
+    "source_tip": "Céleste auf GitHub",
+    "coffee": "Einen Kaffee spendieren",
+    "coffee_tip": "Die Entwicklung von Céleste unterstützen (Buy Me a Coffee)",
+    "bug": "Problem melden",
+    "bug_tip": "Formular auf GitHub, mit der Version von Céleste und dem System",
+    "feature": "Funktion vorschlagen",
+    "feature_tip": "Eine Idee für Céleste, auf GitHub",
+    "body": "Himmelskörper vorschlagen",
+    "body_tip": "Einen Himmelskörper für Céleste (Kleinplanet, Komet, Stern…), auf GitHub",
+    "body_more": "Weiteren Himmelskörper vorschlagen…"
   }
 }

@@ -1,0 +1,30 @@
+name: Signaler un problème
+description: Un calcul faux, un affichage cassé, un plantage…
+labels: ["bug"]
+body:
+  - type: textarea
+    id: probleme
+    attributes:
+      label: Que se passe-t-il ?
+      description: Ce que vous avez vu, et ce que vous attendiez.
+    validations:
+      required: true
+  - type: textarea
+    id: etapes
+    attributes:
+      label: Comment le reproduire ?
+      description: Date, lieu, onglet, boutons… Une capture d'écran aide beaucoup.
+      placeholder: |
+        1. Lieu : Paris, 01/11/2026 21:30 TU
+        2. Onglet Planètes
+        3. …
+  - type: input
+    id: version
+    attributes:
+      label: Version de Céleste
+      placeholder: "4.1"
+  - type: input
+    id: system
+    attributes:
+      label: Système
+      placeholder: Windows 11

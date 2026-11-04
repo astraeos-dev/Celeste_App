@@ -44,8 +44,8 @@ from engine import EPHEMERIS_YEARS, AstroEngine, _HORIZON_CORRECTION_SUN
 # they go without the U+FE0E selector here.
 SYMBOL = {"Sun": "☉", "Moon": "☽", "Earth": "⊕", "Mercury": "☿", "Venus": "♀",
           "Mars": "♂", "Jupiter": "♃", "Saturn": "♄", "Uranus": "♅", "Neptune": "♆",
-          "Pluto": "♇", "vernal": "♈", "Ceres": "⚳", "Pallas": "⚴", "Juno": "⚵", "Vesta": "⚶",
-          "Eris": "○", "Haumea": "○", "Makemake": "○"}
+          "Pluto": "♇", "vernal": "♈", "(1) Ceres": "⚳", "(2) Pallas": "⚴", "(3) Juno": "⚵", "(4) Vesta": "⚶",
+          "(136199) Eris": "⯱", "(136108) Haumea": "\U0001F77B", "(136472) Makemake": "\U0001F77C", "(90377) Sedna": "\U0001F77D"}
 
 # Text sizes of the design system (px) converted to points at the figures'
 # 100 dpi: legende 13 px, corps 15 px, sous-titre 17 px.

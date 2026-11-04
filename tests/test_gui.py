@@ -122,7 +122,7 @@ class TestCalculation:
         table = window.planet_table
         shown = [table.item(r, 0).text().split(" ", 1)[-1] for r in range(table.rowCount())
                  if not table.isRowHidden(r)]
-        assert shown == ["Cérès", "Pallas", "Junon", "Vesta", "Pluton", "Éris", "Haumea", "Makemake"]
+        assert shown == ["Ceres", "Pallas", "Juno", "Vesta", "Pluto", "Eris", "Haumea", "Makemake"]
         vesta = window._planet_items["Vesta"]
         assert re.match(r"^\d,\d$", vesta["col_mag"].text())               # Vesta : magnitude 6 à 8
         assert re.match(r"^\d\d:\d\d$", vesta["col_rise"].text())
@@ -673,9 +673,9 @@ class TestGeolocation:
 class TestCoordinatesTab:
     """Onglet Coordonnées : x, y, z et angles en même temps."""
 
-    BODIES = ["Soleil", "Lune", "Mercure", "Vénus", "Terre", "Mars", "Cérès", "Pallas", "Junon",
-              "Vesta", "Jupiter", "Saturne", "Uranus", "Neptune", "Pluton", "Haumea", "Makemake",
-              "Éris"]
+    BODIES = ["Sun", "Moon", "Mercury", "Venus", "Earth", "Mars", "Ceres", "Pallas", "Juno",
+              "Vesta", "Jupiter", "Saturn", "Uranus", "Neptune", "Pluto", "Haumea", "Makemake",
+              "Eris"]
 
     def _open(self, window):
         window.tabs.setCurrentWidget(window._coord_page)

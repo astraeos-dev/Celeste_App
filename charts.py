@@ -44,7 +44,8 @@ from engine import EPHEMERIS_YEARS, AstroEngine, _HORIZON_CORRECTION_SUN
 # they go without the U+FE0E selector here.
 SYMBOL = {"Sun": "☉", "Moon": "☽", "Earth": "⊕", "Mercury": "☿", "Venus": "♀",
           "Mars": "♂", "Jupiter": "♃", "Saturn": "♄", "Uranus": "♅", "Neptune": "♆",
-          "Pluto": "♇", "vernal": "♈"}
+          "Pluto": "♇", "vernal": "♈", "Ceres": "⚳", "Pallas": "⚴", "Juno": "⚵", "Vesta": "⚶",
+          "Eris": "○", "Haumea": "○", "Makemake": "○"}
 
 # Text sizes of the design system (px) converted to points at the figures'
 # 100 dpi: legende 13 px, corps 15 px, sous-titre 17 px.
@@ -492,7 +493,7 @@ def draw_sky_map(fig, scene, labels):
     taken = [(b["x"] - 0.01, b["y"] - 0.01, b["x"] + 0.01, b["y"] + 0.01)
              for b in up + [scene["sun"], scene["moon"]] if b["alt"] > 0]
     for p in up:
-        ax.plot(p["x"], p["y"], "o", color=Config.ENCRE, markersize=4.5,
+        ax.plot(p["x"], p["y"], "o", color=Config.ENCRE, markersize=3.0 if p.get("minor") else 4.5,
                 markeredgewidth=0, zorder=6)
         text = f"{SYMBOL[p['name']]} {labels['planets'].get(p['name'], p['name'])}"
         own = (p["x"] - 0.01, p["y"] - 0.01, p["x"] + 0.01, p["y"] + 0.01)
@@ -775,8 +776,8 @@ def draw_event_map(fig, scene, labels, date):
         fig: matplotlib Figure (cleared first).
         scene (dict): from ``AstroEngine.event_scene``.
         labels (dict): title, ecliptic, bodies ({"Venus": "Vénus", "Sun": "Soleil"}),
-            date_format (strftime of the date ticks, "%d/%m" by default), and
-            decimal (the decimal separator).
+            date_format (strftime of the date ticks, "%d/%m" by default),
+            hour_format (of the 6-hour ticks of a Moon event, "%d/%m %Hh").
         date (datetime): instant of the event, in the time zone of the ticks.
     """
     fig.clear()
@@ -825,11 +826,15 @@ def draw_event_map(fig, scene, labels, date):
     names = {round(x, 6): f"{int(r + 1e-9)}h{int(round((r % 1.0) * 60.0)) % 60:02d}" for x, r in keep}
     ax.xaxis.set_major_formatter(FuncFormatter(lambda v, _p: names.get(round(v, 6), "")))
 
-    # stars in the field, the brightest named
+    # stars in the field, the brightest named (not the star of the event, named below)
+    fixed = set(scene.get("fixed", ()))
+    event_stars = [xy(b[3], b[4]) for b in shown if b[0] in fixed]
     inside = []
     for name, ra, dec, mag in scene["stars"]:
         x, y = xy(ra, dec)
         if min(x_lim) <= x <= max(x_lim) and y_lim[0] <= y <= y_lim[1]:
+            if any(abs(x - u) < 0.05 and abs(y - v) < 0.05 for u, v in event_stars):
+                continue
             inside.append((name, float(x), float(y), mag))
     if inside:
         ax.scatter([s[1] for s in inside], [s[2] for s in inside],
@@ -852,19 +857,25 @@ def draw_event_map(fig, scene, labels, date):
                     fontsize=SIZE_LEGENDE * 0.8, color=Config.OR, alpha=0.8, ha="center", zorder=1)
 
     days = np.asarray(scene["days"])
-    tick = _tick_step(days.max())
-    ticks = np.flatnonzero(np.isclose(np.mod(days, tick), 0.0) & (days != 0.0))
-    fmt = labels.get("date_format", "%d/%m")
+    if days.max() <= 2.0:                             # the Moon: every 6 hours
+        tick, fmt = 0.25, labels.get("hour_format", "%d/%m %Hh")
+    else:
+        tick, fmt = _tick_step(days.max()), labels.get("date_format", "%d/%m")
+    phase = np.mod(days + tick / 2.0, tick) - tick / 2.0
+    ticks = np.flatnonzero(np.isclose(phase, 0.0, atol=1e-6) & ~np.isclose(days, 0.0, atol=1e-6))
     palette = [Config.ENCRE, Config.LUNE]
     at = [xy(b[3], b[4]) for b in shown]
     highest = max(range(len(shown)), key=lambda n: float(at[n][1]))
     min_gap = 0.09 * half                             # between two date labels
     for n, (name, ra, dec, _ra_at, _dec_at) in enumerate(shown):
-        color = Config.OR if name == "Sun" else palette[n % 2]
+        color = {"Sun": Config.OR, "Moon": Config.LUNE}.get(name, palette[n % 2])
+        if name in fixed:
+            color = Config.ENCRE
         x, y = xy(ra, dec)
         above = n == highest
-        ax.plot(x, y, color=color, linewidth=1.1, alpha=0.75, zorder=4)
-        ax.scatter(x[ticks], y[ticks], s=9, color=color, linewidths=0, zorder=5)
+        if name not in fixed:                         # a star does not move in two days
+            ax.plot(x, y, color=color, linewidth=1.1, alpha=0.75, zorder=4)
+            ax.scatter(x[ticks], y[ticks], s=9, color=color, linewidths=0, zorder=5)
         if n == 0:                                    # dates along the first planet's path only
             placed = [(float(at[0][0]), float(at[0][1]))]
             for i in ticks:
@@ -876,13 +887,17 @@ def draw_event_map(fig, scene, labels, date):
                             va="bottom" if above else "top", fontsize=SIZE_LEGENDE * 0.7,
                             color=mix(color, Config.CIEL_100, 0.25), zorder=5)
         px, py = (float(v) for v in at[n])
-        if name == "Sun":
-            ax.add_patch(Circle((px, py), scene["sun_radius"], color=Config.OR, zorder=6))
-            ax.plot(px, py, "o", color=Config.OR, markersize=9, alpha=0.35, markeredgewidth=0, zorder=6)
+        if name in ("Sun", "Moon"):
+            radius = scene.get("radii", {}).get(name, scene["sun_radius"])
+            ax.add_patch(Circle((px, py), radius, color=color, alpha=0.9, zorder=6))
+            ax.plot(px, py, "o", color=color, markersize=9, alpha=0.35, markeredgewidth=0, zorder=6)
+        elif name in fixed:
+            ax.plot(px, py, "*", color=color, markersize=11, markeredgecolor=Config.CIEL_000,
+                    markeredgewidth=0.6, zorder=7)
         else:
             ax.plot(px, py, "o", color=color, markersize=6.5, markeredgecolor=Config.CIEL_000,
                     markeredgewidth=0.8, zorder=7)
-        _body_label(ax, px, py, f"{SYMBOL.get(name, '')} {labels['bodies'].get(name, name)}",
+        _body_label(ax, px, py, f"{SYMBOL.get(name, '')} {labels['bodies'].get(name, name)}".strip(),
                     color, size=SIZE_CORPS, weight=600, dx=9, dy=7 if above else -9,
                     va="bottom" if above else "top")
     _title(fig, ax, labels["title"])

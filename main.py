@@ -92,7 +92,7 @@ def main(argv=None):
         from config import APP_VERSION
         AstroEngine.find_eclipses(window._dte, num_months=1)
         print(f"Céleste {APP_VERSION} self-test OK: {window.tz_menu.currentText()}, "
-              f"{len(window.visible_stars)} stars")
+              f"{len(window.visible_stars)} stars, {len(window.minor_planets)} minor planets")
         return 0
 
     # Géolocalisation au démarrage si elle est activée dans les paramètres

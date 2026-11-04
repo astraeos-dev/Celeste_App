@@ -26,6 +26,7 @@ de config.py (tokens Astræos), les icônes et le logo de icons.py.
 import json
 import math
 import os
+import re
 import urllib.request
 import functools
 from datetime import datetime, timedelta, timezone
@@ -42,7 +43,7 @@ from PyQt6.QtGui import (
 from PyQt6.QtPositioning import QGeoPositionInfo, QGeoPositionInfoSource
 from PyQt6.QtWidgets import (
     QAbstractItemView, QApplication, QButtonGroup, QCheckBox, QComboBox, QCompleter,
-    QDateTimeEdit, QDialog, QDialogButtonBox, QFrame, QGridLayout,
+    QDateTimeEdit, QDialog, QDialogButtonBox, QFileDialog, QFrame, QGridLayout,
     QHBoxLayout, QHeaderView, QInputDialog, QLabel, QLineEdit, QMainWindow,
     QMessageBox, QProgressBar, QPushButton, QScrollArea, QSizePolicy, QSlider,
     QStatusBar, QTabWidget, QTableWidget, QTableWidgetItem, QToolButton,
@@ -59,7 +60,7 @@ import icons  # noqa: E402
 import settings as prefs  # noqa: E402
 from config import APP_VERSION, FONT_MONO, FONT_SANS, THEME_NAMES, Config, mix  # noqa: E402
 from constellations import STAR_CONSTELLATION  # noqa: E402
-from engine import EPHEMERIS_YEARS, PLANETS, AstroEngine, constellation_names  # noqa: E402
+from engine import EPHEMERIS_YEARS, MINOR_PLANETS, PLANETS, AstroEngine, constellation_names  # noqa: E402
 from i18n import (  # noqa: E402
     available_langs, get_lang, lang_name, resolve_lang, switch_lang, t, tf,
 )
@@ -258,6 +259,43 @@ def _plural_key(base, n):
     """Clé « _one » ou « _many » ; en français, 0 est singulier."""
     one = n == 1 or (n == 0 and get_lang() == "fr")
     return f"{base}_{'one' if one else 'many'}"
+
+
+def _ics_text(text):
+    """Texte d'une propriété iCalendar : \\ ; , et retours à la ligne protégés."""
+    return (text.replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,")
+            .replace("\n", "\\n"))
+
+
+def _ics_fold(line):
+    """Ligne iCalendar repliée à 75 octets (RFC 5545, 3.1)."""
+    out, current = [], ""
+    for char in line:
+        if len((current + char).encode("utf-8")) > (75 if not out else 74):
+            out.append(current)
+            current = ""
+        current += char
+    out.append(current)
+    return "\r\n ".join(out)
+
+
+def _ics_calendar(items, stamp):
+    """
+    Agenda iCalendar des évènements *items* : (début, fin, titre, description),
+    instants en TU (naïfs ou avec fuseau) ; *stamp* : instant de l'export.
+    """
+    def utc(dt):
+        if dt.tzinfo is not None:
+            dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+        return dt.strftime("%Y%m%dT%H%M%SZ")
+    lines = ["BEGIN:VCALENDAR", "VERSION:2.0", f"PRODID:-//Astraeos//Celeste {APP_VERSION}//FR",
+             "CALSCALE:GREGORIAN", "METHOD:PUBLISH"]
+    for n, (start, end, summary, description) in enumerate(items):
+        lines += ["BEGIN:VEVENT", f"UID:{utc(start)}-{n}@celeste.astraeos", f"DTSTAMP:{utc(stamp)}",
+                  f"DTSTART:{utc(start)}", f"DTEND:{utc(end)}", f"SUMMARY:{_ics_text(summary)}",
+                  f"DESCRIPTION:{_ics_text(description)}", "TRANSP:TRANSPARENT", "END:VEVENT"]
+    lines.append("END:VCALENDAR")
+    return "".join(_ics_fold(line) + "\r\n" for line in lines)
 
 
 def _duration(minutes):
@@ -542,24 +580,27 @@ class PhaseLune(QWidget):
 
 
 class SelecteurTheme(QFrame):
-    """SelecteurTheme Astræos : Nuit, Jour, Observation, l'option active en aplat encre."""
+    """SelecteurTheme Astræos : Nuit, Jour, Observation, l'option active en aplat encre ;
+    *options* (clé, libellé, infobulle) pour un autre choix exclusif."""
 
-    def __init__(self, current, on_change):
+    def __init__(self, current, on_change, options=None, legend=None):
         super().__init__()
         self.setObjectName("selecteurTheme")
-        self.setAccessibleName(t("theme.legend"))
+        self.setAccessibleName(legend or t("theme.legend"))
         lay = QHBoxLayout(self)
         lay.setContentsMargins(4, 4, 4, 4)
         lay.setSpacing(4)
         self.group = QButtonGroup(self)
         self.group.setExclusive(True)
         self.buttons = {}
-        for key in THEME_NAMES:
-            btn = QPushButton(t(f"theme.{key}"))
+        if options is None:
+            options = [(key, t(f"theme.{key}"), t(f"theme.{key}_tip")) for key in THEME_NAMES]
+        for key, text, tip in options:
+            btn = QPushButton(text)
             btn.setObjectName("optionTheme")
             btn.setCheckable(True)
             btn.setFixedHeight(32)
-            btn.setToolTip(t(f"theme.{key}_tip"))
+            btn.setToolTip(tip)
             btn.setFocusPolicy(Qt.FocusPolicy.TabFocus)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             btn.setChecked(key == current)
@@ -867,6 +908,7 @@ class AstroApp(QMainWindow):
         self.planet_events     = {}
         self.moon_events         = {}
         self.planets             = []
+        self.minor_planets       = []
         self.visible_stars       = []
         self.visible_planets_map = []
         self.hours               = []
@@ -1255,10 +1297,21 @@ class AstroApp(QMainWindow):
         lay.setContentsMargins(0, 16, 0, 16)
         lay.setSpacing(16)
 
+        # planètes ou planètes mineures, au choix
+        self._planet_group = "planets"
+        self._planet_selector = SelecteurTheme(
+            self._planet_group, self._on_planet_group,
+            [("planets", t("planets.group_planets"), t("planets.group_planets_tip")),
+             ("minor", t("planets.group_minor"), t("planets.group_minor_tip"))],
+            t("planets.group_legend"))
+        self._planet_selector.setMaximumWidth(460)
+        lay.addWidget(self._planet_selector)
+
         # la visibilité se lit à la couleur du nom (vive au-dessus de l'horizon)
         columns = ["col_planet", "col_ra", "col_dec", "col_alt", "col_az", "col_dist",
-                   "col_elong", "col_rise", "col_transit", "col_set"]
-        table = QTableWidget(len(_PLANETS), len(columns))
+                   "col_elong", "col_mag", "col_rise", "col_transit", "col_set"]
+        bodies = _PLANETS + MINOR_PLANETS
+        table = QTableWidget(len(bodies), len(columns))
         table.setHorizontalHeaderLabels([t(f"planets.{c}") for c in columns])
         table.verticalHeader().setVisible(False)
         table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -1270,13 +1323,13 @@ class AstroApp(QMainWindow):
         header.setStretchLastSection(True)
         header.setDefaultAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         table.verticalHeader().setDefaultSectionSize(40)
-        table.setStyleSheet("QTableWidget::item { padding: 0 4px; }")
+        table.setStyleSheet("QTableWidget::item { padding: 0 2px; }")
         mono = QFont()
         mono.setFamilies(list(_fonts["mono"]))
         mono.setPixelSize(13)
         mono.setWeight(QFont.Weight.Medium)
         self._planet_items = {}
-        for r, name in enumerate(_PLANETS):
+        for r, name in enumerate(bodies):
             items = {}
             for c, col in enumerate(columns):
                 item = QTableWidgetItem("—")
@@ -1293,8 +1346,8 @@ class AstroApp(QMainWindow):
                 table.setItem(r, c, item)
                 items[col] = item
             self._planet_items[name] = items
-        table.setFixedHeight(40 * len(_PLANETS) + header.sizeHint().height() + 4)
         self.planet_table = table
+        self._show_planet_group()
         lay.addWidget(table)
 
         card = _card()
@@ -1306,6 +1359,19 @@ class AstroApp(QMainWindow):
         lay.addWidget(card, stretch=1)
         self._chart_tabs[page] = "orrery"
         self.tabs.addTab(page, t("tabs.planets"))
+
+    def _on_planet_group(self, key):
+        self._planet_group = key
+        self._show_planet_group()
+
+    def _show_planet_group(self):
+        """N'affiche que les lignes du groupe choisi : planètes ou planètes mineures."""
+        shown = _PLANETS if self._planet_group == "planets" else MINOR_PLANETS
+        for r, name in enumerate(_PLANETS + MINOR_PLANETS):
+            self.planet_table.setRowHidden(r, name not in shown)
+        self.planet_table.resizeColumnsToContents()
+        header = self.planet_table.horizontalHeader()
+        self.planet_table.setFixedHeight(40 * len(shown) + header.sizeHint().height() + 4)
 
     # ── Onglet Coordonnées ────────────────────────────────────────────────────
     #    x, y, z et distance selon l'origine « cartésiennes » ; deux angles selon
@@ -1321,11 +1387,8 @@ class AstroApp(QMainWindow):
                       "col_sun_angle", "col_constellation", "angle1", "angle2")
 
     def _build_coordinates_tab(self):
-        page = QWidget()
-        page.setObjectName("page")
-        lay = QVBoxLayout(page)
-        lay.setContentsMargins(0, 16, 0, 16)
-        lay.setSpacing(16)
+        # dix-huit astres : la page défile si la fenêtre est trop basse
+        page, _inner, lay = _scroll_page()
 
         row = QHBoxLayout()
         row.setSpacing(12)
@@ -1351,7 +1414,7 @@ class AstroApp(QMainWindow):
         header.setStretchLastSection(True)
         header.setDefaultAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         table.verticalHeader().setDefaultSectionSize(36)
-        table.setStyleSheet("QTableWidget::item { padding: 0 4px; }")
+        table.setStyleSheet("QTableWidget::item { padding: 0 2px; }")
         mono = QFont()
         mono.setFamilies(list(_fonts["mono"]))
         mono.setPixelSize(13)
@@ -1466,7 +1529,28 @@ class AstroApp(QMainWindow):
         bar.addWidget(btn_ecl)
         bar.addWidget(btn_conj)
         bar.addStretch()
+        self._btn_ics = _bouton(t("events.export_ics"), "export")
+        self._btn_ics.setToolTip(t("events.export_tip"))
+        self._btn_ics.setEnabled(False)
+        self._btn_ics.clicked.connect(self._export_ics)
+        bar.addWidget(self._btn_ics)
         lay.addLayout(bar)
+
+        # filtres des évènements de l'année
+        self._evt_filter_bar = QWidget()
+        row = QHBoxLayout(self._evt_filter_bar)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(20)
+        self._evt_filters = {}
+        for key in self._EVENT_GROUPS + ("visible",):
+            box = QCheckBox(t(f"events.filter_{key}"))
+            box.setChecked(key != "visible")
+            box.toggled.connect(self._render_events)
+            self._evt_filters[key] = box
+            row.addWidget(box)
+        row.addStretch()
+        self._evt_filter_bar.hide()
+        lay.addWidget(self._evt_filter_bar)
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -2068,24 +2152,28 @@ class AstroApp(QMainWindow):
             self.sun_events  = AstroEngine.find_events(dte, lat, lon, "sun", self._zone, elev)
             self.moon_events = AstroEngine.find_events(dte, lat, lon, "moon", self._zone, elev)
             self.planet_events = {name: AstroEngine.find_events(dte, lat, lon, name, self._zone, elev)
-                                  for name in _PLANETS}
+                                  for name in _PLANETS + MINOR_PLANETS}
             self.hours, self.sun_altitudes, self.moon_altitudes = \
                 charts.sample_day(dte, lat, lon, elevation_m=elev, tz=self._zone)
             self._day_start = AstroEngine._local_day(dte, self._zone)[0]
             self.last_cache_key = key
 
-        self.planets = []
-        for name in _PLANETS:
+        self.planets, self.minor_planets = [], []
+        magnitudes = AstroEngine.observations(tc, _PLANETS + MINOR_PLANETS)
+        for name in _PLANETS + MINOR_PLANETS:
             ra, dec, dist = AstroEngine.planet_position(tc, name)
             alt, az = AstroEngine.horizontal(tc, lat, lon, name, elev)
-            self.planets.append({
+            minor = name in MINOR_PLANETS
+            (self.minor_planets if minor else self.planets).append({
                 "name": name, "ra": ra, "dec": dec, "dist": dist, "alt": alt, "az": az,
                 "elong": AstroEngine.angular_separation(ra, dec, s_ra, s_dec),
-                "east": (ra - s_ra) % 24 < 12,
+                "east": (ra - s_ra) % 24 < 12, "mag": magnitudes[name]["mag"], "minor": minor,
             })
 
+        # sur la carte, les planètes mineures assez brillantes pour la limite choisie
+        bright = [m for m in self.minor_planets if m["mag"] <= self._mag_limit()]
         self._sky_scene = charts.sky_scene(jd, lat, lon, self._mag_limit(),
-                                           self.sun_data, self.moon_data, self.planets)
+                                           self.sun_data, self.moon_data, self.planets + bright)
         self._sky_objects = charts.visible_objects(self._sky_scene)
         self.visible_stars = [s["name"] for s in self._sky_scene["stars"]]
         self.visible_planets_map = [p["name"] for p in self.planets if p["alt"] > 0]
@@ -2171,8 +2259,9 @@ class AstroApp(QMainWindow):
             _set_pastille(self._lbl_moon_state, t("common.below_horizon"), "neutre")
 
     def _update_planet_table(self):
-        for p in self.planets:
+        for p in self.planets + self.minor_planets:
             items = self._planet_items[p["name"]]
+            items["col_mag"].setText(_num(p["mag"], 1))
             side = t("coords.east") if p["east"] else t("coords.west")
             items["col_ra"].setText(_ra(p["ra"]))
             items["col_dec"].setText(_dec(p["dec"]))
@@ -2251,7 +2340,7 @@ class AstroApp(QMainWindow):
             "horizon": t("skymap.horizon"),
             "cardinals": [t(f"skymap.cardinal_{c}")
                           for c in ("n", "ne", "e", "se", "s", "sw", "w", "nw")],
-            "planets": {n: _planet_name(n) for n in _PLANETS},
+            "planets": {n: _planet_name(n) for n in _PLANETS + MINOR_PLANETS},
         }
         self._sky_ax, tip = charts.draw_sky_map(self.fig_sky, self._sky_scene, labels)
         self._sky_tip.attach(tip)
@@ -2369,7 +2458,10 @@ class AstroApp(QMainWindow):
         elif kind == "planet":
             title = f"{sym[obj['name']]} {_planet_name(obj['name'])}"
             side = t("coords.east") if obj.get("east") else t("coords.west")
-            rows.append((t("detail.type"), t("detail.type_planet")))
+            rows.append((t("detail.type"), t("detail.type_minor_planet" if obj.get("minor")
+                                             else "detail.type_planet")))
+            if obj.get("mag") is not None:
+                rows.append((t("detail.mag"), _num(obj["mag"], 1)))
             rows.append((t("detail.distance"), tf("units.au", value=_num(obj["dist"], 4))))
             rows.append((t("detail.elongation"), f"{_deg(obj['elong'], 1)} {side}"))
         elif kind == "sun":
@@ -2448,7 +2540,7 @@ class AstroApp(QMainWindow):
             self._evt_layout.addWidget(_label(note, "legende", wrap=True))
         self._evt_layout.addSpacing(8)
 
-    def _event_card(self, symbole, accent, title, when, pills=(), details=(), action=None):
+    def _event_card(self, symbole, accent, title, when, pills=(), details=(), action=None, lines=()):
         """Carte d'événement : symbole, titre, pastilles, date ; détails dessous ;
         *action* : (texte, fonction) d'un bouton à droite."""
         card = _card()
@@ -2473,10 +2565,15 @@ class AstroApp(QMainWindow):
         lay.addLayout(top)
         if details:
             lay.addWidget(_label("   ·   ".join(details), "legende", wrap=True))
+        for line in lines:
+            lay.addWidget(_label(line, "legende", wrap=True))
         self._evt_layout.addWidget(card)
 
     def _search_start(self, kind):
         self._last_search = kind
+        self._ics_items = []
+        self._btn_ics.setEnabled(False)
+        self._evt_filter_bar.setVisible(kind == "conjunctions")
         dte = self._edit_datetime()
         self._clear_evt_layout()
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
@@ -2508,6 +2605,55 @@ class AstroApp(QMainWindow):
                                       value=_duration(durations[phase])))
         return details
 
+    @staticmethod
+    def _seconds(value):
+        """« 2 min 15 s »."""
+        value = int(round(value))
+        return f"{value // 60} min {value % 60:02d} s"
+
+    def _eclipse_local_lines(self, ec, loc):
+        """Circonstances locales d'une éclipse, en heure du lieu."""
+        if ec["type"] == "solar":
+            if loc is None:
+                return [t("events.local_none")]
+            if not loc["visible"]:
+                return [t("events.local_sun_down")]
+            down, body_down = -0.83, t("events.sun_down")
+        else:
+            if not loc["visible"]:
+                return [t("events.local_moon_down")]
+            down, body_down = -0.5, t("events.moon_set")
+        c, alt = loc["contacts"], loc["altitudes"]
+
+        def at(key):
+            text = self._clock(c[key])
+            return text if alt[key] > down else f"{text} ({body_down})"
+        if ec["type"] == "solar":
+            first, last = "c1", "c4"
+        else:
+            first, last = ("u1", "u4") if c.get("u1") else ("p1", "p4")
+        parts = [tf("events.local_start", time=at(first)) if c.get(first) else None,
+                 tf("events.local_max", time=at("max")),
+                 tf("events.local_end", time=at(last)) if c.get(last) else None]
+        lines = [tf("events.local_here", detail=" · ".join(p for p in parts if p))]
+        if ec["type"] == "solar":
+            info = [tf("events.local_magnitude", value=_num(loc["magnitude"], 3)),
+                    tf("events.local_obscuration", value=_num(100.0 * loc["obscuration"])),
+                    tf("events.local_sun_alt", value=_num(alt["max"]))]
+            if loc["central"]:
+                info.insert(0, tf(f"events.local_{loc['central']}", start=self._clock(c["c2"]),
+                                  end=self._clock(c["c3"]), duration=self._seconds(loc["duration_s"])))
+        else:
+            info = [tf("events.local_moon_alt", value=_num(alt["max"]))]
+            if c.get("u2"):
+                info.insert(0, tf("events.local_totality", start=self._clock(c["u2"]),
+                                  end=self._clock(c["u3"])))
+            if not loc["all_visible"]:
+                info.append(t("events.local_moon_partly"))
+        text = "   ·   ".join(info)
+        lines.append(text[:1].upper() + text[1:])
+        return lines
+
     def _search_eclipses_gui(self):
         """Recherche et affiche les éclipses des 12 prochains mois."""
         dte = self._search_start("eclipses")
@@ -2532,12 +2678,25 @@ class AstroApp(QMainWindow):
                 pills.append((t("events.certainty_possible"), "neutre"))
             greatest = ec.get("greatest", ec["date"]) + timedelta(seconds=30)  # minute la plus proche
             when = greatest.strftime("%d/%m/%Y %H:%M") + f" {t('chart.ut')}"
+            title = t("events.solar_eclipse" if solar else "events.lunar_eclipse")
+            local = None
+            if self._lat is not None:
+                local = AstroEngine.eclipse_local(ec, self._lat, self._lon, self._elevation())
+            lines = self._eclipse_local_lines(ec, local) if self._lat is not None else []
+            details = self._eclipse_details(ec)
             self._event_card(SYMBOL["Sun"] if solar else SYMBOL["Moon"],
-                             "or" if solar else "lune",
-                             t("events.solar_eclipse" if solar else "events.lunar_eclipse"),
-                             when, pills, self._eclipse_details(ec),
-                             (t("eclipse_map.button"), lambda _=False, e=ec: self._show_eclipse_map(e)))
+                             "or" if solar else "lune", title, when, pills, details,
+                             (t("eclipse_map.button"), lambda _=False, e=ec: self._show_eclipse_map(e)),
+                             lines)
+            start, end = ec.get("greatest", ec["date"]), None
+            if local and local["visible"]:
+                c = local["contacts"]
+                first, last = (("c1", "c4") if solar else (("u1", "u4") if c.get("u1") else ("p1", "p4")))
+                start, end = c[first] or start, c[last]
+            sub_type = t(f"events.subtype_{ec['sub_type']}").lower()
+            self._ics_add(start, end, f"{title} {sub_type}", details + lines)
         self._evt_layout.addStretch()
+        self._btn_ics.setEnabled(bool(self._ics_items))
 
     def _show_eclipse_map(self, ec):
         """Fenêtre : l'éclipse projetée au sol (bande, ligne de centralité, partialité)."""
@@ -2583,70 +2742,193 @@ class AstroApp(QMainWindow):
         self._eclipse_dialog = dlg
         dlg.show()
 
+    # ── Évènements de l'année : planètes, planètes mineures, Lune, saisons ─────
+
+    _EVENT_GROUPS = ("planets", "minor", "moon", "seasons")
+    _WINDS = ("n", "ne", "e", "se", "s", "sw", "w", "nw")
+
+    def _body_name(self, name, symbol=False):
+        """Nom d'un astre des évènements : planète, Soleil, Lune ou étoile."""
+        if name in ("Sun", "Moon"):
+            text = t(f"chart.{name.lower()}")
+            return f"{SYMBOL[name]} {text}" if symbol else text
+        if name in AstroEngine.MOON_STARS:
+            return t(f"events.star_{name.lower()}")
+        return _planet_name(name, symbol=symbol)
+
     def _event_title(self, ev, symbol=True):
-        """Titre d'une conjonction, d'une opposition ou d'une plus grande élongation."""
-        a, b = ev["bodies"]
-        planet = _planet_name(a, symbol=symbol)
-        if ev["type"] == "opposition":
+        """Titre d'un évènement de l'année."""
+        kind = ev["type"]
+        if kind == "season":
+            return t(f"events.{ev['kind']}")
+        if kind in ("perihelion", "aphelion", "perigee", "apogee"):
+            return t(f"events.{kind}")
+        a = ev["bodies"][0]
+        planet = self._body_name(a, symbol=symbol)
+        if kind == "opposition":
             return tf("events.opposition", planet=planet)
-        if ev["type"] == "greatest_elongation":
+        if kind == "greatest_elongation":
             return tf(f"events.greatest_elongation_{ev['side']}", planet=planet)
+        b = ev["bodies"][1]
         if b == "Sun":
             key = f"events.conjunction_{ev['kind']}" if ev.get("kind") else "events.solar_conjunction"
             return tf(key, planet=planet)
-        return tf("events.conjunction_pair", a=planet, b=_planet_name(b, symbol=symbol))
+        return tf("events.conjunction_pair", a=planet, b=self._body_name(b, symbol=symbol))
 
     def _event_when(self, dt):
         """« 06/01/2026 16:36 TU » : l'instant à la minute la plus proche."""
         return (dt + timedelta(seconds=30)).strftime("%d/%m/%Y %H:%M") + f" {t('chart.ut')}"
 
+    def _clock(self, dt):
+        """Heure locale du lieu, à la minute la plus proche."""
+        return self._fmt_clock(self._local(dt + timedelta(seconds=30)))
+
+    @staticmethod
+    def _elide(text):
+        """« de Uranus » → « d'Uranus » en français."""
+        if get_lang() != "fr":
+            return text
+        return re.sub(r"\bde (?=[AEIOUYÉÈÊaeiouyéèê])", "d'", text)
+
+    def _visibility_text(self, vis):
+        if vis["period"] is None:
+            return t(f"events.invisible_{vis['reason']}")
+        wind = self._WINDS[int(round(vis["az"] / 45.0)) % 8]
+        return tf(f"events.visible_{vis['period']}", alt=_num(vis["alt"]),
+                  dir=t(f"skymap.cardinal_{wind}"), time=self._clock(vis["best"]))
+
+    def _event_shown(self, ev):
+        if not self._evt_filters[ev.get("group", "planets")].isChecked():
+            return False
+        vis = ev.get("visibility")
+        return not (self._evt_filters["visible"].isChecked() and vis is not None and vis["period"] is None)
+
     def _search_conjunctions_gui(self):
-        """Recherche et affiche conjonctions, oppositions et plus grandes élongations sur 12 mois."""
+        """Recherche les évènements des 12 mois : conjonctions, oppositions et
+        élongations, planètes mineures, Lune, saisons ; leur visibilité d'ici."""
         dte = self._search_start("conjunctions")
         try:
-            conjs = AstroEngine.find_conjunctions(dte, num_days=365)
+            events = (AstroEngine.find_conjunctions(dte, num_days=365)
+                      + AstroEngine.find_moon_events(dte, num_days=365)
+                      + AstroEngine.find_seasons(dte, num_days=365))
+            events.sort(key=lambda e: e["date"])
+            if self._lat is not None:
+                AstroEngine.event_visibility(events, self._lat, self._lon, self._elevation(), self._zone)
         except Exception as exc:
             QApplication.restoreOverrideCursor()
             self._search_failed(exc)
             return
         QApplication.restoreOverrideCursor()
+        self._events_found = (dte, events)
+        self._render_events()
 
-        n = len(conjs)
+    def _render_events(self, *_args):
+        """Affiche les évènements trouvés que laissent passer les filtres."""
+        found = getattr(self, "_events_found", None)
+        if not found or self._last_search != "conjunctions":
+            return
+        dte, events = found
+        self._clear_evt_layout()
+        self._ics_items = []
+        shown = [e for e in events if self._event_shown(e)]
+        n = len(shown)
         self._events_header(
             tf("events.conjunctions_title", date=dte.strftime("%d/%m/%Y")),
             tf(_plural_key("events.event_count", n), n=n), t("events.precise_note"))
-        if not conjs:
+        if not shown:
             self._evt_layout.addWidget(_label(t("events.no_conjunction"), "corps",
-                                              tone="attenuee"))
-        for cj in conjs:
-            a, b = cj["bodies"]
-            sep = cj["separation"]
-            pills = []
-            if cj["type"] == "opposition":
+                                              tone="attenuee", wrap=True))
+        for ev in shown:
+            self._add_event_card(ev)
+        self._evt_layout.addStretch()
+        self._btn_ics.setEnabled(bool(self._ics_items))
+
+    def _add_event_card(self, ev):
+        kind = ev["type"]
+        a = ev["bodies"][0]
+        pills, details, lines, action = [], [], [], None
+        if kind == "season":
+            symbole = SYMBOL["Sun"]
+        elif kind in ("perihelion", "aphelion"):
+            symbole = SYMBOL["Earth"]
+            details.append(tf("events.distance_au", value=_num(ev["distance_au"], 5)))
+        elif kind in ("perigee", "apogee"):
+            symbole = SYMBOL["Moon"]
+            details.append(tf("events.distance_km", value=_num(ev["distance_km"])))
+            if kind == "perigee" and ev.get("syzygy") == "full":
+                pills.append((t("events.supermoon"), "info"))
+            elif ev.get("syzygy"):
+                details.append(t(f"events.near_{ev['syzygy']}_moon"))
+        else:
+            sep = ev["separation"]
+            if kind == "opposition":
                 symbole = SYMBOL["opposition"]
-                details = [tf("events.elongation", value=_num(sep, 1))]
-            elif cj["type"] == "greatest_elongation":
+                details.append(tf("events.elongation", value=_num(sep, 1)))
+            elif kind == "greatest_elongation":
                 symbole = SYMBOL[a]
-                details = [tf("events.elongation", value=_num(sep, 1))]
+                details.append(tf("events.elongation", value=_num(sep, 1)))
             else:
                 symbole = SYMBOL["conjunction"]
-                side = (tf(f"events.{cj['side']}_of_sun", a=_planet_name(a)) if b == "Sun"
-                        else tf(f"events.{cj['side']}_of", a=_planet_name(a), b=_planet_name(b)))
-                details = [tf("events.separation", value=_num(sep, 2)), side]
-                if cj.get("transit"):
+                b = ev["bodies"][1]
+                side = (tf(f"events.{ev['side']}_of_sun", a=_planet_name(a)) if b == "Sun"
+                        else tf(f"events.{ev['side']}_of", a=self._body_name(a), b=self._body_name(b)))
+                details += [tf("events.separation", value=_num(sep, 2)), self._elide(side)]
+                if ev.get("transit"):
                     pills.append((t("events.transit"), "info"))
-            local = self._local(cj["date"] + timedelta(seconds=30))
-            if local != (cj["date"] + timedelta(seconds=30)).replace(tzinfo=None):
-                details.append(tf("events.local_time", time=f"{local:%d/%m} {self._fmt_clock(local)}",
-                                  zone=getattr(self._zone, "key", "UTC")))
-            # an elongation has the planet's symbol in front: not twice
-            title = self._event_title(cj, symbol=cj["type"] != "greatest_elongation")
-            self._event_card(symbole, "attenuee", title, self._event_when(cj["date"]),
-                             pills, details,
-                             action=(t("event_map.button"),
-                                     lambda _=False, e=cj: self._show_event_map(e),
-                                     t("event_map.button_tip")))
-        self._evt_layout.addStretch()
+            if ev.get("mag") is not None:
+                details.append(tf("events.magnitude", value=_num(ev["mag"], 1)))
+            action = (t("event_map.button"), lambda _=False, e=ev: self._show_event_map(e),
+                      t("event_map.button_tip"))
+        local = self._local(ev["date"] + timedelta(seconds=30))
+        if local != (ev["date"] + timedelta(seconds=30)).replace(tzinfo=None):
+            details.append(tf("events.local_time", time=f"{local:%d/%m} {self._fmt_clock(local)}",
+                              zone=getattr(self._zone, "key", "UTC")))
+        vis = ev.get("visibility")
+        if vis is not None and kind not in ("perigee", "apogee"):
+            lines.append(self._visibility_text(vis))
+        occ = ev.get("occultation")
+        if occ and any((occ.get(k) or -90.0) > 0.0 for k in ("moon_alt_start", "moon_alt_end")):
+            pills.append((t("events.occultation"), "info"))
+            parts = []
+            for key, label in (("start", "events.occ_start"), ("end", "events.occ_end")):
+                if occ[key] is not None:
+                    alt = occ[f"moon_alt_{key}"]
+                    where = tf("events.moon_alt", value=_num(alt)) if alt > 0 else t("events.moon_set")
+                    parts.append(tf(label, time=self._clock(occ[key]), alt=where))
+            text = tf("events.occultation_here", detail=" · ".join(parts))
+            if occ.get("sun_alt_start") is not None and occ["sun_alt_start"] > -0.83:
+                text += " " + t("events.by_day")
+            lines.append(text)
+        if kind in ("conjunction", "opposition", "greatest_elongation"):
+            title = self._event_title(ev, symbol=kind != "greatest_elongation")
+        else:
+            title = self._event_title(ev)
+        self._event_card(symbole, "attenuee", title, self._event_when(ev["date"]), pills, details,
+                         action, lines)
+        self._ics_add(ev["date"], None, self._event_title(ev, symbol=False), details + lines)
+
+    def _ics_add(self, start, end, summary, details):
+        self._ics_items.append((start, end or start + timedelta(minutes=1), summary,
+                                "\n".join(details)))
+
+    def _export_ics(self):
+        """Enregistre les évènements affichés dans un agenda iCalendar (.ics)."""
+        if not getattr(self, "_ics_items", None):
+            return
+        default = os.path.join(os.path.expanduser("~"), t("events.export_filename"))
+        path, _filter = QFileDialog.getSaveFileName(self, t("events.export_title"), default,
+                                                    "iCalendar (*.ics)")
+        if not path:
+            return
+        if not path.lower().endswith(".ics"):
+            path += ".ics"
+        try:
+            with open(path, "w", encoding="utf-8", newline="") as f:
+                f.write(_ics_calendar(self._ics_items, _utc_now()))
+        except OSError as exc:
+            QMessageBox.warning(self, t("errors.error_title"), tf("events.export_error", detail=exc))
+            return
+        self.statusBar().showMessage(tf("events.exported", path=path), 8000)
 
     def _show_event_map(self, ev):
         """Fenêtre : trajets des astres parmi les étoiles autour de l'évènement."""
@@ -2657,12 +2939,12 @@ class AstroApp(QMainWindow):
             scene = AstroEngine.event_scene(ev, CATALOG)
         finally:
             QApplication.restoreOverrideCursor()
-        names = {name: (t("chart.sun") if name == "Sun" else _planet_name(name)) for name in ev["bodies"]}
+        names = {name: self._body_name(name) for name in ev["bodies"]}
         labels = {
             "title": tf("event_map.title", event=self._event_title(ev, symbol=False),
                         date=self._event_when(ev["date"])),
             "ecliptic": t("event_map.ecliptic"), "bodies": names,
-            "date_format": t("event_map.date_format"),
+            "date_format": t("event_map.date_format"), "hour_format": t("event_map.hour_format"),
         }
         dlg = QDialog(self)
         dlg.setWindowTitle(t("event_map.window_title"))

@@ -323,3 +323,18 @@ def test_draw_event_map():
         lo, hi = ax.get_xlim()
         assert lo < hi                                   # x grows westward: east on the left
         fig.canvas.draw()
+
+
+def test_draw_event_map_of_the_moon():
+    """The Moon and a bright star: the Moon's path over two days, the star fixed."""
+    from datetime import datetime
+    from star_catalog import CATALOG
+    event = next(e for e in AstroEngine.find_moon_events(datetime(2026, 3, 1), num_days=40)
+                 if e["bodies"] == ("Moon", "Regulus"))
+    scene = AstroEngine.event_scene(event, CATALOG)
+    assert scene["fixed"] == ["Regulus"] and scene["days"].max() == pytest.approx(1.0)
+    fig = Figure(figsize=(7, 6))
+    ax = charts.draw_event_map(fig, scene, {"title": "Moon", "ecliptic": "Ecliptic", "bodies": {}},
+                               event["date"])
+    assert len([line for line in ax.lines if len(line.get_xdata()) == len(scene["days"])]) == 1
+    fig.canvas.draw()

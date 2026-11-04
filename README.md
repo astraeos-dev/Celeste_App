@@ -15,9 +15,10 @@
 
 ## Présentation
 
-Céleste calcule en temps réel — ou pour n'importe quelle date — la position du Soleil, de la Lune et des planètes
-(de Mercure à Neptune), les événements du jour (lever, coucher, crépuscules), les phases de la Lune, les éclipses,
-les conjonctions et les oppositions. Les résultats s'affichent dans une interface PyQt6 au design Astræos (thèmes Nuit,
+Céleste calcule en temps réel — ou pour n'importe quelle date — la position du Soleil, de la Lune, des planètes
+(de Mercure à Neptune) et des planètes mineures, les événements du jour (lever, coucher, crépuscules), les phases de la
+Lune, les éclipses (vues du lieu choisi) et les évènements de l'année : conjonctions, oppositions, rapprochements de la
+Lune, saisons. Les résultats s'affichent dans une interface PyQt6 au design Astræos (thèmes Nuit,
 Jour et Observation), avec des graphiques interactifs et une carte du ciel.
 
 **Fonctionnalités principales :**
@@ -34,23 +35,32 @@ Jour et Observation), avec des graphiques interactifs et une carte du ciel.
   à la date : mouvement propre, précession, nutation, aberration) à la taille de leur magnitude, constellations, planètes ;
   info-bulle au survol et fiche détaillée au clic (constellation, magnitude, coordonnées)
 - **Planètes** — Mercure, Vénus, Mars, Jupiter, Saturne, Uranus et Neptune : coordonnées, hauteur et azimut, distance,
-  élongation, heures de lever, de culmination et de coucher (nom atténué sous l'horizon) ; système solaire vu de dessus,
-  interne et externe
-- **Coordonnées** — Soleil, Lune, planètes de Mercure à Pluton et Terre, avec en même temps x, y, z et distance
+  élongation, magnitude, heures de lever, de culmination et de coucher (nom atténué sous l'horizon) ; système solaire vu
+  de dessus, interne et externe
+- **Planètes mineures** — Cérès, Pallas, Junon, Vesta et les planètes naines Pluton, Éris, Haumea et Makemake, au choix
+  dans l'onglet Planètes, dans l'onglet Coordonnées et, assez brillantes pour la magnitude limite, sur la carte du ciel :
+  positions de JPL Horizons (à 0,001″ près), magnitudes du système H, G
+- **Coordonnées** — Soleil, Lune, planètes, planètes mineures et Terre, avec en même temps x, y, z et distance
   (héliocentriques, géocentriques ou topocentriques) et deux angles (équatoriaux ou horizontaux vus du lieu, écliptiques
   vus du Soleil ou de la Terre), magnitude, angle au Soleil et constellation ; angles au format des paramètres, ou en
   dd° mm′ ss″, dd° mm,mm′ ou dd,ddddd° pour ce tableau seulement
 - **Format des angles** — choisi dans les paramètres (dd° mm′ ss″, dd° mm,mm′ ou dd,ddddd°), pour tout le logiciel
 - **Prévision des éclipses** — éclipses de Soleil (totale, annulaire, hybride, partielle ; magnitude, durée de la phase
   centrale) et de Lune (totale, partielle, pénombrale ; magnitudes d'ombre et de pénombre, durée de chaque phase), avec
-  l'heure du maximum
+  l'heure du maximum ; **vues d'ici** : heures locales du début, du maximum et de la fin, magnitude, part du Soleil caché,
+  totalité ou annularité, hauteur du Soleil ou de la Lune
 - **Éclipse projetée au sol** — bouton « Carte » de chaque éclipse : bande de totalité ou d'annularité, ligne de
   centralité, magnitude maximale de la partialité et point du maximum (éclipses de Soleil) ; zone où la Lune est levée
   (éclipses de Lune) ; sur un fond Natural Earth, avec le lieu choisi
 - **Conjonctions, oppositions et élongations** — instant à la minute (en TU et à l'heure du lieu) des conjonctions
   entre planètes (laquelle passe au nord de l'autre) et avec le Soleil (inférieure ou supérieure pour Mercure et Vénus,
   avec les transits), des oppositions et des plus grandes élongations de Mercure et de Vénus (est le soir, ouest le
-  matin) ; bouton « Carte » : le trajet des astres parmi les étoiles autour de l'évènement
+  matin) ; oppositions des planètes mineures ; bouton « Carte » : le trajet des astres parmi les étoiles autour de
+  l'évènement
+- **Lune et saisons** — rapprochements de la Lune avec les planètes et Aldébaran, les Pléiades, Régulus, Spica et
+  Antarès, occultations vues d'ici ; périgées, apogées et super lunes ; équinoxes, solstices, périhélie et aphélie
+- **Visibilité d'ici** — pour chaque évènement, la nuit où le voir (le soir, le matin ou toute la nuit), avec la
+  hauteur, la direction et l'heure ; filtres par groupe et « Visibles d'ici seulement » ; export vers un agenda (.ics)
 - **Équation du temps** — écart entre temps solaire vrai et temps solaire moyen
 - **Favoris** — enregistrement des lieux (37 villes préchargées)
 - **Fuseaux horaires** — conversion TU → heure locale par sélecteur UTC±N
@@ -115,8 +125,8 @@ Changer la date recalcule tout au bout d'un instant.
   réglable dans les paramètres)
 - **Nuit · Jour · Observation** — sélecteur de thème, en bas de la barre latérale
 
-**Événements :** les deux boutons de l'onglet cherchent les éclipses des 12 prochaines lunaisons et les conjonctions de
-l'année à venir. Chaque éclipse indique son type, l'heure du maximum (en temps universel), les magnitudes et la durée
+**Événements :** les deux boutons de l'onglet cherchent les éclipses des 12 prochaines lunaisons et les évènements de
+l'année à venir ; « Exporter (.ics) » les enregistre dans un agenda. Chaque éclipse indique son type, l'heure du maximum (en temps universel), les magnitudes et la durée
 des phases. Une éclipse pénombrale si faible que son existence tient à la précision du calcul (magnitude de pénombre
 inférieure à 0,01) est marquée « Incertaine ».
 
@@ -124,7 +134,16 @@ Les conjonctions suivent la définition des almanachs : même longitude éclipti
 (opposition : 180° du Soleil). Repérés jour par jour, les évènements sont affinés heure par heure puis interpolés :
 sur l'année 2026, leurs instants s'écartent d'au plus une seconde de ceux de JPL Horizons (une à trois minutes pour les
 plus grandes élongations, dont le maximum est très plat). La carte montre les trajets en coordonnées équatoriales de la
-date, nord en haut et est à gauche, avec les étoiles du catalogue, l'écliptique et des repères datés.
+date, nord en haut et est à gauche, avec les étoiles du catalogue, l'écliptique et des repères datés (toutes les
+6 heures pour la Lune).
+
+Un évènement est **visible d'ici** quand l'astre se tient à 5° au moins au-dessus de l'horizon alors que le Soleil est
+6° sous l'horizon (12° pour les planètes mineures, plus faibles), dans la nuit de l'évènement ; la carte en donne le
+meilleur moment. Une conjonction de la Lune devient une **occultation** quand, vue du lieu (parallaxe comprise), l'astre
+passe derrière le disque lunaire : heures de disparition et de réapparition. Les **circonstances locales des éclipses**
+suivent le Soleil et la Lune vus du lieu toutes les 20 s ; les contacts sont interpolés avec les rayons de la Lune des
+prédictions de la NASA (bord moyen, vallées pour la totalité) : sur la ligne de centralité du 12 août 2026, la durée de
+la totalité s'écarte de moins de 0,1 s de celle de la NASA.
 
 **Graphiques :**
 
@@ -179,8 +198,8 @@ Celeste_App/
 ├── favorites_default.json # Lieux préchargés (36 villes), copiés dans ~/.celeste au premier enregistrement
 ├── locales/             # Traductions (fr.json est la référence)
 ├── fonts/               # Polices IBM Plex Sans, IBM Plex Mono et Astraeos Symboles (licence OFL)
-├── assets/              # Symbole et icône Astræos (SVG), licence des icônes
-├── scripts/             # Construction de l'application, génération du catalogue d'étoiles, fiche haute précision
+├── assets/              # Symbole et icône Astræos (SVG), terres, planètes mineures (JPL Horizons), licence des icônes
+├── scripts/             # Construction de l'application, catalogue d'étoiles, table des planètes mineures
 ├── celeste.spec         # Recette PyInstaller de Celeste.exe (Windows)
 ├── requirements.txt     # Dépendances d'exécution
 ├── requirements-dev.txt # Dépendances de développement (pytest)
@@ -194,6 +213,10 @@ viennent de l'éphéméride **JPL DE440** (fichier `de440s.bsp`,
 1850–2149) par [Skyfield] : précession IAU 2006, nutation IAU 2000A, temps de lumière, aberration, déflexion ; TU1 et ΔT
 de l'IERS. Précision : planètes à 0,07″ de JPL Horizons, levers et couchers à la seconde (à moins de 30 s des heures
 arrondies de l'USNO).
+
+Les planètes mineures (sauf Pluton, dans DE440) viennent d'une table de **JPL Horizons** (`assets/minor_planets.npz`,
+2,3 Mo, `scripts/make_minor_planets.py`) : position et vitesse héliocentriques tous les 10 jours (60 pour Éris, Haumea et
+Makemake), interpolées par Hermite ; positions à 0,001″ d'Horizons de 1850 à 2149.
 
 L'éphéméride (32 Mo) est cherchée dans `data/` à côté du programme, puis dans `~/.celeste` (ou `$CELESTE_DATA`), où elle
 est téléchargée depuis le serveur JPL/NAIF au premier lancement.
@@ -221,6 +244,11 @@ est téléchargée depuis le serveur JPL/NAIF au premier lancement.
 | `equation_of_time(t)` | Équation du temps en minutes |
 | `angular_separation(ra1, dec1, ra2, dec2)` | Séparation angulaire entre deux astres |
 | `find_conjunctions(dte_start, num_days, max_separation)` | Conjonctions (inférieure, supérieure, transit ; nord ou sud), oppositions et plus grandes élongations, à la minute |
+| `find_moon_events(dte_start, num_days, max_separation)` | Conjonctions de la Lune avec les planètes et les étoiles brillantes de son chemin, périgées, apogées, super lunes |
+| `find_seasons(dte_start, num_days)` | Équinoxes, solstices, périhélie et aphélie de la Terre |
+| `event_visibility(events, lat, lon, elevation_m, tz)` | Visibilité de chaque évènement depuis le lieu, la nuit venue (soir, matin, toute la nuit), occultations |
+| `moon_occultation(event, lat, lon, elevation_m)` | Occultation vue du lieu : disparition, réapparition, hauteur de la Lune |
+| `eclipse_local(eclipse, lat, lon, elevation_m)` | Circonstances locales d'une éclipse : contacts, magnitude, obscuration, durée de la totalité |
 | `event_scene(event, star_catalog)` | Trajets des deux astres autour d'un évènement, étoiles du champ et écliptique (pour sa carte) |
 | `find_eclipses(dte_start, num_months)` | Éclipses de Soleil (éléments besséliens) et de Lune (ombre et pénombre de la Terre, règle de Danjon) : type, magnitudes, durées, heure du maximum en TU |
 
@@ -247,6 +275,8 @@ affiché est redessiné ; les autres le sont quand on les ouvre.
 - **JPL Horizons** et **USNO** (aa.usno.navy.mil) — valeurs de référence des tests de positions, levers et couchers
 - **D. Hoffleit et W. H. Warren** (1991), *Yale Bright Star Catalogue*, 5e éd. — étoiles de la carte du ciel (domaine public)
 - **Natural Earth** (naturalearthdata.com), terres au 1/110 000 000 — fond de carte des éclipses (domaine public)
+- **E. Bowell et al.** (1989), *Application of photometric models to asteroids*, Asteroids II — magnitudes H, G des
+  planètes mineures (paramètres de la JPL Small-Body Database)
 
 ---
 
@@ -297,6 +327,8 @@ avec le projet (`fonts/`, `assets/`) : rien à installer.
 - [x] **Système solaire** — positions de Vénus, Mars, Jupiter et Saturne
 - [x] **Éclipses de Soleil** — type, magnitude, durée de la phase centrale
 - [x] **Conjonctions et oppositions** — prochains événements planétaires, à la minute, avec leur carte
+- [x] **Planètes mineures** — Cérès, Pallas, Junon, Vesta, Pluton, Éris, Haumea, Makemake (JPL Horizons)
+- [x] **Évènements vus d'ici** — visibilité, occultations, Lune, saisons, circonstances locales des éclipses, export .ics
 - [x] **Précision** — éphéméride JPL DE440 (Skyfield) à la place des séries de Meeus ; levers et couchers à la seconde
 - [x] **Équation du temps**
 - [ ] **Planétaire 2D** — orbites animées

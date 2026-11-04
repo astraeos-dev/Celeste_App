@@ -122,7 +122,8 @@ class TestCalculation:
         table = window.planet_table
         shown = [table.item(r, 0).text().split(" ", 1)[-1] for r in range(table.rowCount())
                  if not table.isRowHidden(r)]
-        assert shown == ["Cérès", "Pallas", "Junon", "Vesta", "Pluton", "Éris", "Haumea", "Makemake"]
+        assert shown == ["Cérès", "Pallas", "Junon", "Vesta", "Pluton", "Éris", "Hauméa", "Makémaké", "Sedna"]
+        assert table.item(window._planet_items["Eris"]["col_planet"].row(), 0).toolTip().startswith("(136199) Éris")
         vesta = window._planet_items["Vesta"]
         assert re.match(r"^\d,\d$", vesta["col_mag"].text())               # Vesta : magnitude 6 à 8
         assert re.match(r"^\d\d:\d\d$", vesta["col_rise"].text())
@@ -138,10 +139,10 @@ class TestCalculation:
     def test_all_bodies_and_visible_only(self, window):
         """Issue #21 : tous les astres, ou seulement ceux au-dessus de l'horizon."""
         window._planet_selector.buttons["all"].click()
-        assert len(self._shown(window)) == 15
+        assert len(self._shown(window)) == 16
         window._planet_visible.setChecked(True)
         up = self._shown(window)
-        assert 0 < len(up) < 15
+        assert 0 < len(up) < 16
         assert all(window._planet_alt[name] > 0 for name in up)
         window._planet_visible.setChecked(False)
         window._planet_selector.buttons["planets"].click()
@@ -674,8 +675,8 @@ class TestCoordinatesTab:
     """Onglet Coordonnées : x, y, z et angles en même temps."""
 
     BODIES = ["Soleil", "Lune", "Mercure", "Vénus", "Terre", "Mars", "Cérès", "Pallas", "Junon",
-              "Vesta", "Jupiter", "Saturne", "Uranus", "Neptune", "Pluton", "Haumea", "Makemake",
-              "Éris"]
+              "Vesta", "Jupiter", "Saturne", "Uranus", "Neptune", "Pluton", "Hauméa", "Makémaké",
+              "Éris", "Sedna"]
 
     def _open(self, window):
         window.tabs.setCurrentWidget(window._coord_page)
@@ -890,4 +891,5 @@ class TestDataWindow:
         window.coord_table.cellClicked.emit(bodies.index("Vesta"), 0)
         qapp.processEvents()
         assert "Planète mineure" in " | ".join(self._rows(window._detail_dialog))
+        assert "(4) Vesta" in window._detail_dialog.windowTitle()
         window._detail_dialog.close()

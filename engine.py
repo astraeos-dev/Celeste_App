@@ -83,10 +83,13 @@ _PLANETS = {"Mercury": "mercury", "Venus": "venus", "Mars": "mars barycenter",
 # The planets of the interface
 PLANETS = ("Mercury", "Venus", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune")
 
-# Minor planets: the four first asteroids and the dwarf planets (Ceres among
-# both). Pluto comes from DE440, the others from the tables of JPL Horizons
-# (assets/minor_planets.npz, scripts/make_minor_planets.py).
-MINOR_PLANETS = ("Ceres", "Pallas", "Juno", "Vesta", "Pluto", "Eris", "Haumea", "Makemake")
+# Minor planets: the four first asteroids, the dwarf planets (Ceres among
+# both) and Sedna, far beyond them. Pluto comes from DE440, the others from the
+# tables of JPL Horizons (assets/minor_planets.npz, scripts/make_minor_planets.py).
+MINOR_PLANETS = ("Ceres", "Pallas", "Juno", "Vesta", "Pluto", "Eris", "Haumea", "Makemake", "Sedna")
+# Their numbers in the Minor Planet Center's catalogue: « (1) Cérès »
+MINOR_PLANET_NUMBERS = {"Ceres": 1, "Pallas": 2, "Juno": 3, "Vesta": 4, "Pluto": 134340,
+                        "Eris": 136199, "Haumea": 136108, "Makemake": 136472, "Sedna": 90377}
 _MINOR_TABLE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "minor_planets.npz")
 
 # Eclipse projected on the ground: WGS84 ellipsoid, radii of the Sun and the Moon (km)
@@ -122,7 +125,8 @@ _BODY_RADIUS_KM     = {"sun": 696000.0, "moon": 1737.4}
 _RADII_KM = {"sun": 696000.0, "moon": 1737.4, "Mercury": 2440.5, "Venus": 6051.8,
              "Mars": 3396.2, "Jupiter": 71492.0, "Saturn": 60268.0, "Uranus": 25559.0,
              "Neptune": 24764.0, "Pluto": 1188.3, "Ceres": 469.7, "Pallas": 256.0,
-             "Juno": 127.0, "Vesta": 262.7, "Eris": 1163.0, "Haumea": 780.0, "Makemake": 715.0}
+             "Juno": 127.0, "Vesta": 262.7, "Eris": 1163.0, "Haumea": 780.0, "Makemake": 715.0,
+             "Sedna": 498.0}
 _LIGHT_SECONDS_PER_AU = 499.004784
 _HORIZON_DIP        = 1.76 / 60.0               # degrees per √metre
 
@@ -854,7 +858,7 @@ class AstroEngine:
     # The bodies of the coordinates table, in the order of the Solar System
     BODIES  = ("sun", "moon", "Mercury", "Venus", "earth", "Mars", "Ceres", "Pallas", "Juno",
                "Vesta", "Jupiter", "Saturn", "Uranus", "Neptune", "Pluto", "Haumea", "Makemake",
-               "Eris")
+               "Eris", "Sedna")
     CENTERS = ("heliocentric", "geocentric", "topocentric")
     FRAMES  = ("ecliptic", "equatorial", "horizontal")
 

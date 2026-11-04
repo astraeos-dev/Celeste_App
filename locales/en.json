@@ -226,14 +226,15 @@
     "group_planets": "Planets",
     "group_planets_tip": "Mercury to Neptune",
     "group_minor": "Minor planets",
-    "group_minor_tip": "Ceres, Pallas, Juno, Vesta and the dwarf planets Pluto, Eris, Haumea and Makemake (JPL positions)",
+    "group_minor_tip": "Ceres, Pallas, Juno, Vesta, the dwarf planets Pluto, Eris, Haumea and Makemake, and Sedna (JPL positions)",
     "group_legend": "Bodies shown",
     "group_all": "All",
     "group_all_tip": "Planets and minor planets",
     "visible_only": "Visible only",
     "visible_only_tip": "Only the bodies above the horizon at the computed instant; click a header to sort",
     "sorted_ascending": "Sorted in ascending order (click to reverse)",
-    "sorted_descending": "Sorted in descending order (click to reverse)"
+    "sorted_descending": "Sorted in descending order (click to reverse)",
+    "sedna": "Sedna"
   },
   "chart": {
     "trajectory_title": "Altitude of the Sun and the Moon — {date}",

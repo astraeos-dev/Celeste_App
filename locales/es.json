@@ -226,14 +226,15 @@
     "group_planets": "Planetas",
     "group_planets_tip": "De Mercurio a Neptuno",
     "group_minor": "Planetas menores",
-    "group_minor_tip": "Ceres, Palas, Juno, Vesta y los planetas enanos Plutón, Eris, Haumea y Makemake (posiciones JPL)",
+    "group_minor_tip": "Ceres, Palas, Juno, Vesta, los planetas enanos Plutón, Eris, Haumea y Makemake, y Sedna (posiciones JPL)",
     "group_legend": "Astros mostrados",
     "group_all": "Todos",
     "group_all_tip": "Planetas y planetas menores",
     "visible_only": "Solo visibles",
     "visible_only_tip": "Solo los astros sobre el horizonte en el instante calculado; haga clic en un encabezado para ordenar",
     "sorted_ascending": "Ordenado de menor a mayor (haga clic para invertir)",
-    "sorted_descending": "Ordenado de mayor a menor (haga clic para invertir)"
+    "sorted_descending": "Ordenado de mayor a menor (haga clic para invertir)",
+    "sedna": "Sedna"
   },
   "chart": {
     "trajectory_title": "Altura del Sol y de la Luna — {date}",

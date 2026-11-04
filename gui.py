@@ -61,7 +61,9 @@ import icons  # noqa: E402
 import settings as prefs  # noqa: E402
 from config import APP_VERSION, FONT_MONO, FONT_SANS, THEME_NAMES, Config, mix  # noqa: E402
 from constellations import STAR_CONSTELLATION  # noqa: E402
-from engine import EPHEMERIS_YEARS, MINOR_PLANETS, PLANETS, AstroEngine, constellation_names  # noqa: E402
+from engine import (  # noqa: E402
+    EPHEMERIS_YEARS, MINOR_PLANET_NUMBERS, MINOR_PLANETS, PLANETS, AstroEngine, constellation_names,
+)
 from i18n import (  # noqa: E402
     available_langs, get_lang, lang_name, resolve_lang, switch_lang, t, tf,
 )
@@ -264,8 +266,11 @@ def _clean_place(name):
     return (name or "").replace("\U0001f4cd", "").strip()
 
 
-def _planet_name(name, symbol=False):
+def _planet_name(name, symbol=False, numbered=False):
+    """Nom d'une planète ; *numbered* : avec le numéro d'une planète mineure, « (1) Cérès »."""
     text = t(f"planets.{name.lower()}")
+    if numbered and name in MINOR_PLANET_NUMBERS:
+        text = f"({MINOR_PLANET_NUMBERS[name]}) {text}"
     return f"{SYMBOL[name]} {text}" if symbol else text
 
 
@@ -2443,7 +2448,8 @@ class AstroApp(QMainWindow):
             up = p["alt"] > 0
             name = items["col_planet"]
             name.setForeground(QBrush(QColor(Config.ENCRE if up else Config.ENCRE_ATTENUEE)))
-            name.setToolTip(t("common.visible" if up else "common.below_horizon"))
+            state = t("common.visible" if up else "common.below_horizon")
+            name.setToolTip(f"{_planet_name(p['name'], numbered=True)} · {state}" if p.get("minor") else state)
         table.setSortingEnabled(True)
         table.horizontalHeader().setSortIndicatorShown(False)     # setSortingEnabled la remet
         self._show_planet_group()
@@ -2629,7 +2635,7 @@ class AstroApp(QMainWindow):
                     rows.append((t("detail.constellation"), latin))
             rows.append((t("detail.mag"), _num(obj["mag"], 2)))
         elif kind == "planet":
-            title = f"{sym[obj['name']]} {_planet_name(obj['name'])}"
+            title = f"{sym[obj['name']]} {_planet_name(obj['name'], numbered=full)}"
             side = t("coords.east") if obj.get("east") else t("coords.west")
             rows.append((t("detail.type"), t("detail.type_minor_planet" if obj.get("minor")
                                              else "detail.type_planet")))
@@ -2716,7 +2722,7 @@ class AstroApp(QMainWindow):
         dlg.open()
 
     def _build_detail_dialog(self, obj):
-        title, rows = self._object_details(obj)
+        title, rows = self._object_details(obj, full=True)
         if obj["kind"] in ("sun", "moon", "planet") and self._dte is not None:
             rows += self._data_rows(obj)
         dlg = QDialog(self)

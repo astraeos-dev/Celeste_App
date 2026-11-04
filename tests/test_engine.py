@@ -553,6 +553,8 @@ class TestMinorPlanets:
         ("Ceres", datetime(1900, 3, 1), 297.672747950, -23.928223019, 9.199),
         ("Ceres", datetime(2026, 11, 3, 12), 114.662060988, 24.112152375, 8.197),
         ("Vesta", datetime(2026, 11, 3, 12), None, None, None),
+        ("Sedna", datetime(1900, 3, 1), 11.767674867, -4.116757931, 22.791),
+        ("Sedna", datetime(2026, 11, 3, 12), 62.095219201, 8.776505972, 20.727),
         ("Eris", datetime(2026, 11, 3, 12), None, None, None),
     ])
     def test_positions_and_magnitudes_match_horizons(self, body, when, ra, dec, mag):

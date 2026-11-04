@@ -33,6 +33,14 @@ v4.1:
     totality or annularity and zone of partiality of a solar eclipse; where
     the Moon is up during a lunar eclipse
 
+v4.2:
+  • MINOR_PLANETS — Ceres, Pallas, Juno, Vesta (JPL Horizons tables) and the
+    dwarf planets Pluto (DE440), Eris, Haumea, Makemake; H, G magnitudes
+  • find_moon_events(), find_seasons() — the Moon's conjunctions with planets
+    and bright stars, perigees, apogees; equinoxes, solstices, apsides
+  • event_visibility(), moon_occultation() — when an event is seen from the
+    observer, occultations; eclipse_local() — local circumstances
+
 The ephemeris (32 MB) is looked for in data/ next to this module, then in
 ~/.celeste (or $CELESTE_DATA), where it is downloaded from the JPL/NAIF
 server the first time (load_ephemeris()).
@@ -108,6 +116,14 @@ _TWILIGHTS = ((6.0, "civ"), (12.0, "naut"), (18.0, "astro"))
 # refraction included, as in the nautical almanacs)
 _HORIZON_REFRACTION = 34.0 / 60.0               # degrees
 _BODY_RADIUS_KM     = {"sun": 696000.0, "moon": 1737.4}
+
+# Radii for the apparent diameters (km): equatorial for the planets (IAU WGCCRE
+# 2015, as the almanacs; Saturn without its rings), mean for the minor planets
+_RADII_KM = {"sun": 696000.0, "moon": 1737.4, "Mercury": 2440.5, "Venus": 6051.8,
+             "Mars": 3396.2, "Jupiter": 71492.0, "Saturn": 60268.0, "Uranus": 25559.0,
+             "Neptune": 24764.0, "Pluto": 1188.3, "Ceres": 469.7, "Pallas": 256.0,
+             "Juno": 127.0, "Vesta": 262.7, "Eris": 1163.0, "Haumea": 780.0, "Makemake": 715.0}
+_LIGHT_SECONDS_PER_AU = 499.004784
 _HORIZON_DIP        = 1.76 / 60.0               # degrees per √metre
 
 # Solar eclipse geometry (Besselian elements); lengths in Earth equatorial radii
@@ -973,6 +989,48 @@ class AstroEngine:
             result[body] = {"mag": float(mag), "elongation": elongation,
                             "constellation": abbreviation, "constellation_name": name}
         return result
+
+    @classmethod
+    def body_details(cls, t, body):
+        """
+        What the data window of a body shows, seen from the Earth's centre
+        (DE440, apparent): observations() (magnitude, elongation,
+        constellation) and the distance in AU and km, the light time, the
+        apparent diameter, the distance to the Sun, the phase angle (Sun–body–
+        Earth) and the illuminated fraction of the disc.
+
+        Args:
+            t (float): Julian centuries of UT since J2000.0.
+            body (str): "sun", "moon", a planet or a minor planet.
+
+        Returns:
+            dict: mag, elongation, constellation, constellation_name, dist_au,
+            dist_km, light_time_s, diameter_arcsec, helio_au, phase_angle,
+            illuminated (%) — None where it does not apply (the Sun).
+        """
+        sky = _sky()
+        time = cls._time_ut(t)
+        target = cls._target(body)
+        astrometric = sky["earth"].at(time).observe(target)
+        delta = astrometric.distance()
+        seen = cls.observations(t, [body])[body]
+        out = dict(seen, dist_au=float(delta.au), dist_km=float(delta.km),
+                   light_time_s=float(delta.au) * _LIGHT_SECONDS_PER_AU,
+                   diameter_arcsec=None, helio_au=None, phase_angle=None, illuminated=None)
+        radius = _RADII_KM.get(body if body in ("sun", "moon") else body.capitalize())
+        if radius:
+            out["diameter_arcsec"] = 2.0 * math.degrees(math.asin(radius / float(delta.km))) * 3600.0
+        if body != "sun":
+            # Sun → body at the time the light left the body, and Earth → body
+            emitted = time - delta.au * _LIGHT_SECONDS_PER_AU / 86400.0
+            helio = (target.at(emitted) - sky["sun"].at(emitted)).position.au
+            geo = astrometric.position.au
+            r = float(np.linalg.norm(helio))
+            cos_phase = float(np.dot(helio, geo) / (r * float(delta.au)))
+            phase = math.degrees(math.acos(max(-1.0, min(1.0, cos_phase))))
+            out.update(helio_au=r if body != "moon" else None, phase_angle=phase,
+                       illuminated=50.0 * (1.0 + math.cos(math.radians(phase))))
+        return out
 
     # ──────────────────────────────────────────────────────────────────
     # ECLIPSE PROJECTED ON THE GROUND

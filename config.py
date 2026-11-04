@@ -27,8 +27,10 @@ Usage:
     Config.ENCRE, Config.token("ciel-200")
 """
 
-# Version of Céleste: the only place to change it (window, settings, PDF report)
-APP_VERSION = "4.1"
+# Version of Céleste: the only place to change it (window, settings, executable,
+# installer, GitHub requests). Raise it for each release, then push the tag
+# v<version>: the build workflow checks that both agree.
+APP_VERSION = "4.2"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # COLOR TOKENS (tokens.json of the Astræos design system)

@@ -27,6 +27,7 @@ import json
 import math
 import os
 import re
+import sys
 import urllib.request
 import functools
 from datetime import datetime, timedelta, timezone
@@ -34,10 +35,10 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError, available_timezones
 
 from PyQt6.QtCore import (
     QDate, QDateTime, QEvent, QLocale, QPointF, QRectF, QRegularExpression, QSize,
-    Qt, QTime, QTimer, QTimeZone,
+    Qt, QTime, QTimer, QTimeZone, QUrl,
 )
 from PyQt6.QtGui import (
-    QBrush, QColor, QFont, QFontDatabase, QKeySequence,
+    QBrush, QColor, QDesktopServices, QFont, QFontDatabase, QKeySequence,
     QPainter, QPainterPath, QPalette, QPen, QRegularExpressionValidator, QShortcut,
 )
 from PyQt6.QtPositioning import QGeoPositionInfo, QGeoPositionInfoSource
@@ -79,6 +80,19 @@ _FONTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts")
 
 _AUTO_ZONE = "auto"           # fuseau déduit du lieu (timezonefinder)
 _GEOLOC_TIMEOUT_MS = 15000    # attente du service de localisation de l'appareil
+
+_ALL_POSITIONING_METHODS = QGeoPositionInfoSource.PositioningMethod.AllPositioningMethods
+
+# Liens : site, code source, soutien ; demandes sur GitHub (formulaires de .github/ISSUE_TEMPLATE)
+_URL_SITE = "https://astraeos-dev.github.io/personnal-site/"
+_URL_REPO = "https://github.com/astraeos-dev/Celeste_App"
+_URL_COFFEE = "https://buymeacoffee.com/gregorychau"
+
+# Réglages de la localisation du système, ouverts quand l'accès est refusé
+_LOCATION_SETTINGS = {
+    "win32": "ms-settings:privacy-location",
+    "darwin": "x-apple.systempreferences:com.apple.preference.security?Privacy_LocationServices",
+}
 _PLANETS = PLANETS        # Mercure à Neptune (engine.PLANETS)
 _QT_DATETIME_FORMAT = "dd/MM/yyyy HH:mm:ss"
 
@@ -296,6 +310,38 @@ def _ics_calendar(items, stamp):
                   f"DESCRIPTION:{_ics_text(description)}", "TRANSP:TRANSPARENT", "END:VEVENT"]
     lines.append("END:VCALENDAR")
     return "".join(_ics_fold(line) + "\r\n" for line in lines)
+
+
+# Groupes d'astres de l'onglet Planètes, dans leur ordre : un nouveau groupe
+# (comètes, ciel profond…) s'ajoute ici avec ses noms, et une clé
+# planets.group_<clé> dans les traductions
+_BODY_GROUPS = (("planets", PLANETS), ("minor", MINOR_PLANETS))
+_SORT_ROLE = Qt.ItemDataRole.UserRole          # valeur numérique du tri d'une cellule
+_NAME_ROLE = Qt.ItemDataRole.UserRole + 1      # nom de l'astre d'une ligne
+
+
+class _SortItem(QTableWidgetItem):
+    """Cellule triée selon sa valeur numérique (_SORT_ROLE), pas selon son texte."""
+
+    def __lt__(self, other):
+        mine, theirs = self.data(_SORT_ROLE), other.data(_SORT_ROLE)
+        if mine is None or theirs is None:
+            return (mine is None) < (theirs is None)            # « — » à la fin
+        return mine < theirs
+
+
+def _issue_url(template):
+    """Nouvelle demande sur GitHub, formulaire *template* (bug, feature, body) prérempli
+    avec la version de Céleste et le système."""
+    import platform
+    from urllib.parse import urlencode
+    query = {"template": f"{template}.yml", "version": APP_VERSION,
+             "system": f"{platform.system()} {platform.release()}".strip()}
+    return f"{_URL_REPO}/issues/new?{urlencode(query)}"
+
+
+def _open_url(url):
+    QDesktopServices.openUrl(QUrl(url))
 
 
 def _duration(minutes):
@@ -1037,7 +1083,7 @@ class AstroApp(QMainWindow):
             edit.textEdited.connect(self._on_coords_edited)
         lay.addWidget(self.field_lat)
         btn_geo = _bouton_icone("geolocate", t("side.geoloc_tip"))
-        btn_geo.clicked.connect(self.geolocate)
+        btn_geo.clicked.connect(lambda _checked=False: self.geolocate())
         lay.addLayout(self._with_button(self.field_lon, btn_geo))
 
         self.entry_elev = QLineEdit(_elev_text(_pref_float("default_elevation", 0.0)))
@@ -1297,20 +1343,31 @@ class AstroApp(QMainWindow):
         lay.setContentsMargins(0, 16, 0, 16)
         lay.setSpacing(16)
 
-        # planètes ou planètes mineures, au choix
-        self._planet_group = "planets"
-        self._planet_selector = SelecteurTheme(
-            self._planet_group, self._on_planet_group,
-            [("planets", t("planets.group_planets"), t("planets.group_planets_tip")),
-             ("minor", t("planets.group_minor"), t("planets.group_minor_tip"))],
-            t("planets.group_legend"))
-        self._planet_selector.setMaximumWidth(460)
-        lay.addWidget(self._planet_selector)
+        # tous les astres, ou un groupe ; seulement ceux au-dessus de l'horizon
+        self._planet_group = prefs.get("planet_group") or "planets"
+        if self._planet_group not in ("all",) + tuple(k for k, _names in _BODY_GROUPS):
+            self._planet_group = "planets"
+        options = [("all", t("planets.group_all"), t("planets.group_all_tip"))]
+        options += [(key, t(f"planets.group_{key}"), t(f"planets.group_{key}_tip"))
+                    for key, _names in _BODY_GROUPS]
+        self._planet_selector = SelecteurTheme(self._planet_group, self._on_planet_group, options,
+                                               t("planets.group_legend"))
+        self._planet_selector.setMaximumWidth(620)
+        self._planet_visible = QCheckBox(t("planets.visible_only"))
+        self._planet_visible.setToolTip(t("planets.visible_only_tip"))
+        self._planet_visible.setChecked(bool(prefs.get("planet_visible_only")))
+        self._planet_visible.toggled.connect(self._on_planet_visible)
+        bar = QHBoxLayout()
+        bar.setSpacing(24)
+        bar.addWidget(self._planet_selector, stretch=1)
+        bar.addWidget(self._planet_visible)
+        bar.addStretch()
+        lay.addLayout(bar)
 
         # la visibilité se lit à la couleur du nom (vive au-dessus de l'horizon)
         columns = ["col_planet", "col_ra", "col_dec", "col_alt", "col_az", "col_dist",
                    "col_elong", "col_mag", "col_rise", "col_transit", "col_set"]
-        bodies = _PLANETS + MINOR_PLANETS
+        bodies = tuple(name for _key, names in _BODY_GROUPS for name in names)
         table = QTableWidget(len(bodies), len(columns))
         table.setHorizontalHeaderLabels([t(f"planets.{c}") for c in columns])
         table.verticalHeader().setVisible(False)
@@ -1332,7 +1389,8 @@ class AstroApp(QMainWindow):
         for r, name in enumerate(bodies):
             items = {}
             for c, col in enumerate(columns):
-                item = QTableWidgetItem("—")
+                item = _SortItem("—")
+                item.setData(_NAME_ROLE, name)
                 item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
                 if col == "col_planet":
                     item.setText(_planet_name(name, symbol=True))
@@ -1345,8 +1403,23 @@ class AstroApp(QMainWindow):
                     item.setFont(mono)
                 table.setItem(r, c, item)
                 items[col] = item
+            items["col_planet"].setData(_SORT_ROLE, r)                # ordre du Système solaire
             self._planet_items[name] = items
         self.planet_table = table
+        # un clic sur un astre ouvre sa fenêtre de données
+        table.cellClicked.connect(
+            lambda row, _col: self._show_body_detail(table.item(row, 0).data(_NAME_ROLE)))
+        table.viewport().setCursor(Qt.CursorShape.PointingHandCursor)
+        table.setToolTip(t("detail.click_tip"))
+        # la dernière colonne s'étire : jamais de défilement horizontal pour quelques pixels
+        table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._planet_alt = {}
+        # clic sur un en-tête : tri croissant puis décroissant ; « Planète » : ordre naturel.
+        # La colonne triée a son en-tête en or (la flèche de Qt élargirait toutes les colonnes)
+        table.setSortingEnabled(True)
+        header.setSortIndicatorShown(False)
+        table.sortItems(0, Qt.SortOrder.AscendingOrder)
+        header.sortIndicatorChanged.connect(self._on_planet_sort)
         self._show_planet_group()
         lay.addWidget(table)
 
@@ -1362,16 +1435,42 @@ class AstroApp(QMainWindow):
 
     def _on_planet_group(self, key):
         self._planet_group = key
+        prefs.set("planet_group", key)
         self._show_planet_group()
 
+    def _on_planet_visible(self, checked):
+        prefs.set("planet_visible_only", bool(checked))
+        self._show_planet_group()
+
+    def _on_planet_sort(self, column, order):
+        table = self.planet_table
+        for c in range(table.columnCount()):
+            item = table.horizontalHeaderItem(c)
+            sorted_here = c == column and c != 0
+            item.setForeground(QBrush(QColor(Config.OR)) if sorted_here else QBrush())
+            item.setToolTip(t("planets.sorted_" + ("ascending" if order == Qt.SortOrder.AscendingOrder
+                                                    else "descending")) if sorted_here else "")
+        self._show_planet_group()
+
+    _PLANET_ROWS_MAX = 8            # au-delà, le tableau défile
+
     def _show_planet_group(self):
-        """N'affiche que les lignes du groupe choisi : planètes ou planètes mineures."""
-        shown = _PLANETS if self._planet_group == "planets" else MINOR_PLANETS
-        for r, name in enumerate(_PLANETS + MINOR_PLANETS):
-            self.planet_table.setRowHidden(r, name not in shown)
-        self.planet_table.resizeColumnsToContents()
-        header = self.planet_table.horizontalHeader()
-        self.planet_table.setFixedHeight(40 * len(shown) + header.sizeHint().height() + 4)
+        """N'affiche que les astres du groupe choisi, et seulement ceux au-dessus
+        de l'horizon si « Visibles seulement » est cochée."""
+        group = dict(_BODY_GROUPS).get(self._planet_group)
+        visible_only = self._planet_visible.isChecked()
+        table = self.planet_table
+        shown = 0
+        for r in range(table.rowCount()):
+            name = table.item(r, 0).data(_NAME_ROLE)
+            hide = bool((group is not None and name not in group) or (
+                visible_only and float(self._planet_alt.get(name, 0.0)) <= 0.0))
+            table.setRowHidden(r, hide)
+            shown += not hide
+        table.resizeColumnsToContents()
+        header = table.horizontalHeader()
+        rows = max(1, min(shown, self._PLANET_ROWS_MAX))
+        table.setFixedHeight(40 * rows + header.sizeHint().height() + 4)
 
     # ── Onglet Coordonnées ────────────────────────────────────────────────────
     #    x, y, z et distance selon l'origine « cartésiennes » ; deux angles selon
@@ -1428,9 +1527,20 @@ class AstroApp(QMainWindow):
                 table.setItem(r, c, item)
         table.setFixedHeight(36 * table.rowCount() + header.sizeHint().height() + 4)
         self.coord_table = table
+        table.cellClicked.connect(lambda row, _col: self._show_body_detail(AstroEngine.BODIES[row]))
+        table.viewport().setCursor(Qt.CursorShape.PointingHandCursor)
+        table.setToolTip(t("detail.click_tip"))
         lay.addWidget(table)
         self._coord_note = _label("", "legende", wrap=True)
         lay.addWidget(self._coord_note)
+        propose = _bouton(t("links.body_more"), variante="discret", compact=True)
+        propose.setToolTip(t("links.body_tip"))
+        propose.clicked.connect(lambda _checked=False: _open_url(_issue_url("body")))
+        self._propose_body = propose
+        row = QHBoxLayout()
+        row.addWidget(propose)
+        row.addStretch()
+        lay.addLayout(row)
         lay.addStretch(1)
         self._coord_page = page
         self._sync_coord_menus()
@@ -1659,10 +1769,24 @@ class AstroApp(QMainWindow):
         buttons.addStretch()
         box.addLayout(buttons)
 
-        # À propos
+        # À propos : liens
         box = section(t("settings.about_section"))
         box.addWidget(_label(tf("settings.about", version=APP_VERSION), "corps", wrap=True))
         box.addWidget(_label(t("settings.credits"), "legende", wrap=True))
+        self._link_buttons = {}
+        for links in ((("site", _URL_SITE), ("source", _URL_REPO), ("coffee", _URL_COFFEE)),
+                      (("bug", _issue_url("bug")), ("feature", _issue_url("feature")),
+                       ("body", _issue_url("body")))):
+            row = QHBoxLayout()
+            row.setSpacing(8)
+            for key, url in links:
+                btn = _bouton(t(f"links.{key}"), variante="secondaire", compact=True)
+                btn.setToolTip(t(f"links.{key}_tip"))
+                btn.clicked.connect(lambda _checked=False, u=url: _open_url(u))
+                self._link_buttons[key] = btn
+                row.addWidget(btn)
+            row.addStretch()
+            box.addLayout(row)
 
         lay.addStretch()
         self.tabs.addTab(scroll, t("tabs.settings"))
@@ -1986,18 +2110,23 @@ class AstroApp(QMainWindow):
     # GÉOLOCALISATION / TEMPS RÉEL
     # ──────────────────────────────────────────────────────────────────────────
 
-    def geolocate(self):
+    def geolocate(self, interactive=True):
         """
         Position de l'appareil par le service de localisation du système
-        (GPS, Wi-Fi : QtPositioning) ; s'il est absent, refusé ou muet, position
-        approximative d'après l'adresse IP, annoncée comme telle.
+        (GPS, Wi-Fi : QtPositioning) ; s'il est absent, refusé ou muet, sa
+        dernière position connue, sinon la position approximative de l'adresse
+        IP. *interactive* (bouton) : une fenêtre dit alors pourquoi le service
+        n'a pas répondu et ouvre ses réglages ; au démarrage, la barre d'état.
         """
         if self._geo_source is not None:                     # une requête est en cours
             return
+        self._geo_interactive = interactive
         source = QGeoPositionInfoSource.createDefaultSource(self)
         if source is None:
-            self._geolocate_by_ip()
+            self._geolocate_by_ip("no_source")
             return
+        if hasattr(source, "setPreferredPositioningMethods"):           # GPS, Wi-Fi, réseau
+            source.setPreferredPositioningMethods(_ALL_POSITIONING_METHODS)
         self._geo_source = source
         source.positionUpdated.connect(self._on_device_position)
         source.errorOccurred.connect(self._on_device_position_error)
@@ -2017,7 +2146,7 @@ class AstroApp(QMainWindow):
         self._end_device_request()
         coord = info.coordinate()
         if not coord.isValid():
-            self._geolocate_by_ip()
+            self._geolocate_by_ip("invalid")
             return
         lat, lon = coord.latitude(), coord.longitude()
         name = _place_name(lat, lon)
@@ -2028,9 +2157,16 @@ class AstroApp(QMainWindow):
             tf("errors.geoloc_device", place=name or f"{_fmt_lat(lat)}, {_fmt_lon(lon)}",
                precision=precision), 8000)
 
-    def _on_device_position_error(self, _error):
+    def _on_device_position_error(self, error):
+        source = self._geo_source
+        last = source.lastKnownPosition() if hasattr(source, "lastKnownPosition") else None
         self._end_device_request()
-        self._geolocate_by_ip()
+        if last is not None and last.isValid() and last.coordinate().isValid():
+            self._on_device_position(last)                    # dernière position connue
+            return
+        code = getattr(error, "value", error)
+        reason = {0: "access", 1: "closed", 4: "timeout"}.get(code, "unknown")
+        self._geolocate_by_ip(reason)
 
     def _set_place(self, lat, lon, name, zone=None):
         """Lieu trouvé par la géolocalisation : coordonnées, nom, fuseau, puis calcul."""
@@ -2043,8 +2179,9 @@ class AstroApp(QMainWindow):
         self.combo_fav.setCurrentIndex(-1)
         self.calculate()
 
-    def _geolocate_by_ip(self):
-        """Secours : position de l'adresse IP, souvent celle du fournisseur d'accès."""
+    def _geolocate_by_ip(self, reason=None):
+        """Secours : position de l'adresse IP, souvent celle du fournisseur d'accès ;
+        *reason* : pourquoi le service de l'appareil n'a pas répondu."""
         url = ("http://ip-api.com/json/"
                "?fields=status,message,country,city,lat,lon,timezone")
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
@@ -2067,6 +2204,26 @@ class AstroApp(QMainWindow):
         self.statusBar().showMessage(
             tf("errors.geoloc_ip", city=data.get("city", "?"),
                country=data.get("country", "?")), 12000)
+        if reason and getattr(self, "_geo_interactive", False):
+            self._explain_geolocation(reason, data.get("city", "?"), data.get("country", "?"))
+
+    def _explain_geolocation(self, reason, city, country):
+        """Fenêtre (non bloquante) : position de l'IP, pourquoi, et les réglages à ouvrir."""
+        box = QMessageBox(QMessageBox.Icon.Information, t("errors.geoloc_title"),
+                          tf("errors.geoloc_ip_short", city=city, country=country), parent=self)
+        box.setInformativeText(t(f"errors.geoloc_reason_{reason}"))
+        url = _LOCATION_SETTINGS.get(sys.platform)
+        settings = None
+        if url and reason in ("access", "closed", "no_source", "timeout"):
+            settings = box.addButton(t("errors.geoloc_open_settings"), QMessageBox.ButtonRole.ActionRole)
+        box.addButton(QMessageBox.StandardButton.Close)
+
+        def done(_result):
+            if settings is not None and box.clickedButton() is settings:
+                QDesktopServices.openUrl(QUrl(url))
+        box.finished.connect(done)
+        self._geo_dialog = box
+        box.open()
 
     def toggle_live(self, checked):
         self.live_mode = bool(checked)
@@ -2259,8 +2416,15 @@ class AstroApp(QMainWindow):
             _set_pastille(self._lbl_moon_state, t("common.below_horizon"), "neutre")
 
     def _update_planet_table(self):
+        table = self.planet_table
+        table.setSortingEnabled(False)                   # pas de tri pendant la mise à jour
         for p in self.planets + self.minor_planets:
             items = self._planet_items[p["name"]]
+            self._planet_alt[p["name"]] = float(p["alt"])
+            for col, value in (("col_ra", p["ra"]), ("col_dec", p["dec"]), ("col_alt", p["alt"]),
+                               ("col_az", p["az"]), ("col_dist", p["dist"]), ("col_elong", p["elong"]),
+                               ("col_mag", p["mag"])):
+                items[col].setData(_SORT_ROLE, float(value))
             items["col_mag"].setText(_num(p["mag"], 1))
             side = t("coords.east") if p["east"] else t("coords.west")
             items["col_ra"].setText(_ra(p["ra"]))
@@ -2272,10 +2436,17 @@ class AstroApp(QMainWindow):
             events = self.planet_events.get(p["name"], {})
             for key in ("rise", "transit", "set"):
                 items[f"col_{key}"].setText(self._format_event(events.get(key)))
+                when = events.get(key)
+                items[f"col_{key}"].setData(_SORT_ROLE, when.timestamp() if when is not None
+                                            and when.tzinfo else (when - datetime(1970, 1, 1)).total_seconds()
+                                            if when is not None else None)
             up = p["alt"] > 0
             name = items["col_planet"]
             name.setForeground(QBrush(QColor(Config.ENCRE if up else Config.ENCRE_ATTENUEE)))
             name.setToolTip(t("common.visible" if up else "common.below_horizon"))
+        table.setSortingEnabled(True)
+        table.horizontalHeader().setSortIndicatorShown(False)     # setSortingEnabled la remet
+        self._show_planet_group()
 
     def _update_status(self):
         if self._lat is None:
@@ -2432,10 +2603,12 @@ class AstroApp(QMainWindow):
             self._sky_tip.hide()
             self._show_object_detail(obj)
 
-    def _object_details(self, obj, symbols=True):
+    def _object_details(self, obj, symbols=True, full=False):
         """
         Titre et lignes (libellé, valeur) de la fiche d'un astre. *symbols* :
-        symboles suivis de U+FE0E (Qt) ; sans, pour matplotlib.
+        symboles suivis de U+FE0E (Qt) ; sans, pour matplotlib. *full* : la
+        fenêtre de données du Soleil, de la Lune ou d'une planète, avec
+        diamètre apparent, phase, distances, temps de lumière, lever et coucher.
         """
         sym = SYMBOL if symbols else charts.SYMBOL
         kind = obj["kind"]
@@ -2483,8 +2656,69 @@ class AstroApp(QMainWindow):
         ]
         return title, rows
 
+    @staticmethod
+    def _light_time(seconds):
+        """« 8 min 15 s », « 1 h 15 min »."""
+        seconds = int(round(seconds))
+        if seconds < 60:
+            return f"{seconds} s"
+        if seconds < 3600:
+            return f"{seconds // 60} min {seconds % 60:02d} s"
+        return f"{seconds // 3600} h {seconds % 3600 // 60:02d} min"
+
+    @staticmethod
+    def _diameter(arcsec):
+        """« 31′ 34″ », « 58,4″ »."""
+        if arcsec >= 60.0:
+            minutes, seconds = divmod(int(round(arcsec)), 60)
+            return f"{minutes}′ {seconds:02d}″"
+        return f"{_num(arcsec, 1 if arcsec >= 1 else 2)}″"
+
+    def _data_rows(self, obj):
+        """Lignes de la fenêtre de données d'un astre du Système solaire."""
+        body = {"sun": "sun", "moon": "moon"}.get(obj["kind"], obj.get("name"))
+        d = AstroEngine.body_details(AstroEngine.julian_century_j2000(self._dte), body)
+        rows = [] if obj.get("mag") is not None else [(t("detail.mag"), _num(d["mag"], 2))]
+        if d.get("constellation"):
+            rows.append((t("detail.constellation"), f"{d['constellation_name']} ({d['constellation']})"))
+        if d["diameter_arcsec"]:
+            rows.append((t("detail.diameter"), self._diameter(d["diameter_arcsec"])))
+        if d["illuminated"] is not None and obj["kind"] != "moon":
+            rows.append((t("detail.illumination"), f"{_num(d['illuminated'], 1)} %"))
+        if d["phase_angle"] is not None:
+            rows.append((t("detail.phase_angle"), _deg(d["phase_angle"], 1)))
+        rows.append((t("detail.light_time"), self._light_time(d["light_time_s"])))
+        if d["helio_au"] is not None:
+            rows.append((t("detail.helio"), tf("units.au", value=_num(d["helio_au"], 4))))
+        events = {"sun": self.sun_events, "moon": self.moon_events}.get(
+            obj["kind"], self.planet_events.get(obj.get("name"), {})) or {}
+        for key in ("rise", "transit", "set"):
+            if key in events:
+                rows.append((t(f"detail.{key}"), self._format_event(events.get(key))))
+        return rows
+
+    def _body_object(self, name):
+        """L'astre *name* tel que la carte du ciel le décrit : Soleil, Lune ou planète."""
+        if name == "sun":
+            return {**self.sun_data, "kind": "sun"}
+        if name == "moon":
+            return {**self.moon_data, "kind": "moon"}
+        planet = next((p for p in self.planets + self.minor_planets if p["name"] == name), None)
+        return {**planet, "kind": "planet"} if planet else None
+
+    def _show_body_detail(self, name):
+        """Fenêtre de données d'un astre choisi dans un tableau (non bloquante)."""
+        obj = self._body_object(name)
+        if obj is None:
+            return
+        dlg = self._build_detail_dialog(obj)
+        self._detail_dialog = dlg
+        dlg.open()
+
     def _build_detail_dialog(self, obj):
         title, rows = self._object_details(obj)
+        if obj["kind"] in ("sun", "moon", "planet") and self._dte is not None:
+            rows += self._data_rows(obj)
         dlg = QDialog(self)
         dlg.setWindowTitle(tf("detail.title", name=title))
         dlg.setMinimumWidth(380)

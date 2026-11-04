@@ -227,7 +227,13 @@
     "group_planets_tip": "De Mercurio a Neptuno",
     "group_minor": "Planetas menores",
     "group_minor_tip": "Ceres, Palas, Juno, Vesta y los planetas enanos Plutón, Eris, Haumea y Makemake (posiciones JPL)",
-    "group_legend": "Astros mostrados"
+    "group_legend": "Astros mostrados",
+    "group_all": "Todos",
+    "group_all_tip": "Planetas y planetas menores",
+    "visible_only": "Solo visibles",
+    "visible_only_tip": "Solo los astros sobre el horizonte en el instante calculado; haga clic en un encabezado para ordenar",
+    "sorted_ascending": "Ordenado de menor a mayor (haga clic para invertir)",
+    "sorted_descending": "Ordenado de mayor a menor (haga clic para invertir)"
   },
   "chart": {
     "trajectory_title": "Altura del Sol y de la Luna — {date}",
@@ -279,7 +285,15 @@
     "phase": "Fase",
     "illumination": "Fracción iluminada",
     "close": "Cerrar",
-    "type_minor_planet": "Planeta menor"
+    "type_minor_planet": "Planeta menor",
+    "diameter": "Diámetro aparente",
+    "phase_angle": "Ángulo de fase",
+    "light_time": "Tiempo de luz",
+    "helio": "Distancia al Sol",
+    "rise": "Salida",
+    "transit": "Culminación",
+    "set": "Puesta",
+    "click_tip": "Haga clic en un astro para abrir su ventana de datos"
   },
   "events": {
     "search_eclipses": "Buscar eclipses (12 meses)",
@@ -403,7 +417,15 @@
     "geoloc_device": "Posición del equipo: {place}{precision}",
     "geoloc_ip": "Posición aproximada según la dirección IP: {city}, {country} — a menudo la del proveedor de Internet. Active el servicio de ubicación del sistema o introduzca sus coordenadas.",
     "geoloc_fail": "No se ha podido determinar la posición.",
-    "geoloc_network": "No se puede contactar con el servicio de geolocalización. Compruebe su conexión.\n\nDetalle: {detail}"
+    "geoloc_network": "No se puede contactar con el servicio de geolocalización. Compruebe su conexión.\n\nDetalle: {detail}",
+    "geoloc_ip_short": "Posición aproximada según la dirección IP: {city}, {country} (a menudo la del proveedor de acceso).",
+    "geoloc_reason_no_source": "No hay ningún servicio de ubicación en este dispositivo. Introduzca sus coordenadas o elija un favorito.",
+    "geoloc_reason_access": "Windows niega la posición a Céleste. En Configuración › Privacidad y seguridad › Ubicación, active «Servicios de ubicación» y «Permitir que las aplicaciones de escritorio accedan a tu ubicación», y vuelva a intentarlo.",
+    "geoloc_reason_closed": "El servicio de ubicación del dispositivo está desactivado. Actívelo en la configuración del sistema y vuelva a intentarlo.",
+    "geoloc_reason_timeout": "El servicio de ubicación no encontró ninguna posición en 15 s (¿Wi-Fi desactivado, ordenador sin GPS ni Wi-Fi?). Compruebe que está activado y vuelva a intentarlo.",
+    "geoloc_reason_invalid": "El servicio de ubicación respondió sin una posición válida.",
+    "geoloc_reason_unknown": "El servicio de ubicación indicó un error.",
+    "geoloc_open_settings": "Abrir la configuración de ubicación"
   },
   "settings": {
     "time_format": "Formato de hora",
@@ -427,7 +449,7 @@
     "reset_title": "Restablecer",
     "reset_confirm": "¿Restaurar todos los ajustes predeterminados (tema, idioma, lugar de inicio, tiempo real)?",
     "reset_done": "Ajustes predeterminados restaurados.",
-    "about": "Céleste {version} calcula las posiciones del Sol, la Luna y los planetas según Jean Meeus, Astronomical Algorithms (2.ª edición). Los favoritos se guardan en favorites.json y los ajustes en settings.json.",
+    "about": "Céleste {version} calcula las posiciones del Sol, la Luna, los planetas y los planetas menores con las efemérides JPL DE440 y JPL Horizons. Los ajustes y favoritos están en la carpeta .celeste de su perfil.",
     "display_section": "Idioma y visualización",
     "theme_hint": "El tema se elige al pie de la barra lateral: Noche, Día u Observación (rojo sobre negro, para observar al aire libre de noche).",
     "reset_hint": "Devuelve el tema, el idioma, el formato de hora, el lugar de inicio y el tiempo real a sus valores de origen. Los favoritos se conservan.",
@@ -461,5 +483,20 @@
     "azimuth": "Acimut {value}",
     "set_at": "Puesta a las {time}",
     "rise_at": "Salida a las {time}"
+  },
+  "links": {
+    "site": "Sitio web",
+    "site_tip": "Astræos y las demás aplicaciones de la familia Ganymede",
+    "source": "Código fuente",
+    "source_tip": "Céleste en GitHub",
+    "coffee": "Invitar a un café",
+    "coffee_tip": "Apoyar el desarrollo de Céleste (Buy Me a Coffee)",
+    "bug": "Informar de un problema",
+    "bug_tip": "Formulario en GitHub, con la versión de Céleste y el sistema",
+    "feature": "Proponer una función",
+    "feature_tip": "Una idea para Céleste, en GitHub",
+    "body": "Proponer un astro",
+    "body_tip": "Un astro para añadir a Céleste (planeta menor, cometa, estrella…), en GitHub",
+    "body_more": "Proponer otro astro…"
   }
 }

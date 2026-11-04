@@ -31,6 +31,7 @@ pytest.importorskip("PyQt6.QtWidgets", reason="PyQt6 ou les bibliothèques de Qt
 pytest.importorskip("matplotlib")
 
 from matplotlib.backend_bases import MouseEvent  # noqa: E402
+from PyQt6.QtCore import Qt  # noqa: E402
 from PyQt6.QtWidgets import (  # noqa: E402
     QAbstractButton, QApplication, QDialog, QFrame, QLabel,
 )
@@ -126,7 +127,37 @@ class TestCalculation:
         assert re.match(r"^\d,\d$", vesta["col_mag"].text())               # Vesta : magnitude 6 à 8
         assert re.match(r"^\d\d:\d\d$", vesta["col_rise"].text())
         window._planet_selector.buttons["planets"].click()
-        assert table.isRowHidden(list(window._planet_items).index("Vesta"))
+        vesta_row = window._planet_items["Vesta"]["col_planet"].row()
+        assert table.isRowHidden(vesta_row)
+
+    def _shown(self, window):
+        table = window.planet_table
+        return [table.item(r, 0).data(Qt.ItemDataRole.UserRole + 1) for r in range(table.rowCount())
+                if not table.isRowHidden(r)]
+
+    def test_all_bodies_and_visible_only(self, window):
+        """Issue #21 : tous les astres, ou seulement ceux au-dessus de l'horizon."""
+        window._planet_selector.buttons["all"].click()
+        assert len(self._shown(window)) == 15
+        window._planet_visible.setChecked(True)
+        up = self._shown(window)
+        assert 0 < len(up) < 15
+        assert all(window._planet_alt[name] > 0 for name in up)
+        window._planet_visible.setChecked(False)
+        window._planet_selector.buttons["planets"].click()
+
+    def test_sort_by_magnitude(self, window):
+        """Clic sur « Mag. » : du plus brillant au plus faible ; « Planète » : ordre du Système solaire."""
+        table = window.planet_table
+        window._planet_selector.buttons["all"].click()
+        mag = [table.horizontalHeaderItem(c).text() for c in range(table.columnCount())].index("Mag.")
+        table.sortItems(mag, Qt.SortOrder.AscendingOrder)
+        names = self._shown(window)
+        values = [window._planet_items[n]["col_mag"].data(Qt.ItemDataRole.UserRole) for n in names]
+        assert values == sorted(values) and names[0] == "Venus"
+        table.sortItems(0, Qt.SortOrder.AscendingOrder)
+        assert self._shown(window)[:3] == ["Mercury", "Venus", "Mars"]
+        window._planet_selector.buttons["planets"].click()
 
     def test_invalid_latitude_is_flagged_without_dialog(self, window):
         """L'erreur s'affiche sous le champ (ChampSaisie), sans fenêtre."""
@@ -527,17 +558,26 @@ class TestAstraeosRules:
 # ──────────────────────────────────────────────────────────────────────
 
 class _FakeSource:
-    """Service de localisation simulé : répond une position, ou une erreur."""
-    def __init__(self, coord):
+    """Service de localisation simulé : répond une position, ou l'erreur *error*
+    (0 accès refusé, 1 fermé, 2 inconnue, 4 délai dépassé), avec ou sans dernière
+    position connue."""
+    def __init__(self, coord, error=2, last=None):
         from PyQt6.QtCore import QObject, pyqtSignal
 
         class Source(QObject):
             positionUpdated = pyqtSignal(object)
             errorOccurred = pyqtSignal(int)
 
+            def lastKnownPosition(self, *_args):
+                from PyQt6.QtCore import QDateTime
+                from PyQt6.QtPositioning import QGeoCoordinate, QGeoPositionInfo
+                if last is None:
+                    return QGeoPositionInfo()
+                return QGeoPositionInfo(QGeoCoordinate(*last), QDateTime.currentDateTime())
+
             def requestUpdate(self, _timeout):
                 if coord is None:
-                    self.errorOccurred.emit(2)              # UpdateTimeoutError
+                    self.errorOccurred.emit(error)
                 else:
                     from PyQt6.QtCore import QDateTime
                     from PyQt6.QtPositioning import QGeoCoordinate, QGeoPositionInfo
@@ -580,6 +620,49 @@ class TestGeolocation:
                             lambda *a, **k: _FakeResponse(json.dumps(answer).encode()))
         window.geolocate()
         assert window.location_name == "Paris"
+        assert "approximative" in window.statusBar().currentMessage()
+
+    def _ip_answer(self, monkeypatch):
+        import gui
+        answer = {"status": "success", "city": "Paris", "country": "France",
+                  "lat": 48.8566, "lon": 2.3522, "timezone": "Europe/Paris"}
+        monkeypatch.setattr(gui.urllib.request, "urlopen",
+                            lambda *a, **k: _FakeResponse(json.dumps(answer).encode()))
+
+    def test_access_denied_is_explained(self, window, monkeypatch):
+        """Issue #19 : accès refusé par Windows — la fenêtre le dit et ouvre les réglages."""
+        import gui
+        monkeypatch.setattr(gui, "QGeoPositionInfoSource", _FakeSource(None, error=0))
+        monkeypatch.setattr(gui.sys, "platform", "win32")
+        opened = []
+        monkeypatch.setattr(gui.QDesktopServices, "openUrl", staticmethod(lambda url: opened.append(url)))
+        self._ip_answer(monkeypatch)
+        window.geolocate()
+        box = window._geo_dialog
+        assert box.isVisible() and "Paris" in box.text()
+        assert "Autoriser les applications de bureau" in box.informativeText()
+        button = next(b for b in box.buttons() if b.text() == "Ouvrir les réglages de localisation")
+        button.click()
+        assert opened and opened[0].toString() == "ms-settings:privacy-location"
+
+    def test_last_known_position_before_the_ip_address(self, window, monkeypatch):
+        """Délai dépassé : la dernière position connue de l'appareil plutôt que l'adresse IP."""
+        import gui
+        monkeypatch.setattr(gui, "QGeoPositionInfoSource",
+                            _FakeSource(None, error=4, last=(49.6386, -1.6164)))
+        monkeypatch.setattr(gui, "_place_name", lambda lat, lon: "Cherbourg-en-Cotentin")
+        monkeypatch.setattr(gui.urllib.request, "urlopen", lambda *a, **k: pytest.fail("adresse IP"))
+        window.geolocate()
+        assert window.location_name == "Cherbourg-en-Cotentin"
+
+    def test_no_window_at_startup(self, window, monkeypatch):
+        """Au démarrage (géolocalisation automatique), la barre d'état seulement."""
+        import gui
+        monkeypatch.setattr(gui, "QGeoPositionInfoSource", _FakeSource(None, error=4))
+        self._ip_answer(monkeypatch)
+        window._geo_dialog = None
+        window.geolocate(interactive=False)
+        assert window._geo_dialog is None
         assert "approximative" in window.statusBar().currentMessage()
 
 
@@ -739,3 +822,72 @@ class TestEclipseMap:
         assert dlg.isVisible() and dlg.windowTitle() == "Éclipse projetée au sol"
         dlg.close()
 
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Liens : site, code source, café, demandes sur GitHub (issue #22)
+# ──────────────────────────────────────────────────────────────────────
+
+class TestLinks:
+    def test_links_open_in_the_browser(self, window, monkeypatch):
+        import gui
+        opened = []
+        monkeypatch.setattr(gui.QDesktopServices, "openUrl",
+                            staticmethod(lambda url: opened.append(url.toString())))
+        window._link_buttons["coffee"].click()
+        window._link_buttons["bug"].click()
+        window._propose_body.click()
+        assert opened[0] == "https://buymeacoffee.com/gregorychau"
+        assert opened[1].startswith("https://github.com/astraeos-dev/Celeste_App/issues/new?template=bug.yml")
+        from config import APP_VERSION
+        assert f"version={APP_VERSION}" in opened[1] and "system=" in opened[1]
+        assert "template=body.yml" in opened[2]
+
+    def test_every_issue_form_exists(self):
+        """Chaque lien vers GitHub a son formulaire dans .github/ISSUE_TEMPLATE."""
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        for template in ("bug", "feature", "body"):
+            assert os.path.isfile(os.path.join(root, ".github", "ISSUE_TEMPLATE", f"{template}.yml"))
+
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Fenêtre de données d'un astre (issue #23)
+# ──────────────────────────────────────────────────────────────────────
+
+class TestDataWindow:
+    def _rows(self, dlg):
+        labels = [lbl.text() for lbl in dlg.findChildren(QLabel)]
+        return labels
+
+    def test_click_on_a_planet(self, window, qapp):
+        """Un clic sur Jupiter dans l'onglet Planètes ouvre sa fenêtre de données."""
+        table = window.planet_table
+        row = window._planet_items["Jupiter"]["col_planet"].row()
+        table.cellClicked.emit(row, 3)
+        qapp.processEvents()
+        dlg = window._detail_dialog
+        text = " | ".join(self._rows(dlg))
+        assert dlg.isVisible() and "Jupiter" in dlg.windowTitle()
+        for label in ("Diamètre apparent", "Fraction éclairée", "Angle de phase", "Temps de lumière",
+                      "Distance au Soleil", "Lever", "Coucher", "Constellation"):
+            assert label in text, label
+        dlg.close()
+
+    def test_click_in_the_coordinates_table(self, window, qapp):
+        """Soleil et Vesta depuis l'onglet Coordonnées ; la Terre n'a pas de fiche."""
+        window.tabs.setCurrentWidget(window._coord_page)
+        from engine import AstroEngine
+        bodies = list(AstroEngine.BODIES)
+        window._detail_dialog = None
+        window.coord_table.cellClicked.emit(bodies.index("earth"), 0)
+        assert window._detail_dialog is None
+        window.coord_table.cellClicked.emit(bodies.index("sun"), 0)
+        qapp.processEvents()
+        text = " | ".join(self._rows(window._detail_dialog))
+        assert "Soleil" in window._detail_dialog.windowTitle() and "Diamètre apparent" in text
+        window._detail_dialog.close()
+        window.coord_table.cellClicked.emit(bodies.index("Vesta"), 0)
+        qapp.processEvents()
+        assert "Planète mineure" in " | ".join(self._rows(window._detail_dialog))
+        window._detail_dialog.close()

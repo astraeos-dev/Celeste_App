@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Site web d'Astræos
+    url: https://astraeos-dev.github.io/personnal-site/
+    about: Les autres applications de la famille Ganymede.
+  - name: Offrir un café
+    url: https://buymeacoffee.com/gregorychau
+    about: Soutenir le développement de Céleste.

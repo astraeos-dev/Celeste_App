@@ -227,7 +227,13 @@
     "group_planets_tip": "Merkur bis Neptun",
     "group_minor": "Kleinplaneten",
     "group_minor_tip": "Ceres, Pallas, Juno, Vesta und die Zwergplaneten Pluto, Eris, Haumea und Makemake (JPL-Positionen)",
-    "group_legend": "Angezeigte Himmelskörper"
+    "group_legend": "Angezeigte Himmelskörper",
+    "group_all": "Alle",
+    "group_all_tip": "Planeten und Kleinplaneten",
+    "visible_only": "Nur sichtbare",
+    "visible_only_tip": "Nur die Himmelskörper über dem Horizont zum berechneten Zeitpunkt; zum Sortieren auf eine Kopfzeile klicken",
+    "sorted_ascending": "Aufsteigend sortiert (zum Umkehren klicken)",
+    "sorted_descending": "Absteigend sortiert (zum Umkehren klicken)"
   },
   "chart": {
     "trajectory_title": "Höhe von Sonne und Mond — {date}",
@@ -279,7 +285,15 @@
     "phase": "Phase",
     "illumination": "Beleuchteter Anteil",
     "close": "Schließen",
-    "type_minor_planet": "Kleinplanet"
+    "type_minor_planet": "Kleinplanet",
+    "diameter": "Scheinbarer Durchmesser",
+    "phase_angle": "Phasenwinkel",
+    "light_time": "Lichtlaufzeit",
+    "helio": "Abstand zur Sonne",
+    "rise": "Aufgang",
+    "transit": "Kulmination",
+    "set": "Untergang",
+    "click_tip": "Klicken Sie auf einen Himmelskörper, um sein Datenfenster zu öffnen"
   },
   "events": {
     "search_eclipses": "Finsternisse suchen (12 Monate)",
@@ -403,7 +417,15 @@
     "geoloc_device": "Position des Geräts: {place}{precision}",
     "geoloc_ip": "Ungefähre Position nach der IP-Adresse: {city}, {country} — oft die des Internetanbieters. Aktivieren Sie den Ortungsdienst des Systems oder geben Sie Ihre Koordinaten ein.",
     "geoloc_fail": "Der Standort konnte nicht bestimmt werden.",
-    "geoloc_network": "Der Dienst zur Standortbestimmung ist nicht erreichbar. Prüfen Sie Ihre Verbindung.\n\nDetail: {detail}"
+    "geoloc_network": "Der Dienst zur Standortbestimmung ist nicht erreichbar. Prüfen Sie Ihre Verbindung.\n\nDetail: {detail}",
+    "geoloc_ip_short": "Ungefähre Position nach der IP-Adresse: {city}, {country} (oft die des Internetanbieters).",
+    "geoloc_reason_no_source": "Auf diesem Gerät ist kein Ortungsdienst verfügbar. Geben Sie Ihre Koordinaten ein oder wählen Sie einen Favoriten.",
+    "geoloc_reason_access": "Windows verweigert Céleste die Position. Aktivieren Sie unter Einstellungen › Datenschutz und Sicherheit › Position „Ortungsdienste“ und „Desktop-Apps den Zugriff auf Ihre Position erlauben“ und versuchen Sie es erneut.",
+    "geoloc_reason_closed": "Der Ortungsdienst des Geräts ist ausgeschaltet. Schalten Sie ihn in den Systemeinstellungen ein und versuchen Sie es erneut.",
+    "geoloc_reason_timeout": "Der Ortungsdienst hat in 15 s keine Position gefunden (WLAN aus, Computer ohne GPS oder WLAN?). Prüfen Sie, ob er eingeschaltet ist, und versuchen Sie es erneut.",
+    "geoloc_reason_invalid": "Der Ortungsdienst hat ohne gültige Position geantwortet.",
+    "geoloc_reason_unknown": "Der Ortungsdienst hat einen Fehler gemeldet.",
+    "geoloc_open_settings": "Ortungseinstellungen öffnen"
   },
   "settings": {
     "time_format": "Zeitformat",
@@ -427,7 +449,7 @@
     "reset_title": "Zurücksetzen",
     "reset_confirm": "Alle Standardeinstellungen wiederherstellen (Design, Sprache, Startort, Echtzeit)?",
     "reset_done": "Standardeinstellungen wiederhergestellt.",
-    "about": "Céleste {version} berechnet die Positionen von Sonne, Mond und Planeten nach Jean Meeus, Astronomical Algorithms (2. Auflage). Favoriten werden in favorites.json gespeichert, Einstellungen in settings.json.",
+    "about": "Céleste {version} berechnet die Positionen von Sonne, Mond, Planeten und Kleinplaneten mit den Ephemeriden JPL DE440 und JPL Horizons. Einstellungen und Favoriten liegen im Ordner .celeste Ihres Profils.",
     "display_section": "Sprache und Anzeige",
     "theme_hint": "Das Design wählt man unten in der Seitenleiste: Nacht, Tag oder Beobachtung (Rot auf Schwarz, um nachts draußen zu beobachten).",
     "reset_hint": "Setzt Design, Sprache, Zeitformat, Startort und Echtzeit auf ihre ursprünglichen Werte zurück. Die Favoriten bleiben erhalten.",
@@ -461,5 +483,20 @@
     "azimuth": "Azimut {value}",
     "set_at": "Untergang um {time}",
     "rise_at": "Aufgang um {time}"
+  },
+  "links": {
+    "site": "Website",
+    "site_tip": "Astræos und die anderen Apps der Ganymede-Familie",
+    "source": "Quellcode",
+    "source_tip": "Céleste auf GitHub",
+    "coffee": "Einen Kaffee spendieren",
+    "coffee_tip": "Die Entwicklung von Céleste unterstützen (Buy Me a Coffee)",
+    "bug": "Problem melden",
+    "bug_tip": "Formular auf GitHub, mit der Version von Céleste und dem System",
+    "feature": "Funktion vorschlagen",
+    "feature_tip": "Eine Idee für Céleste, auf GitHub",
+    "body": "Himmelskörper vorschlagen",
+    "body_tip": "Einen Himmelskörper für Céleste (Kleinplanet, Komet, Stern…), auf GitHub",
+    "body_more": "Weiteren Himmelskörper vorschlagen…"
   }
 }

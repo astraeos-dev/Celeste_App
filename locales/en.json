@@ -227,7 +227,13 @@
     "group_planets_tip": "Mercury to Neptune",
     "group_minor": "Minor planets",
     "group_minor_tip": "Ceres, Pallas, Juno, Vesta and the dwarf planets Pluto, Eris, Haumea and Makemake (JPL positions)",
-    "group_legend": "Bodies shown"
+    "group_legend": "Bodies shown",
+    "group_all": "All",
+    "group_all_tip": "Planets and minor planets",
+    "visible_only": "Visible only",
+    "visible_only_tip": "Only the bodies above the horizon at the computed instant; click a header to sort",
+    "sorted_ascending": "Sorted in ascending order (click to reverse)",
+    "sorted_descending": "Sorted in descending order (click to reverse)"
   },
   "chart": {
     "trajectory_title": "Altitude of the Sun and the Moon — {date}",
@@ -279,7 +285,15 @@
     "phase": "Phase",
     "illumination": "Illuminated fraction",
     "close": "Close",
-    "type_minor_planet": "Minor planet"
+    "type_minor_planet": "Minor planet",
+    "diameter": "Apparent diameter",
+    "phase_angle": "Phase angle",
+    "light_time": "Light time",
+    "helio": "Distance from the Sun",
+    "rise": "Rise",
+    "transit": "Transit",
+    "set": "Set",
+    "click_tip": "Click a body to open its data window"
   },
   "events": {
     "search_eclipses": "Search eclipses (12 months)",
@@ -403,7 +417,15 @@
     "geoloc_device": "Device position: {place}{precision}",
     "geoloc_ip": "Approximate position from the IP address: {city}, {country} — often the Internet provider's. Turn on the system's location service, or enter your coordinates.",
     "geoloc_fail": "Unable to determine the location.",
-    "geoloc_network": "Cannot reach the geolocation service. Check your connection.\n\nDetail: {detail}"
+    "geoloc_network": "Cannot reach the geolocation service. Check your connection.\n\nDetail: {detail}",
+    "geoloc_ip_short": "Approximate position from the IP address: {city}, {country} (often the internet provider's).",
+    "geoloc_reason_no_source": "No location service is available on this device. Enter your coordinates, or choose a favourite.",
+    "geoloc_reason_access": "Windows denies Céleste the position. In Settings › Privacy & security › Location, turn on “Location services” and “Let desktop apps access your location”, then try again.",
+    "geoloc_reason_closed": "The device's location service is turned off. Turn it on in the system settings, then try again.",
+    "geoloc_reason_timeout": "The location service found no position within 15 s (Wi-Fi off, computer without GPS or Wi-Fi?). Check that it is on, then try again.",
+    "geoloc_reason_invalid": "The location service answered without a valid position.",
+    "geoloc_reason_unknown": "The location service reported an error.",
+    "geoloc_open_settings": "Open location settings"
   },
   "settings": {
     "time_format": "Time format",
@@ -427,7 +449,7 @@
     "reset_title": "Reset",
     "reset_confirm": "Restore all default settings (theme, language, startup location, live mode)?",
     "reset_done": "Default settings restored.",
-    "about": "Céleste {version} computes the positions of the Sun, the Moon and the planets with Jean Meeus, Astronomical Algorithms (2nd edition). Favourites are saved in favorites.json, settings in settings.json.",
+    "about": "Céleste {version} computes the positions of the Sun, the Moon, the planets and the minor planets with the JPL DE440 and JPL Horizons ephemerides. Settings and favourites are in the .celeste folder of your profile.",
     "display_section": "Language and display",
     "theme_hint": "Choose the theme at the bottom of the sidebar: Night, Day or Observation (red on black, for observing outdoors at night).",
     "reset_hint": "Restores the theme, language, time format, startup location and live mode to their original values. Favourites are kept.",
@@ -461,5 +483,20 @@
     "azimuth": "Azimuth {value}",
     "set_at": "Sets at {time}",
     "rise_at": "Rises at {time}"
+  },
+  "links": {
+    "site": "Website",
+    "site_tip": "Astræos and the other apps of the Ganymede family",
+    "source": "Source code",
+    "source_tip": "Céleste on GitHub",
+    "coffee": "Buy me a coffee",
+    "coffee_tip": "Support the development of Céleste (Buy Me a Coffee)",
+    "bug": "Report a problem",
+    "bug_tip": "Form on GitHub, with the version of Céleste and the system",
+    "feature": "Suggest a feature",
+    "feature_tip": "An idea for Céleste, on GitHub",
+    "body": "Suggest a body",
+    "body_tip": "A body to add to Céleste (minor planet, comet, star…), on GitHub",
+    "body_more": "Suggest another body…"
   }
 }

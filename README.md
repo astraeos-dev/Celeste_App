@@ -28,15 +28,20 @@ Jour et Observation), avec des graphiques interactifs et une carte du ciel.
 - **Phase de la Lune** — nom de la phase, fraction éclairée, âge et distance de la Lune
 - **Mode temps réel** — mise à jour automatique toutes les 2 s (réglable)
 - **Géolocalisation** — position de l'appareil par le service de localisation du système (GPS, Wi-Fi), nom de la
-  commune par OpenStreetMap ; à défaut, position approximative d'après l'adresse IP (ip-api.com), signalée comme telle
+  commune par OpenStreetMap ; à défaut, sa dernière position connue, puis la position approximative de l'adresse IP
+  (ip-api.com), signalée comme telle : une fenêtre dit alors pourquoi (accès refusé par Windows, service désactivé,
+  délai) et ouvre les réglages de localisation
 - **Trajectoire sur 24 h** — courbes de hauteur sur un fond coloré selon le moment de la journée (jour, crépuscules, nuit),
   sur le jour local (heure locale en bas, TU en haut), info-bulle au survol
 - **Carte du ciel polaire** — zénith au centre, 513 étoiles jusqu'à la magnitude 4 (Yale Bright Star Catalogue, ramenées
   à la date : mouvement propre, précession, nutation, aberration) à la taille de leur magnitude, constellations, planètes ;
   info-bulle au survol et fiche détaillée au clic (constellation, magnitude, coordonnées)
 - **Planètes** — Mercure, Vénus, Mars, Jupiter, Saturne, Uranus et Neptune : coordonnées, hauteur et azimut, distance,
-  élongation, magnitude, heures de lever, de culmination et de coucher (nom atténué sous l'horizon) ; système solaire vu
-  de dessus, interne et externe
+  élongation, magnitude, heures de lever, de culmination et de coucher (nom atténué sous l'horizon) ; tous les astres
+  ou un groupe, « Visibles seulement », tri par clic sur un en-tête ; système solaire vu de dessus, interne et externe
+- **Fenêtre de données** — un clic sur un astre (carte du ciel, onglets Planètes et Coordonnées) ouvre sa fiche :
+  magnitude, constellation, diamètre apparent, fraction éclairée et angle de phase, temps de lumière, distance au
+  Soleil, coordonnées, lever, culmination et coucher
 - **Planètes mineures** — Cérès, Pallas, Junon, Vesta et les planètes naines Pluton, Éris, Haumea et Makemake, au choix
   dans l'onglet Planètes, dans l'onglet Coordonnées et, assez brillantes pour la magnitude limite, sur la carte du ciel :
   positions de JPL Horizons (à 0,001″ près), magnitudes du système H, G
@@ -62,6 +67,8 @@ Jour et Observation), avec des graphiques interactifs et une carte du ciel.
 - **Visibilité d'ici** — pour chaque évènement, la nuit où le voir (le soir, le matin ou toute la nuit), avec la
   hauteur, la direction et l'heure ; filtres par groupe et « Visibles d'ici seulement » ; export vers un agenda (.ics)
 - **Équation du temps** — écart entre temps solaire vrai et temps solaire moyen
+- **Liens** — Paramètres › À propos : site web, code source, café, et demandes sur GitHub (problème, fonctionnalité,
+  astre à ajouter) préremplies avec la version et le système
 - **Favoris** — enregistrement des lieux (37 villes préchargées)
 - **Fuseaux horaires** — conversion TU → heure locale par sélecteur UTC±N
 - **Interface multilingue** — français, anglais, espagnol, allemand ; langue du système par défaut, changement immédiat
@@ -201,6 +208,7 @@ Celeste_App/
 ├── assets/              # Symbole et icône Astræos (SVG), terres, planètes mineures (JPL Horizons), licence des icônes
 ├── scripts/             # Construction de l'application, catalogue d'étoiles, table des planètes mineures
 ├── celeste.spec         # Recette PyInstaller de Celeste.exe (Windows)
+├── installer/           # Programme d'installation Inno Setup (celeste.iss)
 ├── requirements.txt     # Dépendances d'exécution
 ├── requirements-dev.txt # Dépendances de développement (pytest)
 └── tests/               # Tests unitaires (moteur, graphiques, interface, thèmes, i18n, utilitaires)
@@ -236,6 +244,7 @@ est téléchargée depuis le serveur JPL/NAIF au premier lancement.
 | `horizontal(t, lat, lon, body, elevation_m, refraction)` | Hauteur et azimut topocentriques (vus du lieu, parallaxe comprise) |
 | `coordinates(t, body, center, frame, lat, lon)` | Coordonnées dans le système choisi : héliocentriques (géométriques, J2000) ou géo/topocentriques (apparentes, de la date) ; écliptiques, équatoriales ou horizontales ; angles et x, y, z |
 | `eclipse_map(greatest, kind)` | Éclipse projetée au sol : ligne de centralité, bande d'ombre, partialité (Soleil) ; Lune levée (Lune) |
+| `body_details(t, body)` | Fenêtre de données : distance, temps de lumière, diamètre apparent, distance au Soleil, angle de phase, fraction éclairée |
 | `observations(t, bodies)` | Magnitude visuelle, angle au Soleil et constellation (UAI), vus de la Terre |
 | `moon_phase(t)` | Fraction éclairée de la Lune (%) et âge depuis la dernière nouvelle lune vraie |
 | `altitudes(dtes, lat, lon, elevation_m)` | Hauteurs du Soleil et de la Lune à une série d'instants, en un calcul vectorisé |
@@ -286,8 +295,12 @@ Céleste se construit en application Windows autonome (`Celeste.exe`) avec [PyIn
 l'application fonctionne hors ligne dès le premier lancement.
 
 - **Depuis GitHub** : onglet *Actions*, workflow « Build — application Windows », bouton *Run workflow* (ou pousser un
-  tag `v*`). L'archive `Celeste-<version>-Windows.zip` est dans les artefacts du run : la décompresser, puis lancer
-  `Celeste\Celeste.exe`.
+  tag `v*`). Deux artefacts : `Celeste-Windows-Setup`, le programme d'installation `Celeste-<version>-Setup.exe`
+  (raccourcis du menu Démarrer et du Bureau, désinstallation depuis les paramètres de Windows), et `Celeste-Windows`,
+  le dossier de l'application à lancer sans installer (`Celeste.exe`).
+- **Nouvelle version** : changer `APP_VERSION` dans `config.py` (seul endroit : fenêtre, installateur, demandes
+  GitHub), fusionner, puis pousser le tag correspondant (`git tag v4.2 && git push origin v4.2`) ; le workflow vérifie
+  que le tag et `APP_VERSION` concordent.
 - **Sur un PC Windows** :
 
 ```bash
@@ -296,9 +309,11 @@ python scripts/build_exe.py
 ```
 
 Le script place l'éphéméride dans `data/`, dessine l'icône depuis `assets/astraeos-icone.svg`, lance PyInstaller
-(`celeste.spec`), vérifie que l'application démarre (`--self-test`) et crée l'archive dans `dist/`. L'application n'est
-pas signée : au premier lancement, SmartScreen affiche « Windows a protégé votre ordinateur » (*Informations
-complémentaires*, puis *Exécuter quand même*).
+(`celeste.spec`), vérifie que l'application démarre (`--self-test`) et crée l'archive dans `dist/`. Si
+[Inno Setup 6](https://jrsoftware.org/isinfo.php) est installé, il construit aussi le programme d'installation
+(`installer/celeste.iss`, à l'icône de Céleste). Ni l'un ni l'autre n'est signé : au premier lancement, SmartScreen
+affiche « Windows a protégé votre ordinateur » (*Informations complémentaires*, puis *Exécuter quand même*). Les
+préférences et les favoris (`%USERPROFILE%\.celeste`) survivent à une désinstallation.
 
 [PyInstaller]: https://pyinstaller.org/
 

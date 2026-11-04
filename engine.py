@@ -49,6 +49,7 @@ import numpy as np
 from skyfield import almanac
 from skyfield.api import Loader, Star, load_constellation_map, load_constellation_names, wgs84
 from skyfield.magnitudelib import planetary_magnitude
+from skyfield.vectorlib import VectorFunction
 from skyfield.framelib import ecliptic_frame, ecliptic_J2000_frame, itrs, true_equator_and_equinox_of_date
 
 # ==========================================================
@@ -71,8 +72,14 @@ _PLANETS = {"Mercury": "mercury", "Venus": "venus", "Mars": "mars barycenter",
             "Uranus": "uranus barycenter", "Neptune": "neptune barycenter",
             "Pluto": "pluto barycenter", "Earth": "earth"}
 
-# The planets of the interface (Pluto, a dwarf planet, only in the coordinates table)
+# The planets of the interface
 PLANETS = ("Mercury", "Venus", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune")
+
+# Minor planets: the four first asteroids and the dwarf planets (Ceres among
+# both). Pluto comes from DE440, the others from the tables of JPL Horizons
+# (assets/minor_planets.npz, scripts/make_minor_planets.py).
+MINOR_PLANETS = ("Ceres", "Pallas", "Juno", "Vesta", "Pluto", "Eris", "Haumea", "Makemake")
+_MINOR_TABLE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "minor_planets.npz")
 
 # Eclipse projected on the ground: WGS84 ellipsoid, radii of the Sun and the Moon (km)
 _WGS84_A  = 6378.137
@@ -166,6 +173,63 @@ def load_ephemeris():
 
 
 _sky = load_ephemeris
+
+
+class _TabulatedOrbit(VectorFunction):
+    """
+    Heliocentric position of a minor planet (ICRF, AU) interpolated in the
+    states of JPL Horizons: cubic Hermite between two states, position and
+    velocity matching at both, a few km off for the main belt.
+    """
+
+    center = 10                                     # the Sun, as in DE440
+
+    def __init__(self, name, start, positions, velocities):
+        self.target = name
+        self.target_name = name
+        self._jd0, self._step = float(start[0]), float(start[1])
+        self._p, self._v = positions, velocities
+
+    def _at(self, t):
+        x = (np.asarray(t.whole, dtype=float) - self._jd0 + np.asarray(t.tdb_fraction)) / self._step
+        i = np.floor(x).astype(int)
+        if np.any(i < 0) or np.any(i >= len(self._p) - 1):
+            raise ValueError(f"{self.target}: date outside the years of the ephemeris")
+        u = (x - i)[..., None]
+        p0, p1 = self._p[i], self._p[i + 1]
+        v0, v1 = self._v[i] * self._step, self._v[i + 1] * self._step
+        u2, u3 = u * u, u * u * u
+        position = (2*u3 - 3*u2 + 1) * p0 + (u3 - 2*u2 + u) * v0 + (3*u2 - 2*u3) * p1 + (u3 - u2) * v1
+        velocity = ((6*u2 - 6*u) * p0 + (3*u2 - 4*u + 1) * v0 + (6*u - 6*u2) * p1
+                    + (3*u2 - 2*u) * v1) / self._step
+        return np.moveaxis(position, -1, 0), np.moveaxis(velocity, -1, 0), None, None
+
+
+@functools.lru_cache(maxsize=None)
+def _minor_planet(name):
+    """(DE440 Sun + tabulated orbit, (H, G)) of a minor planet of the Horizons tables."""
+    with np.load(_MINOR_TABLE) as table:
+        orbit = _TabulatedOrbit(name, table[f"{name}_start"], table[f"{name}_position"],
+                                table[f"{name}_velocity"])
+        hg = tuple(float(v) for v in table[f"{name}_hg"])
+    return _sky()["sun"] + orbit, hg
+
+
+def _fast_time(jd_ut):
+    """Skyfield time of UT Julian Days with the IAU 2000B nutation (1 mas, 20 times
+    faster than 2000A): enough for altitudes and the visibility of events."""
+    from skyfield.nutationlib import iau2000b_radians
+    time = _sky()["ts"].ut1_jd(jd_ut)
+    time._nutation_angles_radians = iau2000b_radians(time)
+    return time
+
+
+def _hg_magnitude(h, g, r, delta, phase_deg):
+    """Visual magnitude of an asteroid, IAU H, G system (Bowell et al., 1989)."""
+    tan_half = np.tan(np.radians(phase_deg) / 2.0)
+    phi1 = np.exp(-3.33 * tan_half ** 0.63)
+    phi2 = np.exp(-1.87 * tan_half ** 1.22)
+    return h + 5.0 * np.log10(r * delta) - 2.5 * np.log10((1.0 - g) * phi1 + g * phi2)
 
 # ==========================================================
 # MAIN ENGINE
@@ -737,7 +801,7 @@ class AstroEngine:
         """
         sky    = _sky()
         here   = (sky["earth"] + wgs84.latlon(lat, lon, elevation_m=elevation_m)).at(cls._time_ut(t))
-        target = sky[body] if body in ("sun", "moon") else sky["eph"][_PLANETS[body]]
+        target = cls._target(body)
         air    = {"temperature_C": 10.0, "pressure_mbar": 1010.0} if refraction else {}
         alt, az, _ = here.observe(target).apparent().altaz(**air)
         return alt.degrees, az.degrees
@@ -772,8 +836,9 @@ class AstroEngine:
         return alt.degrees, az.degrees
 
     # The bodies of the coordinates table, in the order of the Solar System
-    BODIES  = ("sun", "moon", "Mercury", "Venus", "earth", "Mars", "Jupiter", "Saturn",
-               "Uranus", "Neptune", "Pluto")
+    BODIES  = ("sun", "moon", "Mercury", "Venus", "earth", "Mars", "Ceres", "Pallas", "Juno",
+               "Vesta", "Jupiter", "Saturn", "Uranus", "Neptune", "Pluto", "Haumea", "Makemake",
+               "Eris")
     CENTERS = ("heliocentric", "geocentric", "topocentric")
     FRAMES  = ("ecliptic", "equatorial", "horizontal")
 
@@ -835,11 +900,19 @@ class AstroEngine:
         return {"lon": float(lon_deg) % 360.0, "lat": float(lat_.degrees), "dist": float(dist.au),
                 "x": float(x), "y": float(y), "z": float(z)}
 
-    @staticmethod
-    def _target(body):
-        """DE440 target of a body name: "sun", "moon", "earth" or a planet."""
+    @classmethod
+    def _target(cls, body):
+        """Target of a body name: "sun", "moon", "earth", a planet, a minor planet
+        or a star of MOON_STARS."""
         sky = _sky()
-        return sky[body] if body in ("sun", "moon") else sky["eph"][_PLANETS[body.capitalize()]]
+        if body.lower() in ("sun", "moon"):
+            return sky[body.lower()]
+        if body in cls.MOON_STARS:
+            return cls._star_target(body)
+        name = body.capitalize()
+        if name in _PLANETS:
+            return sky["eph"][_PLANETS[name]]
+        return _minor_planet(name)[0]
 
     @classmethod
     def observations(cls, t, bodies=None):
@@ -849,7 +922,8 @@ class AstroEngine:
         boundaries), computed together.
 
         Magnitudes: Mallama & Hilton (2018) from Mercury to Neptune (Skyfield);
-        Allen's Astrophysical Quantities for the Sun, the Moon and Pluto.
+        Allen's Astrophysical Quantities for the Sun, the Moon and Pluto; the
+        IAU H, G system (Bowell et al., 1989) for the other minor planets.
 
         Args:
             t (float): Julian centuries of UT since J2000.0.
@@ -878,7 +952,13 @@ class AstroEngine:
                 mag, elongation = _SUN_MAGNITUDE_1AU + 5.0 * math.log10(delta), None
             else:
                 elongation = float(apparent.separation_from(sun).degrees)
-                if body in ("moon", "Pluto"):
+                if body in MINOR_PLANETS and body != "Pluto":
+                    r = (target.at(time) - sun_at).distance().au
+                    sun_dist = (sun_at - earth).distance().au
+                    phase = math.degrees(math.acos(max(-1.0, min(1.0, (r*r + delta*delta - sun_dist*sun_dist)
+                                                                 / (2.0 * r * delta)))))
+                    mag = float(_hg_magnitude(*_minor_planet(body)[1], r, delta, phase))
+                elif body in ("moon", "Pluto"):
                     r = (target.at(time) - sun_at).distance().au
                     phase = float(almanac.phase_angle(sky["eph"], _PLANETS.get(body, body), time).degrees)
                     if body == "moon":
@@ -1089,7 +1169,7 @@ class AstroEngine:
         """
         sky = _sky()
         ra, dec, dist = sky["earth"].at(cls._time_ut(t)).observe(
-            sky["eph"][_PLANETS[name]]).apparent().radec(epoch="date")
+            cls._target(name)).apparent().radec(epoch="date")
         return ra.hours, dec.degrees, dist.au
 
     # ──────────────────────────────────────────────────────────────────
@@ -1128,7 +1208,7 @@ class AstroEngine:
         return np.degrees(np.arccos(np.clip(c, -1.0, 1.0)))
 
     @classmethod
-    def find_conjunctions(cls, dte_start, num_days=365, max_separation=5.0):
+    def find_conjunctions(cls, dte_start, num_days=365, max_separation=5.0, minor_planets=True):
         """
         Conjunctions and oppositions of the planets, and greatest elongations
         of Mercury and Venus, to the minute (DE440, apparent positions).
@@ -1139,7 +1219,8 @@ class AstroEngine:
         elongation the maximum of the angle Sun–planet. A conjunction of
         Mercury or Venus with the Sun is inferior (the planet nearer than the
         Sun; a transit when it crosses the Sun's disc) or superior. Pairs of
-        planets are kept when they pass within max_separation degrees.
+        planets are kept when they pass within max_separation degrees. With
+        minor_planets, the oppositions of MINOR_PLANETS are added.
 
         Found day by day, then refined hour by hour and interpolated.
 
@@ -1152,11 +1233,13 @@ class AstroEngine:
             ('inferior' | 'superior' for Mercury and Venus with the Sun, else
             None), transit (bool), side ('north' | 'south': the first body
             relative to the second; 'east' | 'west' for an elongation),
-            details (text).
+            group ('planets' | 'minor'), mag (visual magnitude of the planet
+            at an opposition or an elongation, else None), details (text).
         """
         jd0  = cls.julian_day(dte_start)
         days = jd0 + np.arange(num_days + 1, dtype=float)
-        bodies = ("sun",) + PLANETS
+        minors = tuple(MINOR_PLANETS) if minor_planets else ()
+        bodies = ("sun",) + PLANETS + minors
         daily = cls._ecliptic_series(days, bodies)
         wrap = cls._wrap180
 
@@ -1173,6 +1256,9 @@ class AstroEngine:
             for b in PLANETS[k + 1:]:
                 candidates += [("conjunction", a, b, i, i + 1)
                                for i in crossings(wrap(daily[a][0] - daily[b][0]))]
+        for a in minors:
+            candidates += [("opposition", a, "sun", i, i + 1)
+                           for i in crossings(wrap(daily[a][0] - daily["sun"][0] - 180.0))]
         for a in ("Mercury", "Venus"):
             e = cls._ecliptic_separation(daily[a][0], daily[a][1], daily["sun"][0], daily["sun"][1])
             peaks = np.flatnonzero((e[1:-1] > e[:-2]) & (e[1:-1] >= e[2:])) + 1
@@ -1224,8 +1310,11 @@ class AstroEngine:
                                     kind=None, transit=False, side="north" if at(ba) > at(bb) else "south"))
 
         for r in results:
-            r["date"] = cls._jd_to_datetime(r.pop("jd"), dte_start)
             a, b = r["bodies"]
+            r["group"] = "minor" if a in minors else "planets"
+            r["mag"] = (cls.observations((r["jd"] - 2451545.0) / 36525.0, [a])[a]["mag"]
+                        if r["type"] != "conjunction" else None)
+            r["date"] = cls._jd_to_datetime(r.pop("jd"), dte_start)
             if r["type"] == "opposition":
                 r["details"] = f"{a} at opposition: {r['separation']:.1f}° from the Sun"
             elif r["type"] == "greatest_elongation":
@@ -1235,6 +1324,364 @@ class AstroEngine:
                 r["details"] = f"{a} – {b} {what}: {r['separation']:.2f}° {r['side']}"
         results.sort(key=lambda r: r["date"])
         return results
+
+    # Bright stars the Moon passes, by their name in star_catalog ("Pleiades": Alcyone)
+    MOON_STARS = {"Aldebaran": "Aldebaran", "Pleiades": "Alcyone", "Regulus": "Regulus",
+                  "Spica": "Spica", "Antares": "Antares"}
+
+    @classmethod
+    def _star_target(cls, name):
+        from star_catalog import CATALOG
+        entry = next(c for c in CATALOG if c[6] == cls.MOON_STARS[name])
+        return Star(ra_hours=entry[1], dec_degrees=entry[2], ra_mas_per_year=entry[4],
+                    dec_mas_per_year=entry[5])
+
+    @classmethod
+    def _refine_extremum(cls, jds, values, i, sign):
+        """Instant (JD) and value of the extremum near the sample i (parabola through 3 samples)."""
+        i = int(np.clip(i, 1, len(values) - 2))
+        y0, y1, y2 = values[i - 1], values[i], values[i + 1]
+        den = y0 - 2.0 * y1 + y2
+        step = 0.5 * (y0 - y2) / den if den else 0.0
+        return jds[i] + step * (jds[1] - jds[0]), float(y1 - 0.25 * (y0 - y2) * step)
+
+    @classmethod
+    def find_moon_events(cls, dte_start, num_days=365, max_separation=5.0):
+        """
+        The Moon's conjunctions with the planets and the bright stars of its
+        path (MOON_STARS), within max_separation degrees, and its perigees and
+        apogees, to the minute (DE440, apparent geocentric positions).
+
+        Conjunction: same ecliptic longitude of date, as find_conjunctions.
+        A perigee near a full moon (within a day) is a "supermoon".
+
+        Returns:
+            list[dict]: sorted by date; keys date, type ('conjunction' |
+            'perigee' | 'apogee'), bodies (("Moon", planet or star) or
+            ("Moon",)), separation (°), side (the Moon 'north' | 'south' of the
+            other body), distance_km (perigee, apogee), syzygy ('full' |
+            'new' within a day of a perigee or an apogee, else None), group
+            'moon', kind, transit, mag (None).
+        """
+        jd0  = cls.julian_day(dte_start)
+        days = jd0 + np.arange(num_days + 2, dtype=float)
+        sky  = _sky()
+        others = PLANETS + tuple(cls.MOON_STARS)
+
+        def series(jds):
+            earth = sky["earth"].at(sky["ts"].ut1_jd(jds))
+            out = {}
+            for name in ("moon",) + others:
+                target = cls._star_target(name) if name in cls.MOON_STARS else cls._target(name)
+                lat, lon, dist = earth.observe(target).apparent().ecliptic_latlon(epoch="date")
+                out[name] = (lon.degrees, lat.degrees, dist.km)
+            return out
+
+        daily = series(days)
+        wrap = cls._wrap180
+        brackets = []
+        for name in others:
+            diff = wrap(daily["moon"][0] - daily[name][0])
+            near = np.abs(diff) < 90.0
+            brackets += [(name, i) for i in np.flatnonzero(
+                (np.sign(diff[:-1]) != np.sign(diff[1:])) & near[:-1] & near[1:])]
+        results = []
+        if brackets:
+            windows = [days[i] + np.arange(25) / 24.0 for _n, i in brackets]
+            hourly = series(np.concatenate(windows))
+            for k, ((name, _i), window) in enumerate(zip(brackets, windows)):
+                part = slice(25 * k, 25 * (k + 1))
+                lm, bm = hourly["moon"][0][part], hourly["moon"][1][part]
+                lo, bo = hourly[name][0][part], hourly[name][1][part]
+                diff = wrap(lm - lo)
+                idx = np.flatnonzero(np.sign(diff[:-1]) != np.sign(diff[1:]))
+                if not len(idx):
+                    continue
+                h = int(idx[0])
+                f = float(diff[h] / (diff[h] - diff[h + 1]))
+                at = lambda v: float(v[h] + f * (v[h + 1] - v[h]))
+                separation = float(cls._ecliptic_separation(at(lm), at(bm), at(lo), at(bo)))
+                if separation <= max_separation:
+                    results.append(dict(jd=window[h] + f / 24.0, type="conjunction", bodies=("Moon", name),
+                                        separation=separation, side="north" if at(bm) > at(bo) else "south"))
+
+        # perigees and apogees: extrema of the distance, refined hour by hour
+        dist = daily["moon"][2]
+        extrema = [("perigee", i) for i in np.flatnonzero((dist[1:-1] < dist[:-2]) & (dist[1:-1] <= dist[2:])) + 1]
+        extrema += [("apogee", i) for i in np.flatnonzero((dist[1:-1] > dist[:-2]) & (dist[1:-1] >= dist[2:])) + 1]
+        if extrema:
+            hours = np.arange(-24, 25) / 24.0
+            jds = np.concatenate([days[i] + hours for _k, i in extrema])
+            d = sky["earth"].at(sky["ts"].ut1_jd(jds)).observe(sky["moon"]).distance().km
+            for k, (kind, _i) in enumerate(extrema):
+                part = d[49 * k: 49 * (k + 1)]
+                window = jds[49 * k: 49 * (k + 1)]
+                m = int(np.argmin(part) if kind == "perigee" else np.argmax(part))
+                jd, value = cls._refine_extremum(window, part, m, 1)
+                results.append(dict(jd=jd, type=kind, bodies=("Moon",), separation=None, side=None,
+                                    distance_km=value))
+            phases_t, phases = almanac.find_discrete(sky["ts"].ut1_jd(days[0] - 2.0), sky["ts"].ut1_jd(days[-1] + 2.0),
+                                                     almanac.moon_phases(sky["eph"]))
+            syzygies = [(float(tt.ut1), {0: "new", 2: "full"}[int(ph)]) for tt, ph in zip(phases_t, phases)
+                        if int(ph) in (0, 2)]
+            for r in results:
+                if r["type"] in ("perigee", "apogee"):
+                    r["syzygy"] = next((name for jd, name in syzygies if abs(jd - r["jd"]) <= 1.0), None)
+
+        end = jd0 + num_days
+        out = []
+        for r in sorted(results, key=lambda r: r["jd"]):
+            if not jd0 <= r["jd"] < end:
+                continue
+            r.setdefault("distance_km", None)
+            r.setdefault("syzygy", None)
+            r.update(group="moon", kind=None, transit=False, mag=None,
+                     date=cls._jd_to_datetime(r.pop("jd"), dte_start))
+            out.append(r)
+        return out
+
+    @classmethod
+    def find_seasons(cls, dte_start, num_days=365):
+        """
+        Equinoxes and solstices (the Sun's apparent longitude a multiple of
+        90°, Skyfield almanac) and the Earth's perihelion and aphelion (the
+        extrema of its distance to the Sun, centre to centre), to the minute.
+
+        Returns:
+            list[dict]: date, type ('season' | 'perihelion' | 'aphelion'),
+            kind ('march_equinox', 'june_solstice', 'september_equinox',
+            'december_solstice' | None), distance_au, bodies ("Earth",),
+            group 'seasons', separation, side, transit, mag (None).
+        """
+        sky = _sky()
+        jd0 = cls.julian_day(dte_start)
+        t0, t1 = sky["ts"].ut1_jd(jd0), sky["ts"].ut1_jd(jd0 + num_days)
+        times, seasons = almanac.find_discrete(t0, t1, almanac.seasons(sky["eph"]))
+        names = ("march_equinox", "june_solstice", "september_equinox", "december_solstice")
+        results = [dict(jd=float(tt.ut1), type="season", kind=names[int(k)], distance_au=None)
+                   for tt, k in zip(times, seasons)]
+        days = jd0 - 1.0 + np.arange(num_days + 3, dtype=float)
+        dist = sky["earth"].at(sky["ts"].ut1_jd(days)).observe(sky["sun"]).distance().au
+        for kind, idx in (("perihelion", np.flatnonzero((dist[1:-1] < dist[:-2]) & (dist[1:-1] <= dist[2:])) + 1),
+                          ("aphelion", np.flatnonzero((dist[1:-1] > dist[:-2]) & (dist[1:-1] >= dist[2:])) + 1)):
+            for i in idx:
+                hours = days[i] + np.arange(-24, 25) / 24.0
+                d = sky["earth"].at(sky["ts"].ut1_jd(hours)).observe(sky["sun"]).distance().au
+                m = int(np.argmin(d) if kind == "perihelion" else np.argmax(d))
+                jd, value = cls._refine_extremum(hours, d, m, 1)
+                if jd0 <= jd < jd0 + num_days:
+                    results.append(dict(jd=jd, type=kind, kind=None, distance_au=value))
+        out = []
+        for r in sorted(results, key=lambda r: r["jd"]):
+            r.update(bodies=("Earth",), group="seasons", separation=None, side=None, transit=False,
+                     mag=None, date=cls._jd_to_datetime(r.pop("jd"), dte_start))
+            out.append(r)
+        return out
+
+    # Visibility of the events: altitude of the body at least _VISIBLE_ALTITUDE
+    # while the Sun is lower than _DARK_SUN (bright bodies) or _DARKER_SUN
+    _VISIBLE_ALTITUDE, _DARK_SUN, _DARKER_SUN = 5.0, -6.0, -12.0
+
+    @classmethod
+    def event_visibility(cls, events, lat, lon, elevation_m=0.0, tz=0):
+        """
+        How each event can be seen from the observer, in its night: from the
+        local noon before the event (12 h earlier) to the next noon, every 10
+        minutes. The body (the planet, the Moon for its events) is visible when
+        it stands 5° above the horizon while the Sun is 6° below it (12° for
+        the faint minor planets). Adds to each event the key visibility:
+        None (seasons), or a dict: period ('evening' | 'morning' | 'night' |
+        None), best (UT datetime of its greatest altitude in the dark), alt,
+        az (°), reason when invisible ('daylight': only up by day,
+        'horizon': under the horizon at night, 'no_night': no dark night).
+        Lunar conjunctions closer than 1.5° also get occultation (see
+        moon_occultation).
+        """
+        sky = _sky()
+        here = sky["earth"] + wgs84.latlon(lat, lon, elevation_m=elevation_m)
+        steps = np.arange(145) / 144.0                       # one day, every 10 minutes
+        todo = [e for e in events if e.get("group") != "seasons"]
+        if not todo:
+            return events
+        starts = []
+        for e in todo:
+            day = cls._local_day(e["date"].replace(tzinfo=None) - timedelta(hours=12), tz)[0]
+            starts.append(cls.julian_day(day) + 0.5)
+        jds = np.concatenate([s + steps for s in starts])
+        time = _fast_time(jds)
+        observer = here.at(time)
+        sun_alt = observer.observe(sky["sun"]).apparent().altaz()[0].degrees.reshape(len(todo), -1)
+        bodies = {("moon" if e["bodies"][0] == "Moon" else e["bodies"][0]) for e in todo}
+        alt_az = {}
+        for body in bodies:
+            rows = [k for k, e in enumerate(todo) if (("moon" if e["bodies"][0] == "Moon" else e["bodies"][0]) == body)]
+            sub = _fast_time(np.concatenate([starts[k] + steps for k in rows]))
+            alt, az, _ = here.at(sub).observe(cls._target(body)).apparent().altaz()
+            for n, k in enumerate(rows):
+                alt_az[k] = (alt.degrees[145 * n: 145 * (n + 1)], az.degrees[145 * n: 145 * (n + 1)])
+        for k, e in enumerate(todo):
+            alt, az = alt_az[k]
+            dark_limit = cls._DARKER_SUN if e.get("group") == "minor" else cls._DARK_SUN
+            dark = sun_alt[k] < dark_limit
+            up = alt >= cls._VISIBLE_ALTITUDE
+            seen = dark & up
+            vis = {"period": None, "best": None, "alt": None, "az": None, "reason": None}
+            if seen.any():
+                i = int(np.flatnonzero(seen)[np.argmax(alt[seen])])
+                share = seen.sum() / dark.sum()
+                dark_idx = np.flatnonzero(dark)
+                middle = 0.5 * (dark_idx[0] + dark_idx[-1])
+                vis.update(period="night" if share >= 0.85 else ("evening" if i <= middle else "morning"),
+                           best=cls._jd_to_datetime(starts[k] + steps[i], e["date"]),
+                           alt=float(alt[i]), az=float(az[i]))
+            else:
+                vis["reason"] = "no_night" if not dark.any() else ("daylight" if up.any() else "horizon")
+            e["visibility"] = vis
+            if e["bodies"][0] == "Moon" and e["type"] == "conjunction" and e["separation"] < 1.5:
+                e["occultation"] = cls.moon_occultation(e, lat, lon, elevation_m)
+        return events
+
+    @classmethod
+    def moon_occultation(cls, event, lat, lon, elevation_m=0.0):
+        """
+        Occultation of the body of a lunar conjunction seen from the observer:
+        the topocentric distance between the centres falls under the Moon's
+        topocentric semi-diameter (minute by minute over ±4 h, interpolated).
+
+        Returns:
+            dict | None: None without occultation here, else start, end (UT
+            datetimes of the disappearance and the reappearance, None beyond
+            the ±4 h), moon_alt_start, moon_alt_end, sun_alt_start (°).
+        """
+        sky = _sky()
+        jd = cls.julian_day(event["date"])
+        jds = jd + np.arange(-240, 241) / 1440.0
+        observer = (sky["earth"] + wgs84.latlon(lat, lon, elevation_m=elevation_m)).at(_fast_time(jds))
+        name = event["bodies"][1]
+        target = cls._star_target(name) if name in cls.MOON_STARS else cls._target(name)
+        moon = observer.observe(sky["moon"]).apparent()
+        other = observer.observe(target).apparent()
+        radius = np.degrees(np.arcsin(_MOON_RADIUS_KM / moon.distance().km))
+        inside = other.separation_from(moon).degrees - radius
+        if inside.min() >= 0.0:
+            return None
+
+        def crossing(i):
+            f = inside[i] / (inside[i] - inside[i + 1])
+            return jds[i] + f / 1440.0
+        down = np.flatnonzero((inside[:-1] >= 0) & (inside[1:] < 0))
+        rise = np.flatnonzero((inside[:-1] < 0) & (inside[1:] >= 0))
+        start = crossing(int(down[0])) if len(down) else None
+        end = crossing(int(rise[-1])) if len(rise) else None
+
+        def moon_alt(j):
+            if j is None:
+                return None
+            here = (sky["earth"] + wgs84.latlon(lat, lon, elevation_m=elevation_m)).at(_fast_time(j))
+            return float(here.observe(sky["moon"]).apparent().altaz()[0].degrees)
+        sun_start = None
+        if start is not None:
+            here = (sky["earth"] + wgs84.latlon(lat, lon, elevation_m=elevation_m)).at(_fast_time(start))
+            sun_start = float(here.observe(sky["sun"]).apparent().altaz()[0].degrees)
+        to_dt = lambda j: None if j is None else cls._jd_to_datetime(j, event["date"])
+        return {"start": to_dt(start), "end": to_dt(end), "moon_alt_start": moon_alt(start),
+                "moon_alt_end": moon_alt(end), "sun_alt_start": sun_start}
+
+    @classmethod
+    def eclipse_local(cls, eclipse, lat, lon, elevation_m=0.0):
+        """
+        Local circumstances of an eclipse of find_eclipses() for the observer.
+
+        Solar eclipse: the topocentric Sun and Moon (DE440, apparent) every
+        20 s over ±3.5 h, the contacts interpolated where the distance of the
+        centres equals the sum (first and last) or the difference (second and
+        third: totality or annularity) of the semi-diameters. Magnitude: the
+        fraction of the Sun's diameter covered at maximum; obscuration: of
+        its area.
+
+        Lunar eclipse: the contacts are the same for everyone (penumbral
+        P1–P4, umbral U1–U4, totality U2–U3, around greatest as in
+        find_eclipses); the observer sees those where the Moon is up.
+
+        Returns:
+            dict | None: None when a solar eclipse misses the place. Keys:
+            contacts {name: UT datetime or None} ('c1', 'c2', 'max', 'c3',
+            'c4' for the Sun; 'p1', 'u1', 'u2', 'max', 'u3', 'u4', 'p4' for the
+            Moon), altitudes {name: ° of the eclipsed body}, visible (the body
+            up during part of the eclipse); solar: magnitude, obscuration,
+            central ('total' | 'annular' | None), duration_s.
+        """
+        sky = _sky()
+        here = sky["earth"] + wgs84.latlon(lat, lon, elevation_m=elevation_m)
+        greatest = eclipse["greatest"]
+        jd_g = cls.julian_day(greatest)
+        to_dt = lambda j: None if j is None else cls._jd_to_datetime(j, greatest)
+
+        def altitude(body, jd):
+            return float(here.at(sky["ts"].ut1_jd(jd)).observe(sky[body]).apparent().altaz()[0].degrees)
+
+        if eclipse["type"] == "lunar":
+            durations = eclipse.get("durations") or {}
+            contacts = {"max": jd_g}
+            for phase, (first, last) in (("penumbral", ("p1", "p4")), ("partial", ("u1", "u4")),
+                                         ("total", ("u2", "u3"))):
+                minutes = durations.get(phase)
+                contacts[first] = jd_g - minutes / 2880.0 if minutes else None
+                contacts[last] = jd_g + minutes / 2880.0 if minutes else None
+            altitudes = {k: (altitude("moon", j) if j is not None else None) for k, j in contacts.items()}
+            first, last = contacts["p1"], contacts["p4"]
+            span = np.linspace(first, last, 61)
+            moon = here.at(sky["ts"].ut1_jd(span)).observe(sky["moon"]).apparent().altaz()[0].degrees
+            return {"contacts": {k: to_dt(j) for k, j in contacts.items()}, "altitudes": altitudes,
+                    "visible": bool((moon > -0.5).any()), "all_visible": bool((moon > -0.5).all())}
+
+        jds = jd_g + np.arange(-630, 631) * 20.0 / 86400.0
+        observer = here.at(sky["ts"].ut1_jd(jds))
+        sun = observer.observe(sky["sun"]).apparent()
+        moon = observer.observe(sky["moon"]).apparent()
+        # the Moon's radii of the shadow cones (_shadow_axis): its mean limb for
+        # the partial phase, its valleys for totality, as NASA's predictions
+        rs = np.degrees(np.arcsin(_SUN_RADIUS_KM / sun.distance().km))
+        moon_km = moon.distance().km
+        rm = np.degrees(np.arcsin(_MOON_RADIUS_PENUMBRA * _EARTH_RADIUS_KM / moon_km))
+        rm_inner = np.degrees(np.arcsin(_MOON_RADIUS_UMBRA * _EARTH_RADIUS_KM / moon_km))
+        sep = moon.separation_from(sun).degrees
+        outer, inner = sep - (rs + rm), sep - np.abs(rs - rm_inner)
+        if outer.min() >= 0.0:
+            return None
+
+        def crossings(values):
+            idx = np.flatnonzero(np.sign(values[:-1]) != np.sign(values[1:]))
+            return [jds[i] + values[i] / (values[i] - values[i + 1]) * (jds[1] - jds[0]) for i in idx]
+        c_outer, c_inner = crossings(outer), crossings(inner)
+        m = int(np.argmin(sep))
+        jd_max, s_max = cls._refine_extremum(jds, sep, m, -1)
+        r_s, r_m = float(rs[m]), float(rm[m])
+        central = None
+        if len(c_inner) >= 2:
+            central = "total" if float(rm_inner[m]) > r_s else "annular"
+        contacts = {"c1": c_outer[0] if c_outer and c_outer[0] < jd_max else None, "max": jd_max,
+                    "c4": c_outer[-1] if c_outer and c_outer[-1] > jd_max else None,
+                    "c2": c_inner[0] if central else None, "c3": c_inner[-1] if central else None}
+        # overlap of the two discs, as a fraction of the Sun's
+        d, a, b = max(s_max, 0.0), r_s, r_m
+        if d >= a + b:
+            obscured = 0.0
+        elif d <= abs(a - b):
+            obscured = min(1.0, (b / a) ** 2)
+        else:
+            alpha = math.acos((d * d + a * a - b * b) / (2 * d * a))
+            beta = math.acos((d * d + b * b - a * a) / (2 * d * b))
+            area = a * a * (alpha - math.sin(2 * alpha) / 2) + b * b * (beta - math.sin(2 * beta) / 2)
+            obscured = area / (math.pi * a * a)
+        sun_alt = sun.altaz()[0].degrees
+        during = (outer < 0) & (sun_alt > -0.83)
+        return {"contacts": {k: to_dt(j) for k, j in contacts.items()},
+                "altitudes": {k: (altitude("sun", j) if j is not None else None) for k, j in contacts.items()},
+                "magnitude": (r_s + r_m - s_max) / (2.0 * r_s), "obscuration": obscured,
+                "central": central,
+                "duration_s": (contacts["c3"] - contacts["c2"]) * 86400.0 if central else None,
+                "visible": bool(during.any()), "all_visible": bool(during.sum() == (outer < 0).sum())}
 
     @classmethod
     def event_scene(cls, event, star_catalog=()):
@@ -1258,18 +1705,23 @@ class AstroEngine:
         span = {"opposition": 80.0, "greatest_elongation": 25.0}.get(
             event["type"], 40.0 if a in slow and b in slow else 12.0)
         step = 0.5 if span <= 12.0 else 1.0
+        if a == "Moon":                                   # 13° a day: two days, hour by hour
+            span, step = 1.0, 1.0 / 24.0
         days = np.arange(-span, span + step / 2, step)
         jd = cls.julian_day(event["date"])
         sky = _sky()
         time = sky["ts"].ut1_jd(jd + days)
         instant = sky["ts"].ut1_jd(jd)
         earth, earth_now = sky["earth"].at(time), sky["earth"].at(instant)
-        bodies = []
+        bodies, radii = [], {}
         for name in (a, b):
-            target = cls._target("sun" if name == "Sun" else name)
+            target = cls._target(name)
             ra, dec, _ = earth.observe(target).apparent().radec(epoch="date")
-            ra0, dec0, _ = earth_now.observe(target).apparent().radec(epoch="date")
+            ra0, dec0, dist0 = earth_now.observe(target).apparent().radec(epoch="date")
             bodies.append((name, ra.hours, dec.degrees, float(ra0.hours), float(dec0.degrees)))
+            if name in ("Sun", "Moon"):
+                radius = _SUN_RADIUS_KM if name == "Sun" else _MOON_RADIUS_KM
+                radii[name] = math.degrees(math.asin(radius / dist0.km))
         sun_au = float(earth_now.observe(sky["sun"]).apparent().distance().au)
         stars = []
         if len(star_catalog):
@@ -1282,7 +1734,8 @@ class AstroEngine:
         t = (jd - 2451545.0) / 36525.0
         lon0 = float(cls._ecliptic_series(np.array([jd]), (a,))[a][0][0])
         ecl = [cls.ecliptic_to_equatorial(lon0 + d, 0.0, t) for d in np.arange(-150.0, 151.0, 1.0)]
-        return {"type": event["type"], "bodies": bodies, "days": days, "stars": stars,
+        return {"type": event["type"], "bodies": bodies, "days": days, "stars": stars, "radii": radii,
+                "fixed": [name for name in (a, b) if name in cls.MOON_STARS],
                 "ecliptic": (np.array([e[0] for e in ecl]), np.array([e[1] for e in ecl])),
                 "sun_radius": math.degrees(math.asin(696000.0 / (sun_au * 149597870.7)))}
 

@@ -57,3 +57,5 @@ htmlcov/
 
 # ── Éphéméride JPL DE440 (32 Mo, téléchargée au premier lancement) ──
 data/*.bsp
+.history/
+/Celeste_App/

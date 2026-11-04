@@ -21,7 +21,7 @@ import numpy as np
 # name: (Horizons / SBDB designation, step in days)
 BODIES = {
     "Ceres": ("1", 10), "Pallas": ("2", 10), "Juno": ("3", 10), "Vesta": ("4", 10),
-    "Eris": ("136199", 60), "Haumea": ("136108", 60), "Makemake": ("136472", 60),
+    "Eris": ("136199", 60), "Haumea": ("136108", 60), "Makemake": ("136472", 60), "Sedna": ("90377", 60),
 }
 START, STOP = "1849-11-01", "2150-03-01"
 OUT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets",

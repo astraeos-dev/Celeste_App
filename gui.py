@@ -44,7 +44,7 @@ from PyQt6.QtGui import (
 from PyQt6.QtPositioning import QGeoPositionInfo, QGeoPositionInfoSource
 from PyQt6.QtWidgets import (
     QAbstractItemView, QApplication, QButtonGroup, QCheckBox, QComboBox, QCompleter,
-    QDateTimeEdit, QDialog, QDialogButtonBox, QFileDialog, QFrame, QGridLayout,
+    QDateTimeEdit, QDialog, QDialogButtonBox, QFileDialog, QFrame, QGridLayout, QProgressDialog,
     QHBoxLayout, QHeaderView, QInputDialog, QLabel, QLineEdit, QMainWindow,
     QMessageBox, QProgressBar, QPushButton, QScrollArea, QSizePolicy, QSlider,
     QStatusBar, QTabWidget, QTableWidget, QTableWidgetItem, QToolButton,
@@ -59,6 +59,7 @@ from matplotlib.figure import Figure  # noqa: E402
 import charts  # noqa: E402
 import icons  # noqa: E402
 import settings as prefs  # noqa: E402
+import updater  # noqa: E402
 from config import APP_VERSION, FONT_MONO, FONT_SANS, THEME_NAMES, Config, mix  # noqa: E402
 from constellations import STAR_CONSTELLATION  # noqa: E402
 from engine import (  # noqa: E402
@@ -333,6 +334,34 @@ class _SortItem(QTableWidgetItem):
         if mine is None or theirs is None:
             return (mine is None) < (theirs is None)            # « — » à la fin
         return mine < theirs
+
+
+_BACKGROUND = set()          # minuteries des tâches de fond en cours (gardées en vie)
+
+
+def _run_in_background(func, on_done, on_error):
+    """Exécute func() dans un fil à part (réseau) ; on_done(résultat) ou
+    on_error(exception) ensuite, dans le fil de l'interface."""
+    from concurrent.futures import ThreadPoolExecutor
+    executor = ThreadPoolExecutor(max_workers=1)
+    future = executor.submit(func)
+    timer = QTimer()
+    timer.setInterval(150)
+
+    def poll():
+        if not future.done():
+            return
+        timer.stop()
+        _BACKGROUND.discard(timer)
+        executor.shutdown(wait=False)
+        error = future.exception()
+        if error is not None:
+            on_error(error)
+        else:
+            on_done(future.result())
+    timer.timeout.connect(poll)
+    _BACKGROUND.add(timer)
+    timer.start()
 
 
 def _issue_url(template):
@@ -1438,6 +1467,104 @@ class AstroApp(QMainWindow):
         self._chart_tabs[page] = "orrery"
         self.tabs.addTab(page, t("tabs.planets"))
 
+    # ── Mises à jour ──────────────────────────────────────────────────────────
+
+    def check_updates(self, interactive=True):
+        """
+        Cherche une version plus récente (Release GitHub). *interactive*
+        (bouton) : la réponse s'affiche toujours ; au démarrage, seulement
+        s'il y a une version nouvelle que l'utilisateur n'a pas choisi
+        d'ignorer.
+        """
+        if getattr(self, "_update_busy", False):
+            return
+        self._update_busy = True
+        self._update_interactive = interactive
+        self._update_info.setText(t("update.checking"))
+        _run_in_background(updater.latest_release, self._on_release, self._on_update_error)
+
+    def _on_release(self, release):
+        self._update_busy = False
+        interactive = self._update_interactive
+        if release is None or not updater.is_newer(release["version"]):
+            self._update_info.setText(tf("update.up_to_date", version=APP_VERSION))
+            if interactive:
+                self.statusBar().showMessage(tf("update.up_to_date", version=APP_VERSION), 8000)
+            return
+        self._update_info.setText(tf("update.available", version=release["version"],
+                                       current=APP_VERSION))
+        if interactive or prefs.get("update_skipped") != release["version"]:
+            self._show_update_dialog(release)
+
+    def _on_update_error(self, error):
+        self._update_busy = False
+        self._update_info.setText(tf("update.error", detail=error))
+        if self._update_interactive:
+            QMessageBox.warning(self, t("update.title"), tf("update.error", detail=error))
+
+    def _show_update_dialog(self, release):
+        """Fenêtre (non bloquante) : la version nouvelle, ses notes, et que faire."""
+        box = QMessageBox(QMessageBox.Icon.Information, t("update.title"),
+                          tf("update.available", version=release["version"], current=APP_VERSION),
+                          parent=self)
+        notes = release.get("notes", "").strip()
+        if len(notes) > 800:
+            notes = notes[:800].rsplit("\n", 1)[0] + "\n…"
+        info = notes or ""
+        if not updater.can_self_update():
+            info = (info + "\n\n" if info else "") + t("update.from_source")
+        box.setInformativeText(info)
+        install = None
+        if updater.can_self_update():
+            install = box.addButton(t("update.install"), QMessageBox.ButtonRole.AcceptRole)
+        page = box.addButton(t("update.open_page"), QMessageBox.ButtonRole.ActionRole)
+        skip = box.addButton(t("update.skip"), QMessageBox.ButtonRole.DestructiveRole)
+        box.addButton(t("update.later"), QMessageBox.ButtonRole.RejectRole)
+
+        def done(_result):
+            clicked = box.clickedButton()
+            if install is not None and clicked is install:
+                self._install_update(release)
+            elif clicked is page:
+                _open_url(release["page"])
+            elif clicked is skip:
+                prefs.set("update_skipped", release["version"])
+        box.finished.connect(done)
+        self._update_dialog = box
+        box.open()
+
+    def _install_update(self, release):
+        """Télécharge et vérifie l'installateur, le lance, puis ferme Céleste."""
+        state = {"done": 0, "total": release.get("setup_size") or 0, "cancel": False}
+        progress = QProgressDialog(tf("update.downloading", version=release["version"]),
+                                   t("update.cancel"), 0, 1000, self)
+        progress.setWindowTitle(t("update.title"))
+        progress.setMinimumDuration(0)
+        progress.canceled.connect(lambda: state.update(cancel=True))
+        ticker = QTimer(progress)
+        ticker.timeout.connect(lambda: progress.setValue(
+            int(1000 * state["done"] / state["total"]) if state["total"] else 0))
+        ticker.start(200)
+        self._update_progress = progress
+
+        def fetch():
+            return updater.download(release, progress=lambda d, n: state.update(done=d, total=n),
+                                    cancelled=lambda: state["cancel"])
+
+        def downloaded(path):
+            ticker.stop()
+            progress.close()
+            self.statusBar().showMessage(tf("update.installing", version=release["version"]))
+            updater.launch_installer(path)
+            QTimer.singleShot(300, QApplication.instance().quit)
+
+        def failed(error):
+            ticker.stop()
+            progress.close()
+            if not state["cancel"]:
+                QMessageBox.warning(self, t("update.title"), tf("update.error", detail=error))
+        _run_in_background(fetch, downloaded, failed)
+
     def _on_planet_group(self, key):
         self._planet_group = key
         prefs.set("planet_group", key)
@@ -1774,10 +1901,24 @@ class AstroApp(QMainWindow):
         buttons.addStretch()
         box.addLayout(buttons)
 
-        # À propos : liens
+        # À propos : mises à jour, liens
         box = section(t("settings.about_section"))
         box.addWidget(_label(tf("settings.about", version=APP_VERSION), "corps", wrap=True))
         box.addWidget(_label(t("settings.credits"), "legende", wrap=True))
+        row = QHBoxLayout()
+        row.setSpacing(12)
+        self._btn_update = _bouton(t("update.check_now"), "now", "secondaire", compact=True)
+        self._btn_update.setToolTip(t("update.check_now_tip"))
+        self._btn_update.clicked.connect(lambda _checked=False: self.check_updates())
+        row.addWidget(self._btn_update)
+        self._update_auto = QCheckBox(t("update.auto"))
+        self._update_auto.setChecked(bool(prefs.get("update_check")))
+        self._update_auto.toggled.connect(lambda on: prefs.set("update_check", bool(on)))
+        row.addWidget(self._update_auto)
+        row.addStretch()
+        box.addLayout(row)
+        self._update_info = _label(tf("update.current", version=APP_VERSION), "legende", wrap=True)
+        box.addWidget(self._update_info)
         self._link_buttons = {}
         for links in ((("site", _URL_SITE), ("source", _URL_REPO), ("coffee", _URL_COFFEE)),
                       (("bug", _issue_url("bug")), ("feature", _issue_url("feature")),

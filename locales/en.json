@@ -499,5 +499,24 @@
     "body": "Suggest a body",
     "body_tip": "A body to add to Céleste (minor planet, comet, star…), on GitHub",
     "body_more": "Suggest another body…"
+  },
+  "update": {
+    "title": "Céleste update",
+    "check_now": "Check for updates",
+    "check_now_tip": "Look for a newer version of Céleste on GitHub",
+    "auto": "Check at startup",
+    "current": "Version {version}.",
+    "checking": "Looking for an update…",
+    "up_to_date": "Céleste {version} is up to date.",
+    "available": "Céleste {version} is available (you have version {current}).",
+    "install": "Update",
+    "open_page": "View the release",
+    "skip": "Skip this version",
+    "later": "Later",
+    "from_source": "Céleste runs from its sources: update it with “git pull”.",
+    "downloading": "Downloading Céleste {version}…",
+    "cancel": "Cancel",
+    "installing": "Installing Céleste {version}: the application will close and reopen.",
+    "error": "Update failed: {detail}"
   }
 }

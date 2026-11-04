@@ -499,5 +499,24 @@
     "body": "Himmelskörper vorschlagen",
     "body_tip": "Einen Himmelskörper für Céleste (Kleinplanet, Komet, Stern…), auf GitHub",
     "body_more": "Weiteren Himmelskörper vorschlagen…"
+  },
+  "update": {
+    "title": "Céleste-Aktualisierung",
+    "check_now": "Nach Updates suchen",
+    "check_now_tip": "Auf GitHub nach einer neueren Version von Céleste suchen",
+    "auto": "Beim Start suchen",
+    "current": "Version {version}.",
+    "checking": "Suche nach einer Aktualisierung…",
+    "up_to_date": "Céleste {version} ist aktuell.",
+    "available": "Céleste {version} ist verfügbar (Sie haben Version {current}).",
+    "install": "Aktualisieren",
+    "open_page": "Version ansehen",
+    "skip": "Diese Version überspringen",
+    "later": "Später",
+    "from_source": "Céleste läuft aus den Quellen: Aktualisieren Sie es mit „git pull“.",
+    "downloading": "Céleste {version} wird heruntergeladen…",
+    "cancel": "Abbrechen",
+    "installing": "Céleste {version} wird installiert: Die Anwendung schließt sich und öffnet sich erneut.",
+    "error": "Aktualisierung nicht möglich: {detail}"
   }
 }

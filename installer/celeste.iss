@@ -31,9 +31,13 @@ SolidCompression=yes
 WizardStyle=modern
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
-; sans droits d'administrateur, ou pour tous les utilisateurs si on le choisit
+; sans droits d'administrateur, ou pour tous les utilisateurs si on le choisit ;
+; la mise à jour automatique (updater.py) reprend le même mode par /CURRENTUSER ou /ALLUSERS
 PrivilegesRequired=lowest
-PrivilegesRequiredOverridesAllowed=dialog
+PrivilegesRequiredOverridesAllowed=commandline dialog
+; Céleste ouvert pendant une mise à jour : fermé, puis rouvert ([Run])
+CloseApplications=yes
+RestartApplications=no
 
 [Languages]
 Name: "fr"; MessagesFile: "compiler:Languages\French.isl"
@@ -54,3 +58,5 @@ Name: "{autodesktop}\Céleste"; Filename: "{app}\Celeste.exe"; IconFilename: "{a
 
 [Run]
 Filename: "{app}\Celeste.exe"; Description: "{cm:LaunchProgram,Céleste}"; Flags: nowait postinstall skipifsilent
+; mise à jour automatique (installation silencieuse) : Céleste se rouvre
+Filename: "{app}\Celeste.exe"; Flags: nowait skipifnotsilent

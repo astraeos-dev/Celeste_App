@@ -68,6 +68,7 @@ Jour et Observation), avec des graphiques interactifs et une carte du ciel.
 - **Visibilité d'ici** — pour chaque évènement, la nuit où le voir (le soir, le matin ou toute la nuit), avec la
   hauteur, la direction et l'heure ; filtres par groupe et « Visibles d'ici seulement » ; export vers un agenda (.ics)
 - **Équation du temps** — écart entre temps solaire vrai et temps solaire moyen
+- **Mise à jour automatique** — une nouvelle version publiée est proposée au démarrage, installée en un clic
 - **Liens** — Paramètres › À propos : site web, code source, café, et demandes sur GitHub (problème, fonctionnalité,
   astre à ajouter) préremplies avec la version et le système
 - **Favoris** — enregistrement des lieux (37 villes préchargées)
@@ -204,6 +205,7 @@ Celeste_App/
 ├── config.py            # Design Astræos — couleurs des thèmes Nuit, Jour et Observation, espacements, styles de texte
 ├── icons.py             # Icônes Material Design (SVG) et symbole Astræos aux couleurs du thème
 ├── i18n.py              # Internationalisation — traductions par clé avec repli
+├── updater.py           # Mises à jour : dernière Release GitHub, téléchargement vérifié, installation
 ├── settings.py          # Préférences persistantes (~/.celeste/settings.json)
 ├── constellations.py    # Tracés des constellations et noms de leurs étoiles
 ├── star_catalog.py      # 513 étoiles brillantes (Yale Bright Star Catalogue, magnitude < 4), généré
@@ -305,8 +307,11 @@ l'application fonctionne hors ligne dès le premier lancement.
   (raccourcis du menu Démarrer et du Bureau, désinstallation depuis les paramètres de Windows), et `Celeste-Windows`,
   le dossier de l'application à lancer sans installer (`Celeste.exe`).
 - **Nouvelle version** : changer `APP_VERSION` dans `config.py` (seul endroit : fenêtre, installateur, demandes
-  GitHub), fusionner, puis pousser le tag correspondant (`git tag v4.2 && git push origin v4.2`) ; le workflow vérifie
-  que le tag et `APP_VERSION` concordent.
+  GitHub) et fusionner : le workflow publie la Release `v<version>` (installateur et empreinte SHA-256).
+- **Mise à jour automatique** : Céleste installé cherche une version plus récente au démarrage (ou par Paramètres ›
+  À propos › Vérifier les mises à jour), la télécharge, vérifie son empreinte, l'installe par-dessus l'ancienne et
+  se rouvre, réglages et favoris conservés (`updater.py`). Voir le wiki,
+  [Publier une version](docs/wiki/Publier-une-version.md).
 - **Sur un PC Windows** :
 
 ```bash

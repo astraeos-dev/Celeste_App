@@ -216,6 +216,7 @@ Celeste_App/
 ├── installer/           # Programme d'installation Inno Setup (celeste.iss)
 ├── requirements.txt     # Dépendances d'exécution
 ├── requirements-dev.txt # Dépendances de développement (pytest)
+├── docs/wiki/           # Fiches pratiques, publiées dans le wiki GitHub
 └── tests/               # Tests unitaires (moteur, graphiques, interface, thèmes, i18n, utilitaires)
 ```
 

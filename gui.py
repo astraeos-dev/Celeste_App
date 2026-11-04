@@ -1406,6 +1406,11 @@ class AstroApp(QMainWindow):
             items["col_planet"].setData(_SORT_ROLE, r)                # ordre du Système solaire
             self._planet_items[name] = items
         self.planet_table = table
+        # un clic sur un astre ouvre sa fenêtre de données
+        table.cellClicked.connect(
+            lambda row, _col: self._show_body_detail(table.item(row, 0).data(_NAME_ROLE)))
+        table.viewport().setCursor(Qt.CursorShape.PointingHandCursor)
+        table.setToolTip(t("detail.click_tip"))
         # la dernière colonne s'étire : jamais de défilement horizontal pour quelques pixels
         table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._planet_alt = {}
@@ -1522,6 +1527,9 @@ class AstroApp(QMainWindow):
                 table.setItem(r, c, item)
         table.setFixedHeight(36 * table.rowCount() + header.sizeHint().height() + 4)
         self.coord_table = table
+        table.cellClicked.connect(lambda row, _col: self._show_body_detail(AstroEngine.BODIES[row]))
+        table.viewport().setCursor(Qt.CursorShape.PointingHandCursor)
+        table.setToolTip(t("detail.click_tip"))
         lay.addWidget(table)
         self._coord_note = _label("", "legende", wrap=True)
         lay.addWidget(self._coord_note)
@@ -2595,10 +2603,12 @@ class AstroApp(QMainWindow):
             self._sky_tip.hide()
             self._show_object_detail(obj)
 
-    def _object_details(self, obj, symbols=True):
+    def _object_details(self, obj, symbols=True, full=False):
         """
         Titre et lignes (libellé, valeur) de la fiche d'un astre. *symbols* :
-        symboles suivis de U+FE0E (Qt) ; sans, pour matplotlib.
+        symboles suivis de U+FE0E (Qt) ; sans, pour matplotlib. *full* : la
+        fenêtre de données du Soleil, de la Lune ou d'une planète, avec
+        diamètre apparent, phase, distances, temps de lumière, lever et coucher.
         """
         sym = SYMBOL if symbols else charts.SYMBOL
         kind = obj["kind"]
@@ -2646,8 +2656,69 @@ class AstroApp(QMainWindow):
         ]
         return title, rows
 
+    @staticmethod
+    def _light_time(seconds):
+        """« 8 min 15 s », « 1 h 15 min »."""
+        seconds = int(round(seconds))
+        if seconds < 60:
+            return f"{seconds} s"
+        if seconds < 3600:
+            return f"{seconds // 60} min {seconds % 60:02d} s"
+        return f"{seconds // 3600} h {seconds % 3600 // 60:02d} min"
+
+    @staticmethod
+    def _diameter(arcsec):
+        """« 31′ 34″ », « 58,4″ »."""
+        if arcsec >= 60.0:
+            minutes, seconds = divmod(int(round(arcsec)), 60)
+            return f"{minutes}′ {seconds:02d}″"
+        return f"{_num(arcsec, 1 if arcsec >= 1 else 2)}″"
+
+    def _data_rows(self, obj):
+        """Lignes de la fenêtre de données d'un astre du Système solaire."""
+        body = {"sun": "sun", "moon": "moon"}.get(obj["kind"], obj.get("name"))
+        d = AstroEngine.body_details(AstroEngine.julian_century_j2000(self._dte), body)
+        rows = [] if obj.get("mag") is not None else [(t("detail.mag"), _num(d["mag"], 2))]
+        if d.get("constellation"):
+            rows.append((t("detail.constellation"), f"{d['constellation_name']} ({d['constellation']})"))
+        if d["diameter_arcsec"]:
+            rows.append((t("detail.diameter"), self._diameter(d["diameter_arcsec"])))
+        if d["illuminated"] is not None and obj["kind"] != "moon":
+            rows.append((t("detail.illumination"), f"{_num(d['illuminated'], 1)} %"))
+        if d["phase_angle"] is not None:
+            rows.append((t("detail.phase_angle"), _deg(d["phase_angle"], 1)))
+        rows.append((t("detail.light_time"), self._light_time(d["light_time_s"])))
+        if d["helio_au"] is not None:
+            rows.append((t("detail.helio"), tf("units.au", value=_num(d["helio_au"], 4))))
+        events = {"sun": self.sun_events, "moon": self.moon_events}.get(
+            obj["kind"], self.planet_events.get(obj.get("name"), {})) or {}
+        for key in ("rise", "transit", "set"):
+            if key in events:
+                rows.append((t(f"detail.{key}"), self._format_event(events.get(key))))
+        return rows
+
+    def _body_object(self, name):
+        """L'astre *name* tel que la carte du ciel le décrit : Soleil, Lune ou planète."""
+        if name == "sun":
+            return {**self.sun_data, "kind": "sun"}
+        if name == "moon":
+            return {**self.moon_data, "kind": "moon"}
+        planet = next((p for p in self.planets + self.minor_planets if p["name"] == name), None)
+        return {**planet, "kind": "planet"} if planet else None
+
+    def _show_body_detail(self, name):
+        """Fenêtre de données d'un astre choisi dans un tableau (non bloquante)."""
+        obj = self._body_object(name)
+        if obj is None:
+            return
+        dlg = self._build_detail_dialog(obj)
+        self._detail_dialog = dlg
+        dlg.open()
+
     def _build_detail_dialog(self, obj):
         title, rows = self._object_details(obj)
+        if obj["kind"] in ("sun", "moon", "planet") and self._dte is not None:
+            rows += self._data_rows(obj)
         dlg = QDialog(self)
         dlg.setWindowTitle(tf("detail.title", name=title))
         dlg.setMinimumWidth(380)

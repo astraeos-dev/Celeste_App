@@ -285,7 +285,15 @@
     "phase": "Phase",
     "illumination": "Beleuchteter Anteil",
     "close": "Schließen",
-    "type_minor_planet": "Kleinplanet"
+    "type_minor_planet": "Kleinplanet",
+    "diameter": "Scheinbarer Durchmesser",
+    "phase_angle": "Phasenwinkel",
+    "light_time": "Lichtlaufzeit",
+    "helio": "Abstand zur Sonne",
+    "rise": "Aufgang",
+    "transit": "Kulmination",
+    "set": "Untergang",
+    "click_tip": "Klicken Sie auf einen Himmelskörper, um sein Datenfenster zu öffnen"
   },
   "events": {
     "search_eclipses": "Finsternisse suchen (12 Monate)",

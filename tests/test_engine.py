@@ -593,6 +593,27 @@ class TestMinorPlanets:
         assert not [e for e in events if e["bodies"][0] == "Ceres"]
 
 
+class TestBodyDetails:
+    """Data window: JPL Horizons, 3 November 2026 12h UT (quantities 10, 13, 24)."""
+
+    @pytest.mark.parametrize("body, illuminated, diameter, phase", [
+        ("Venus", 3.96154, 58.44, 157.0335),
+        ("Jupiter", 99.17030, 36.09617, 10.4511),
+        ("moon", 32.26228, 1894.896, 110.7764),
+    ])
+    def test_matches_horizons(self, body, illuminated, diameter, phase):
+        t = AstroEngine.julian_century_j2000(datetime(2026, 11, 3, 12))
+        d = AstroEngine.body_details(t, body)
+        assert d["illuminated"] == pytest.approx(illuminated, abs=0.01)
+        assert d["diameter_arcsec"] == pytest.approx(diameter, rel=1e-3)
+        assert d["phase_angle"] == pytest.approx(phase, abs=0.01)
+
+    def test_sun(self):
+        d = AstroEngine.body_details(AstroEngine.julian_century_j2000(datetime(2026, 11, 3, 12)), "sun")
+        assert d["phase_angle"] is None and 480 < d["light_time_s"] < 510
+        assert 1890 < d["diameter_arcsec"] < 1960
+
+
 class TestMoonAndSeasons:
     @pytest.fixture(scope="class")
     @classmethod

@@ -285,7 +285,15 @@
     "phase": "Fase",
     "illumination": "Fracción iluminada",
     "close": "Cerrar",
-    "type_minor_planet": "Planeta menor"
+    "type_minor_planet": "Planeta menor",
+    "diameter": "Diámetro aparente",
+    "phase_angle": "Ángulo de fase",
+    "light_time": "Tiempo de luz",
+    "helio": "Distancia al Sol",
+    "rise": "Salida",
+    "transit": "Culminación",
+    "set": "Puesta",
+    "click_tip": "Haga clic en un astro para abrir su ventana de datos"
   },
   "events": {
     "search_eclipses": "Buscar eclipses (12 meses)",

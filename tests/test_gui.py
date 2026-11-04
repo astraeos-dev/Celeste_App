@@ -848,3 +848,46 @@ class TestLinks:
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         for template in ("bug", "feature", "body"):
             assert os.path.isfile(os.path.join(root, ".github", "ISSUE_TEMPLATE", f"{template}.yml"))
+
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Fenêtre de données d'un astre (issue #23)
+# ──────────────────────────────────────────────────────────────────────
+
+class TestDataWindow:
+    def _rows(self, dlg):
+        labels = [lbl.text() for lbl in dlg.findChildren(QLabel)]
+        return labels
+
+    def test_click_on_a_planet(self, window, qapp):
+        """Un clic sur Jupiter dans l'onglet Planètes ouvre sa fenêtre de données."""
+        table = window.planet_table
+        row = window._planet_items["Jupiter"]["col_planet"].row()
+        table.cellClicked.emit(row, 3)
+        qapp.processEvents()
+        dlg = window._detail_dialog
+        text = " | ".join(self._rows(dlg))
+        assert dlg.isVisible() and "Jupiter" in dlg.windowTitle()
+        for label in ("Diamètre apparent", "Fraction éclairée", "Angle de phase", "Temps de lumière",
+                      "Distance au Soleil", "Lever", "Coucher", "Constellation"):
+            assert label in text, label
+        dlg.close()
+
+    def test_click_in_the_coordinates_table(self, window, qapp):
+        """Soleil et Vesta depuis l'onglet Coordonnées ; la Terre n'a pas de fiche."""
+        window.tabs.setCurrentWidget(window._coord_page)
+        from engine import AstroEngine
+        bodies = list(AstroEngine.BODIES)
+        window._detail_dialog = None
+        window.coord_table.cellClicked.emit(bodies.index("earth"), 0)
+        assert window._detail_dialog is None
+        window.coord_table.cellClicked.emit(bodies.index("sun"), 0)
+        qapp.processEvents()
+        text = " | ".join(self._rows(window._detail_dialog))
+        assert "Soleil" in window._detail_dialog.windowTitle() and "Diamètre apparent" in text
+        window._detail_dialog.close()
+        window.coord_table.cellClicked.emit(bodies.index("Vesta"), 0)
+        qapp.processEvents()
+        assert "Planète mineure" in " | ".join(self._rows(window._detail_dialog))
+        window._detail_dialog.close()

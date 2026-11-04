@@ -285,7 +285,15 @@
     "phase": "Phase",
     "illumination": "Illuminated fraction",
     "close": "Close",
-    "type_minor_planet": "Minor planet"
+    "type_minor_planet": "Minor planet",
+    "diameter": "Apparent diameter",
+    "phase_angle": "Phase angle",
+    "light_time": "Light time",
+    "helio": "Distance from the Sun",
+    "rise": "Rise",
+    "transit": "Transit",
+    "set": "Set",
+    "click_tip": "Click a body to open its data window"
   },
   "events": {
     "search_eclipses": "Search eclipses (12 months)",

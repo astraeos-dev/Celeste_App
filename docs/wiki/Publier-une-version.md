@@ -8,7 +8,7 @@ l'exécutable, le programme d'installation et les formulaires GitHub le lisent l
 
 - Fonctionnalité nouvelle : `4.2` → `4.3`. Correction seule : `4.2` → `4.2.1`.
 - Notez les nouveautés du moteur en tête d'[`engine.py`](https://github.com/astraeos-dev/Celeste_App/blob/master/engine.py)
-  (paragraphe `v4.3:`), et mettez le README à jour.
+  (paragraphe `v4.3:`, que le test `test_version_is_single_sourced` réclame), et mettez le README à jour.
 
 ## 2. Fusionner : la version se publie toute seule
 

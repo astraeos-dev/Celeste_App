@@ -41,6 +41,12 @@ v4.2:
   • event_visibility(), moon_occultation() — when an event is seen from the
     observer, occultations; eclipse_local() — local circumstances
 
+v4.3:
+  • body_details() — the data window of a body: apparent diameter, phase
+    angle, illuminated fraction, light time, distance to the Sun
+  • Sedna among MINOR_PLANETS; MINOR_PLANET_NUMBERS, the Minor Planet
+    Center's numbers (« (136199) Éris »)
+
 The ephemeris (32 MB) is looked for in data/ next to this module, then in
 ~/.celeste (or $CELESTE_DATA), where it is downloaded from the JPL/NAIF
 server the first time (load_ephemeris()).

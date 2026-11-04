@@ -42,9 +42,10 @@ Jour et Observation), avec des graphiques interactifs et une carte du ciel.
 - **Fenêtre de données** — un clic sur un astre (carte du ciel, onglets Planètes et Coordonnées) ouvre sa fiche :
   magnitude, constellation, diamètre apparent, fraction éclairée et angle de phase, temps de lumière, distance au
   Soleil, coordonnées, lever, culmination et coucher
-- **Planètes mineures** — Cérès, Pallas, Junon, Vesta et les planètes naines Pluton, Éris, Haumea et Makemake, au choix
-  dans l'onglet Planètes, dans l'onglet Coordonnées et, assez brillantes pour la magnitude limite, sur la carte du ciel :
-  positions de JPL Horizons (à 0,001″ près), magnitudes du système H, G
+- **Planètes mineures** — Cérès, Pallas, Junon, Vesta, les planètes naines Pluton, Éris, Hauméa et Makémaké, et
+  Sedna, au choix dans l'onglet Planètes, dans l'onglet Coordonnées et, assez brillantes pour la magnitude limite, sur
+  la carte du ciel : positions de JPL Horizons (à 0,001″ près), magnitudes du système H, G ; leur numéro du Minor
+  Planet Center (« (1) Cérès ») dans leur fiche et leur infobulle
 - **Coordonnées** — Soleil, Lune, planètes, planètes mineures et Terre, avec en même temps x, y, z et distance
   (héliocentriques, géocentriques ou topocentriques) et deux angles (équatoriaux ou horizontaux vus du lieu, écliptiques
   vus du Soleil ou de la Terre), magnitude, angle au Soleil et constellation ; angles au format des paramètres, ou en
@@ -187,6 +188,10 @@ sous licence SIL Open Font License 1.1 ; icônes Material Design Icons (Pictogra
 
 ## Architecture
 
+> **Modifier Céleste** : des fiches pratiques (textes et infobulles, ajouter une planète mineure, une comète, une
+> étoile, une langue, tester, publier une version) sont dans [`docs/wiki`](docs/wiki/Home.md) et dans le
+> [wiki](https://github.com/astraeos-dev/Celeste_App/wiki) du dépôt.
+
 Le projet suit le modèle **MVC (modèle-vue-contrôleur)** :
 
 ```
@@ -211,6 +216,7 @@ Celeste_App/
 ├── installer/           # Programme d'installation Inno Setup (celeste.iss)
 ├── requirements.txt     # Dépendances d'exécution
 ├── requirements-dev.txt # Dépendances de développement (pytest)
+├── docs/wiki/           # Fiches pratiques, publiées dans le wiki GitHub
 └── tests/               # Tests unitaires (moteur, graphiques, interface, thèmes, i18n, utilitaires)
 ```
 
@@ -223,8 +229,8 @@ de l'IERS. Précision : planètes à 0,07″ de JPL Horizons, levers et couchers
 arrondies de l'USNO).
 
 Les planètes mineures (sauf Pluton, dans DE440) viennent d'une table de **JPL Horizons** (`assets/minor_planets.npz`,
-2,3 Mo, `scripts/make_minor_planets.py`) : position et vitesse héliocentriques tous les 10 jours (60 pour Éris, Haumea et
-Makemake), interpolées par Hermite ; positions à 0,001″ d'Horizons de 1850 à 2149.
+2,4 Mo, `scripts/make_minor_planets.py`) : position et vitesse héliocentriques tous les 10 jours (60 pour Éris, Haumea,
+Makemake et Sedna), interpolées par Hermite ; positions à 0,001″ d'Horizons de 1850 à 2149.
 
 L'éphéméride (32 Mo) est cherchée dans `data/` à côté du programme, puis dans `~/.celeste` (ou `$CELESTE_DATA`), où elle
 est téléchargée depuis le serveur JPL/NAIF au premier lancement.
@@ -342,7 +348,7 @@ avec le projet (`fonts/`, `assets/`) : rien à installer.
 - [x] **Système solaire** — positions de Vénus, Mars, Jupiter et Saturne
 - [x] **Éclipses de Soleil** — type, magnitude, durée de la phase centrale
 - [x] **Conjonctions et oppositions** — prochains événements planétaires, à la minute, avec leur carte
-- [x] **Planètes mineures** — Cérès, Pallas, Junon, Vesta, Pluton, Éris, Haumea, Makemake (JPL Horizons)
+- [x] **Planètes mineures** — Cérès, Pallas, Junon, Vesta, Pluton, Éris, Haumea, Makemake, Sedna (JPL Horizons)
 - [x] **Évènements vus d'ici** — visibilité, occultations, Lune, saisons, circonstances locales des éclipses, export .ics
 - [x] **Précision** — éphéméride JPL DE440 (Skyfield) à la place des séries de Meeus ; levers et couchers à la seconde
 - [x] **Équation du temps**

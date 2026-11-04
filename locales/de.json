@@ -226,14 +226,15 @@
     "group_planets": "Planeten",
     "group_planets_tip": "Merkur bis Neptun",
     "group_minor": "Kleinplaneten",
-    "group_minor_tip": "Ceres, Pallas, Juno, Vesta und die Zwergplaneten Pluto, Eris, Haumea und Makemake (JPL-Positionen)",
+    "group_minor_tip": "Ceres, Pallas, Juno, Vesta, die Zwergplaneten Pluto, Eris, Haumea und Makemake sowie Sedna (JPL-Positionen)",
     "group_legend": "Angezeigte Himmelskörper",
     "group_all": "Alle",
     "group_all_tip": "Planeten und Kleinplaneten",
     "visible_only": "Nur sichtbare",
     "visible_only_tip": "Nur die Himmelskörper über dem Horizont zum berechneten Zeitpunkt; zum Sortieren auf eine Kopfzeile klicken",
     "sorted_ascending": "Aufsteigend sortiert (zum Umkehren klicken)",
-    "sorted_descending": "Absteigend sortiert (zum Umkehren klicken)"
+    "sorted_descending": "Absteigend sortiert (zum Umkehren klicken)",
+    "sedna": "Sedna"
   },
   "chart": {
     "trajectory_title": "Höhe von Sonne und Mond — {date}",

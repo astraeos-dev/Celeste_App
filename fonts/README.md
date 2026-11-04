@@ -18,6 +18,8 @@ ait le même rendu sur toutes les machines. `gui.py` les déclare au démarrage
   `fonts/complete/ttf/`), non modifiés. Licence SIL Open Font License 1.1, nom de police
   réservé « Plex » : voir `OFL-IBM-Plex.txt`.
 - **Astraeos Symboles** : police du design system Astræos, sous-ensemble de Noto Sans
-  Symbols, Symbols 2 et Math (30 symboles). Fichier WOFF2 du design system converti en TTF
-  sans modification des glyphes. Licence SIL Open Font License 1.1 : voir
+  Symbols, Symbols 2 et Math (34 symboles). Fichier WOFF2 du design system converti en TTF
+  sans modification des glyphes ; les symboles d'Éris (U+2BF1), de Sedna (U+2BF2), de Haumea
+  (U+1F77B) et de Makemake (U+1F77C) y sont copiés, tels quels, de Noto Sans Symbols 2
+  (version 2.008) par `scripts/add_font_symbols.py`. Licence SIL Open Font License 1.1 : voir
   `OFL-Astraeos-Symboles.txt`.

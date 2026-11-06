@@ -893,3 +893,77 @@ class TestDataWindow:
         assert "Planète mineure" in " | ".join(self._rows(window._detail_dialog))
         assert "(4) Vesta" in window._detail_dialog.windowTitle()
         window._detail_dialog.close()
+
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Mises à jour (Paramètres › À propos)
+# ──────────────────────────────────────────────────────────────────────
+
+class TestUpdates:
+    RELEASE = {"version": "99.0", "tag": "v99.0", "notes": "Nouveautés",
+               "page": "https://github.com/astraeos-dev/Celeste_App/releases/tag/v99.0",
+               "setup_url": "https://example.test/Celeste-99.0-Setup.exe",
+               "setup_name": "Celeste-99.0-Setup.exe", "setup_size": 10, "sha256_url": "x"}
+
+    @pytest.fixture
+    def offline(self, monkeypatch):
+        """Tâches de fond exécutées tout de suite ; Release simulée."""
+        import gui
+
+        def run_now(func, on_done, on_error):
+            try:
+                result = func()
+            except Exception as exc:  # noqa: BLE001
+                on_error(exc)
+            else:
+                on_done(result)
+        monkeypatch.setattr(gui, "_run_in_background", run_now)
+        answer = {"release": dict(self.RELEASE)}
+        monkeypatch.setattr(gui.updater, "latest_release", lambda: answer["release"])
+        return answer
+
+    def test_up_to_date(self, window, offline):
+        from config import APP_VERSION
+        offline["release"] = dict(self.RELEASE, version=APP_VERSION)
+        window.check_updates()
+        assert window._update_info.text() == f"Céleste {APP_VERSION} est à jour."
+
+    def test_new_version_offers_the_update(self, window, offline, monkeypatch):
+        import gui
+        monkeypatch.setattr(gui.updater, "can_self_update", lambda: True)
+        window.check_updates()
+        box = window._update_dialog
+        assert box.isVisible() and "Céleste 99.0 est disponible" in box.text()
+        assert {b.text() for b in box.buttons()} >= {"Mettre à jour", "Voir la version",
+                                                     "Ignorer cette version", "Plus tard"}
+        box.close()
+
+    def test_from_the_sources_git_pull(self, window, offline, monkeypatch):
+        import gui
+        monkeypatch.setattr(gui.updater, "can_self_update", lambda: False)
+        window.check_updates()
+        box = window._update_dialog
+        assert "git pull" in box.informativeText()
+        assert "Mettre à jour" not in {b.text() for b in box.buttons()}
+        box.close()
+
+    def test_skipped_version_is_not_offered_at_startup(self, window, offline):
+        import settings as prefs
+        window.check_updates()
+        skip = next(b for b in window._update_dialog.buttons() if b.text() == "Ignorer cette version")
+        skip.click()
+        assert prefs.get("update_skipped") == "99.0"
+        window._update_dialog = None
+        window.check_updates(interactive=False)                  # au démarrage : silence
+        assert window._update_dialog is None
+        assert "99.0" in window._update_info.text()
+
+    def test_error_is_reported(self, window, offline, monkeypatch):
+        import gui
+
+        def fail():
+            raise gui.updater.UpdateError("pas de réseau")
+        monkeypatch.setattr(gui.updater, "latest_release", fail)
+        window.check_updates(interactive=False)
+        assert "pas de réseau" in window._update_info.text()

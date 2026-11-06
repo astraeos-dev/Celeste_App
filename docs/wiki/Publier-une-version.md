@@ -8,41 +8,51 @@ l'exécutable, le programme d'installation et les formulaires GitHub le lisent l
 
 - Fonctionnalité nouvelle : `4.2` → `4.3`. Correction seule : `4.2` → `4.2.1`.
 - Notez les nouveautés du moteur en tête d'[`engine.py`](https://github.com/astraeos-dev/Celeste_App/blob/master/engine.py)
-  (paragraphe `v4.3:`), et mettez le README à jour.
+  (paragraphe `v4.3:`, que le test `test_version_is_single_sourced` réclame), et mettez le README à jour.
 
-## 2. Fusionner, puis le tag
+## 2. Fusionner : la version se publie toute seule
 
-Une fois la PR fusionnée dans `master` :
+Quand une PR qui change `APP_VERSION` est fusionnée dans `master`, le workflow **Build — application Windows**
+construit l'application et publie la **Release** `v4.3` : le programme d'installation `Celeste-4.3-Setup.exe` et
+son empreinte `Celeste-4.3-Setup.exe.sha256`, avec des notes tirées des PR fusionnées. Rien ne se passe si la
+version est déjà publiée : modifier `config.py` sans changer le numéro ne publie pas deux fois.
 
-```bash
-git switch master
-```
-```bash
-git pull
-```
-```bash
-git tag v4.3
-```
-```bash
-git push origin v4.3
-```
+On peut encore pousser un tag à la main (`git tag v4.3` puis `git push origin v4.3`) : le workflow vérifie qu'il
+correspond à `APP_VERSION`. Depuis l'onglet *Actions* (*Run workflow*), il construit sans publier.
 
-Le tag lance le workflow **Build — application Windows**. Il **refuse** un tag qui ne correspond pas à
-`APP_VERSION` (`v4.3` pour `4.3`) : changez d'abord le numéro, puis taguez.
+## 3. La mise à jour chez l'utilisateur
 
-On peut aussi lancer le build sans tag : onglet *Actions*, workflow « Build — application Windows »,
-*Run workflow*.
+Céleste installé cherche une version plus récente au démarrage (après quelques secondes, sans bloquer la fenêtre)
+et quand on clique sur **Paramètres › À propos › Vérifier les mises à jour**. S'il en trouve une, une fenêtre la
+propose :
 
-## 3. Récupérer l'application
+- **Mettre à jour** : le programme d'installation est téléchargé, son empreinte SHA-256 vérifiée, puis il
+  s'installe par-dessus l'ancienne version en mode silencieux (fenêtre de progression seule) ; Céleste se ferme
+  et se rouvre. Réglages et favoris (`%USERPROFILE%\.celeste`) sont conservés.
+- **Voir la version** : la page de la Release sur GitHub.
+- **Ignorer cette version** : elle n'est plus proposée au démarrage (le bouton de vérification la montre encore).
+- **Plus tard**.
 
-Dans le run du workflow, rubrique *Artifacts* :
+La case « Vérifier au démarrage » coupe la recherche automatique. Depuis les sources (`python main.py`), la
+fenêtre rappelle de mettre à jour avec `git pull`.
 
-- **Celeste-Windows-Setup** : le programme d'installation `Celeste-4.3-Setup.exe` (icône de Céleste, raccourcis,
-  désinstallation dans les paramètres de Windows) ;
+Le code est dans [`updater.py`](https://github.com/astraeos-dev/Celeste_App/blob/master/updater.py) (sans Qt) et
+dans `check_updates()` de `gui.py` ; l'installation silencieuse rouvre Céleste grâce à la ligne `skipifnotsilent`
+de `installer/celeste.iss`.
+
+> La première version qui sait se mettre à jour (4.3) s'installe encore à la main ; les suivantes se mettent à
+> jour seules.
+
+## 4. Les artefacts du workflow
+
+Dans chaque run du workflow, rubrique *Artifacts* :
+
+- **Celeste-Windows-Setup** : le programme d'installation ;
 - **Celeste-Windows** : le dossier de l'application, à lancer sans installer (`Celeste.exe`).
 
-Les artefacts sont gardés 90 jours. L'application n'est pas signée : SmartScreen demande une confirmation au
-premier lancement (*Informations complémentaires*, puis *Exécuter quand même*).
+Les artefacts sont gardés 90 jours, les Releases pour toujours. L'application n'est pas signée : SmartScreen
+demande une confirmation au premier lancement d'un installateur téléchargé à la main (*Informations
+complémentaires*, puis *Exécuter quand même*).
 
 ## Construire sur son PC
 

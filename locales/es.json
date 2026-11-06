@@ -499,5 +499,24 @@
     "body": "Proponer un astro",
     "body_tip": "Un astro para añadir a Céleste (planeta menor, cometa, estrella…), en GitHub",
     "body_more": "Proponer otro astro…"
+  },
+  "update": {
+    "title": "Actualización de Céleste",
+    "check_now": "Buscar actualizaciones",
+    "check_now_tip": "Buscar una versión más reciente de Céleste en GitHub",
+    "auto": "Buscar al iniciar",
+    "current": "Versión {version}.",
+    "checking": "Buscando una actualización…",
+    "up_to_date": "Céleste {version} está al día.",
+    "available": "Céleste {version} está disponible (usted tiene la versión {current}).",
+    "install": "Actualizar",
+    "open_page": "Ver la versión",
+    "skip": "Omitir esta versión",
+    "later": "Más tarde",
+    "from_source": "Céleste se ejecuta desde sus fuentes: actualícelo con «git pull».",
+    "downloading": "Descargando Céleste {version}…",
+    "cancel": "Cancelar",
+    "installing": "Instalando Céleste {version}: la aplicación se cerrará y volverá a abrirse.",
+    "error": "Actualización imposible: {detail}"
   }
 }

@@ -1,13 +1,25 @@
 name: Build — application Windows
 
 # Construit Céleste.exe pour Windows (PyInstaller, éphéméride incluse),
-# vérifie que l'application démarre, puis publie en artefacts le programme
-# d'installation (Inno Setup) et le dossier de l'application.
-# À lancer depuis l'onglet Actions, ou en poussant un tag v*.
+# vérifie que l'application démarre, publie en artefacts le programme
+# d'installation (Inno Setup) et le dossier de l'application, et — pour une
+# version nouvelle — une Release GitHub, d'où l'application installée se met à
+# jour toute seule (updater.py).
+#
+# Déclenchement :
+#   • APP_VERSION change dans config.py sur master : build et Release v<version>
+#     (rien si cette version est déjà publiée) ;
+#   • un tag v<version> poussé à la main : build et Release de ce tag ;
+#   • l'onglet Actions (Run workflow) : build et artefacts seulement.
 on:
   workflow_dispatch:
   push:
+    branches: [ master ]
+    paths: [ "config.py" ]
     tags: [ "v*" ]
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -17,6 +29,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0                 # les tags : la version est-elle déjà publiée ?
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -24,29 +38,47 @@ jobs:
           python-version: "3.12"
           cache: pip
 
+      # Version, et ce qu'il y a à faire : build (oui/non), Release (oui/non)
+      - name: Version
+        id: version
+        shell: bash
+        run: |
+          version=$(python -c "from config import APP_VERSION; print(APP_VERSION)")
+          build=true
+          release=false
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            if [[ "$GITHUB_REF_NAME" != "v$version" ]]; then
+              echo "::error::Tag $GITHUB_REF_NAME != APP_VERSION $version (config.py)"
+              exit 1
+            fi
+            release=true
+          elif [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+            if git rev-parse -q --verify "refs/tags/v$version" > /dev/null; then
+              echo "Céleste $version est déjà publiée : rien à construire."
+              build=false
+            else
+              release=true
+            fi
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+
       - name: Cache the JPL DE440 ephemeris
+        if: steps.version.outputs.build == 'true'
         uses: actions/cache@v4
         with:
           path: ~/.celeste
           key: ephemeris-de440s
 
       - name: Install Python dependencies
+        if: steps.version.outputs.build == 'true'
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt "pyinstaller>=6"
 
-      # Pour un tag v<version>, le tag et APP_VERSION (config.py) doivent concorder
-      - name: Check the version
-        if: startsWith(github.ref, 'refs/tags/v')
-        shell: pwsh
-        run: |
-          $version = python -c "from config import APP_VERSION; print(APP_VERSION)"
-          if ("v$version" -ne "${{ github.ref_name }}") {
-            Write-Error "Tag ${{ github.ref_name }} != APP_VERSION $version (config.py)"
-            exit 1
-          }
-
       - name: Install Inno Setup
+        if: steps.version.outputs.build == 'true'
         shell: pwsh
         run: |
           if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) {
@@ -54,6 +86,7 @@ jobs:
           }
 
       - name: Build, self-test, zip and installer
+        if: steps.version.outputs.build == 'true'
         env:
           QT_QPA_PLATFORM: offscreen
         run: python scripts/build_exe.py
@@ -61,6 +94,7 @@ jobs:
       # Les artefacts sont téléchargés en .zip : l'installateur tel quel, et le
       # dossier de l'application (sans second zip à l'intérieur)
       - name: Upload the installer
+        if: steps.version.outputs.build == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: Celeste-Windows-Setup
@@ -68,8 +102,29 @@ jobs:
           if-no-files-found: error
 
       - name: Upload the application folder
+        if: steps.version.outputs.build == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: Celeste-Windows
           path: dist/Celeste/
           if-no-files-found: error
+
+      # La Release : l'installateur et son empreinte SHA-256, que l'application
+      # vérifie avant d'installer une mise à jour
+      - name: Publish the release
+        if: steps.version.outputs.release == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          cd dist
+          setup="Celeste-$VERSION-Setup.exe"
+          sha256sum "$setup" | sed 's/ \*/  /' > "$setup.sha256"
+          cat "$setup.sha256"
+          if gh release view "v$VERSION" > /dev/null 2>&1; then
+            gh release upload "v$VERSION" "$setup" "$setup.sha256" --clobber
+          else
+            gh release create "v$VERSION" "$setup" "$setup.sha256" \
+              --target "$GITHUB_SHA" --title "Céleste $VERSION" --generate-notes
+          fi

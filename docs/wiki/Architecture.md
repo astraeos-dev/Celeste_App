@@ -9,6 +9,7 @@ Le projet suit le modèle **modèle-vue-contrôleur** : le moteur calcule, l'int
 | [`charts.py`](https://github.com/astraeos-dev/Celeste_App/blob/master/charts.py) | Graphiques matplotlib : trajectoires, carte du ciel, système solaire, cartes d'évènements ; `SYMBOL` |
 | [`locales/`](https://github.com/astraeos-dev/Celeste_App/tree/master/locales) | Textes de l'interface : `fr.json` (référence), `en.json`, `es.json`, `de.json` |
 | [`i18n.py`](https://github.com/astraeos-dev/Celeste_App/blob/master/i18n.py) | `t("clé")`, `tf("clé", valeur=…)`, choix de la langue |
+| [`updater.py`](https://github.com/astraeos-dev/Celeste_App/blob/master/updater.py) | Mises à jour : dernière Release GitHub, téléchargement vérifié (SHA-256), installation silencieuse |
 | [`settings.py`](https://github.com/astraeos-dev/Celeste_App/blob/master/settings.py) | Préférences enregistrées (`~/.celeste/settings.json`) et leurs valeurs par défaut |
 | [`config.py`](https://github.com/astraeos-dev/Celeste_App/blob/master/config.py) | Couleurs des thèmes Astræos, polices, **`APP_VERSION`** |
 | [`star_catalog.py`](https://github.com/astraeos-dev/Celeste_App/blob/master/star_catalog.py) | 513 étoiles brillantes (généré par `scripts/make_star_catalog.py`) |

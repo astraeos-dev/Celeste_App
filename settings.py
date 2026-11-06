@@ -63,6 +63,9 @@ _DEFAULTS = {
     # Onglet Planètes
     "planet_group":   "planets",    # astres du tableau : all | planets | minor
     "planet_visible_only": False,   # seulement les astres au-dessus de l'horizon
+    # Mises à jour (updater.py)
+    "update_check":   True,         # chercher une nouvelle version au démarrage
+    "update_skipped": "",           # version que l'utilisateur a choisi d'ignorer
 }
 
 # ── État interne ───────────────────────────────────────────────────────────────

@@ -102,6 +102,10 @@ def main(argv=None):
     if prefs.get("auto_geoloc"):
         QTimer.singleShot(800, lambda: window.geolocate(interactive=False))
 
+    # Mise à jour : une version plus récente est-elle publiée ? (Paramètres › À propos)
+    if prefs.get("update_check"):
+        QTimer.singleShot(4000, lambda: window.check_updates(interactive=False))
+
     return app.exec()
 
 

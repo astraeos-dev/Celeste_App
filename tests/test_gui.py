@@ -714,6 +714,57 @@ class TestOrreryAnimation:
         assert window._orrery_date.text() == "30/12/2149" and not window._orrery_timer.isActive()
 
 
+class TestComets:
+    def _at(self, window, qapp, when, lat=None, lon=None):
+        if lat is not None:
+            window.entry_lat.setText(str(lat).replace(".", ","))
+            window.entry_lon.setText(str(lon).replace(".", ","))
+        window._set_datetime(when)
+        window.calculate()
+        _pump(qapp)
+
+    def test_planet_table_group(self, window, qapp):
+        self._at(window, qapp, datetime(2027, 8, 25, 3))
+        window._on_planet_group("comets")
+        rows = {name: items for name, items in window._planet_items.items()
+                if not window.planet_table.isRowHidden(items["col_planet"].row())}
+        assert set(rows) == {"Panstarrs", "Honda", "Tsuchinshan", "Borrelly"}
+        honda = rows["Honda"]["col_planet"]
+        assert honda.text() == "\u2604\ufe0e 45P/Honda" and honda.toolTip().startswith("45P/Honda-Mrkos-Pajdušáková")
+        assert rows["Honda"]["col_mag"].text() == "8,2"
+        assert window._planet_empty.isHidden()
+
+    def test_not_shown_outside_their_tables(self, window, qapp):
+        self._at(window, qapp, datetime(2035, 6, 1))
+        window._on_planet_group("comets")
+        assert all(window.planet_table.isRowHidden(window._planet_items[n]["col_planet"].row())
+                   for n in ("Panstarrs", "Honda", "Tsuchinshan", "Borrelly"))
+        assert not window._planet_empty.isHidden() and "C/2026 C1" in window._planet_empty.text()
+        window._on_planet_group("planets")
+
+    def test_data_window_and_events(self, window, qapp):
+        self._at(window, qapp, datetime(2027, 8, 25, 3))
+        window._show_body_detail("Honda")
+        texts = [lbl.text() for lbl in window._detail_dialog.findChildren(QLabel)]
+        assert "☄\ufe0e 45P/Honda-Mrkos-Pajdušáková" in texts and "Comète" in texts
+        window._detail_dialog.close()
+        window._search_conjunctions_gui()
+        for key, box in window._evt_filters.items():
+            box.setChecked(key == "comets")
+        cards = [" ".join(l.text() for l in c.findChildren(QLabel)) for c in _event_cards(window)]
+        assert any("45P/Honda-Mrkos-Pajdušáková au périhélie" in c and "0,559 UA" in c for c in cards)
+        for box in window._evt_filters.values():
+            box.setChecked(box is not window._evt_filters["visible"])
+
+    def test_on_the_sky_map(self, window, qapp, monkeypatch):
+        """C/2026 C1 (magnitude 6,6) seen from Santiago, limit 7 : sur la carte du ciel."""
+        monkeypatch.setattr(window, "_mag_limit", lambda: 7.0)
+        self._at(window, qapp, datetime(2028, 11, 11, 3), -33.45, -70.67)
+        assert "Tsuchinshan" in [o.get("name") for o in window._sky_objects]
+        window.tabs.setCurrentWidget(next(p for p, n in window._chart_tabs.items() if n == "sky"))
+        _pump(qapp)                                       # la carte se dessine, nom compris
+
+
 class TestPlaceSearch:
     def test_suggestions_then_choice(self, window, qapp):
         """« londres » propose London ; la choisir remplit lieu, altitude et nom."""

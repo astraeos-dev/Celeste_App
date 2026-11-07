@@ -816,6 +816,57 @@ class TestMoonCalendar:
         assert tokyo[23]["event"]["kind"] == "full_moon"
 
 
+class TestComets:
+    """Comets of the Horizons tables, against JPL Horizons (astrometric RA/Dec, T-mag)."""
+
+    @pytest.mark.parametrize("name, when, ra, dec, mag", [
+        ("Panstarrs", datetime(2027, 7, 18, 10), 164.142840347, -28.917184962, 9.131),     # perihelion
+        ("Honda", datetime(2027, 8, 30, 23), 127.706470800, 17.673400452, 8.247),          # perihelion
+        ("Tsuchinshan", datetime(2028, 11, 10, 4), 307.159489161, -76.723977498, 6.637),   # brightest
+        ("Borrelly", datetime(2028, 12, 7, 5), 37.809650992, -4.834328672, 9.627),
+        ("Tsuchinshan", datetime(2026, 11, 7), 189.445907295, 0.308347604, 17.874),       # far away
+    ])
+    def test_position_and_magnitude(self, name, when, ra, dec, mag):
+        from engine import _sky
+        sky = _sky()
+        t = sky["ts"].ut1_jd(AstroEngine.julian_day(when))
+        got_ra, got_dec, _ = sky["earth"].at(t).observe(AstroEngine._target(name)).radec()
+        assert abs((got_ra._degrees - ra) * math.cos(math.radians(dec))) * 3600 < 0.05
+        assert abs(got_dec.degrees - dec) * 3600 < 0.05
+        tc = (AstroEngine.julian_day(when) - 2451545.0) / 36525.0
+        assert abs(AstroEngine.observations(tc, [name])[name]["mag"] - mag) < 0.01
+
+    def test_only_within_their_tables(self):
+        from engine import COMETS
+        assert AstroEngine.comets_at(AstroEngine.julian_century_j2000(datetime(2028, 1, 1))) == COMETS
+        for year in (2024, 2035):
+            assert AstroEngine.comets_at(AstroEngine.julian_century_j2000(datetime(year, 6, 1))) == ()
+
+    def test_events(self):
+        events = AstroEngine.find_comet_events(datetime(2026, 11, 7), 3 * 365)
+        found = {(e["bodies"][0], e["type"]): e for e in events}
+        brightest = found[("Tsuchinshan", "comet_brightest")]
+        assert abs(brightest["date"] - datetime(2028, 11, 10, 12)) < timedelta(days=1)
+        assert abs(brightest["mag"] - 6.6) < 0.1
+        perihelion = found[("Honda", "comet_perihelion")]
+        assert perihelion["date"].strftime("%d/%m/%Y") == "30/08/2027"
+        assert abs(perihelion["distance_au"] - 0.559) < 0.002
+        assert all(e["mag"] <= 12.0 and e["group"] == "comets" for e in events)
+
+    def test_tonight_includes_a_bright_comet(self):
+        """25 August 2027 at Cherbourg: 45P (magnitude 8) low in the east before dawn."""
+        from zoneinfo import ZoneInfo
+        night = AstroEngine.tonight(datetime(2027, 8, 25, 3), 49.6333, -1.6167, 0.0, ZoneInfo("Europe/Paris"))
+        honda = next(p for p in night["planets"] if p["name"] == "Honda")
+        assert honda["period"] == "morning" and 10 < honda["alt"] < 20 and honda["mag"] < 8.5
+        assert not any(p["name"] in ("Borrelly", "Tsuchinshan") for p in night["planets"])   # faint
+
+    def test_data_window(self):
+        d = AstroEngine.body_details(AstroEngine.julian_century_j2000(datetime(2027, 8, 30, 23)), "Honda")
+        assert d["illuminated"] is None and d["diameter_arcsec"] is None
+        assert abs(d["helio_au"] - 0.559) < 0.002 and abs(d["dist_au"] - 1.053) < 0.002
+
+
 class TestMeteorShowers:
     """Maxima of the meteor showers: the IMO Meteor Shower Calendar 2026 (λ☉ J2000, times in UT)."""
 

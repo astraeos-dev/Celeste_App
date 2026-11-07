@@ -64,7 +64,8 @@ import updater  # noqa: E402
 from config import APP_VERSION, FONT_MONO, FONT_SANS, THEME_NAMES, Config, mix  # noqa: E402
 from constellations import STAR_CONSTELLATION  # noqa: E402
 from engine import (  # noqa: E402
-    EPHEMERIS_YEARS, MINOR_PLANET_NUMBERS, MINOR_PLANETS, PLANETS, AstroEngine, constellation_names,
+    COMET_DESIGNATIONS, COMETS, EPHEMERIS_YEARS, MINOR_PLANET_NUMBERS, MINOR_PLANETS, PLANETS, AstroEngine,
+    constellation_names,
 )
 from i18n import (  # noqa: E402
     available_langs, get_lang, lang_name, resolve_lang, switch_lang, t, tf,
@@ -278,8 +279,17 @@ def _clean_place(name):
     return (name or "").replace("\U0001f4cd", "").strip()
 
 
+# Comètes : leur désignation courte (tableaux, « Ce soir ») ; la complète avec *numbered*
+_COMET_SHORT = {"Panstarrs": "C/2026 O1", "Honda": "45P/Honda", "Tsuchinshan": "C/2026 C1",
+                "Borrelly": "19P/Borrelly"}
+
+
 def _planet_name(name, symbol=False, numbered=False):
-    """Nom d'une planète ; *numbered* : avec le numéro d'une planète mineure, « (1) Cérès »."""
+    """Nom d'une planète ; *numbered* : avec le numéro d'une planète mineure, « (1) Cérès » ;
+    une comète : sa désignation, la même dans toutes les langues (complète avec *numbered*)."""
+    if name in COMET_DESIGNATIONS:
+        text = COMET_DESIGNATIONS[name] if numbered else _COMET_SHORT.get(name, COMET_DESIGNATIONS[name])
+        return f"{SYMBOL[name]} {text}" if symbol else text
     text = t(f"planets.{name.lower()}")
     if numbered and name in MINOR_PLANET_NUMBERS:
         text = f"({MINOR_PLANET_NUMBERS[name]}) {text}"
@@ -346,7 +356,7 @@ def _ics_calendar(items, stamp):
 # Groupes d'astres de l'onglet Planètes, dans leur ordre : un nouveau groupe
 # (comètes, ciel profond…) s'ajoute ici avec ses noms, et une clé
 # planets.group_<clé> dans les traductions
-_BODY_GROUPS = (("planets", PLANETS), ("minor", MINOR_PLANETS))
+_BODY_GROUPS = (("planets", PLANETS), ("minor", MINOR_PLANETS), ("comets", COMETS))
 _SORT_ROLE = Qt.ItemDataRole.UserRole          # valeur numérique du tri d'une cellule
 _NAME_ROLE = Qt.ItemDataRole.UserRole + 1      # nom de l'astre d'une ligne
 
@@ -1528,6 +1538,8 @@ class AstroApp(QMainWindow):
         # la dernière colonne s'étire : jamais de défilement horizontal pour quelques pixels
         table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._planet_alt = {}
+        self._planet_empty = _label("", "legende", tone="attenuee", wrap=True)
+        self._planet_empty.hide()
         # clic sur un en-tête : tri croissant puis décroissant ; « Planète » : ordre naturel.
         # La colonne triée a son en-tête en or (la flèche de Qt élargirait toutes les colonnes)
         table.setSortingEnabled(True)
@@ -1536,6 +1548,7 @@ class AstroApp(QMainWindow):
         header.sortIndicatorChanged.connect(self._on_planet_sort)
         self._show_planet_group()
         lay.addWidget(table)
+        lay.addWidget(self._planet_empty)
 
         card = _card()
         card_l = QVBoxLayout(card)
@@ -1709,10 +1722,18 @@ class AstroApp(QMainWindow):
         for r in range(table.rowCount()):
             name = table.item(r, 0).data(_NAME_ROLE)
             hide = bool((group is not None and name not in group) or (
-                visible_only and float(self._planet_alt.get(name, 0.0)) <= 0.0))
+                visible_only and float(self._planet_alt.get(name, 0.0)) <= 0.0)
+                or (name in COMETS and name not in getattr(self, "_comets_now", ())))
             table.setRowHidden(r, hide)
             shown += not hide
         table.resizeColumnsToContents()
+        self._planet_empty.setVisible(shown == 0)
+        if self._planet_group == "comets":
+            first, last = AstroEngine.comet_years()
+            self._planet_empty.setText(tf("planets.no_comet", first=first, last=last,
+                                          comets=", ".join(_COMET_SHORT.get(c, c) for c in COMETS)))
+        else:
+            self._planet_empty.setText(t("planets.none_visible"))
         header = table.horizontalHeader()
         rows = max(1, min(shown, self._PLANET_ROWS_MAX))
         table.setFixedHeight(40 * rows + header.sizeHint().height() + 4)
@@ -2606,25 +2627,28 @@ class AstroApp(QMainWindow):
             self.sun_events  = AstroEngine.find_events(dte, lat, lon, "sun", self._zone, elev)
             self.moon_events = AstroEngine.find_events(dte, lat, lon, "moon", self._zone, elev)
             self.planet_events = {name: AstroEngine.find_events(dte, lat, lon, name, self._zone, elev)
-                                  for name in _PLANETS + MINOR_PLANETS}
+                                  for name in _PLANETS + MINOR_PLANETS + AstroEngine.comets_at(tc)}
             self.hours, self.sun_altitudes, self.moon_altitudes = \
                 charts.sample_day(dte, lat, lon, elevation_m=elev, tz=self._zone)
             self._day_start = AstroEngine._local_day(dte, self._zone)[0]
             self.last_cache_key = key
 
         self.planets, self.minor_planets = [], []
-        magnitudes = AstroEngine.observations(tc, _PLANETS + MINOR_PLANETS)
-        for name in _PLANETS + MINOR_PLANETS:
+        self._comets_now = AstroEngine.comets_at(tc)                  # dans leurs tables (2025–2031)
+        bodies = _PLANETS + MINOR_PLANETS + self._comets_now
+        magnitudes = AstroEngine.observations(tc, bodies)
+        for name in bodies:
             ra, dec, dist = AstroEngine.planet_position(tc, name)
             alt, az = AstroEngine.horizontal(tc, lat, lon, name, elev)
-            minor = name in MINOR_PLANETS
+            minor = name not in _PLANETS
             (self.minor_planets if minor else self.planets).append({
                 "name": name, "ra": ra, "dec": dec, "dist": dist, "alt": alt, "az": az,
                 "elong": AstroEngine.angular_separation(ra, dec, s_ra, s_dec),
                 "east": (ra - s_ra) % 24 < 12, "mag": magnitudes[name]["mag"], "minor": minor,
+                "comet": name in COMETS,
             })
 
-        # sur la carte, les planètes mineures assez brillantes pour la limite choisie
+        # sur la carte, les planètes mineures et les comètes assez brillantes pour la limite choisie
         bright = [m for m in self.minor_planets if m["mag"] <= self._mag_limit()]
         self._sky_scene = charts.sky_scene(jd, lat, lon, self._mag_limit(),
                                            self.sun_data, self.moon_data, self.planets + bright)
@@ -2983,7 +3007,7 @@ class AstroApp(QMainWindow):
             "horizon": t("skymap.horizon"),
             "cardinals": [t(f"skymap.cardinal_{c}")
                           for c in ("n", "ne", "e", "se", "s", "sw", "w", "nw")],
-            "planets": {n: _planet_name(n) for n in _PLANETS + MINOR_PLANETS},
+            "planets": {n: _planet_name(n) for n in _PLANETS + MINOR_PLANETS + COMETS},
         }
         self._sky_ax, tip = charts.draw_sky_map(self.fig_sky, self._sky_scene, labels)
         self._sky_tip.attach(tip)
@@ -3153,7 +3177,8 @@ class AstroApp(QMainWindow):
         elif kind == "planet":
             title = f"{sym[obj['name']]} {_planet_name(obj['name'], numbered=full)}"
             side = t("coords.east") if obj.get("east") else t("coords.west")
-            rows.append((t("detail.type"), t("detail.type_minor_planet" if obj.get("minor")
+            rows.append((t("detail.type"), t("detail.type_comet" if obj.get("comet") else
+                                             "detail.type_minor_planet" if obj.get("minor")
                                              else "detail.type_planet")))
             if obj.get("mag") is not None:
                 rows.append((t("detail.mag"), _num(obj["mag"], 1)))
@@ -3502,7 +3527,7 @@ class AstroApp(QMainWindow):
 
     # ── Évènements de l'année : planètes, planètes mineures, Lune, saisons ─────
 
-    _EVENT_GROUPS = ("planets", "minor", "moon", "seasons", "meteors")
+    _EVENT_GROUPS = ("planets", "minor", "comets", "moon", "seasons", "meteors")
     _WINDS = ("n", "ne", "e", "se", "s", "sw", "w", "nw")
 
     def _body_name(self, name, symbol=False):
@@ -3521,6 +3546,8 @@ class AstroApp(QMainWindow):
             return t(f"events.{ev['kind']}")
         if kind == "meteor_shower":
             return tf("meteors.title", name=t(f"meteors.name_{ev['kind']}"))
+        if kind.startswith("comet_"):
+            return tf(f"events.{kind}", comet=_planet_name(ev["bodies"][0], symbol=symbol, numbered=True))
         if kind in ("perihelion", "aphelion", "perigee", "apogee"):
             return t(f"events.{kind}")
         a = ev["bodies"][0]
@@ -3587,7 +3614,8 @@ class AstroApp(QMainWindow):
             events = (AstroEngine.find_conjunctions(dte, num_days=365)
                       + AstroEngine.find_moon_events(dte, num_days=365)
                       + AstroEngine.find_seasons(dte, num_days=365)
-                      + AstroEngine.find_meteor_showers(dte, num_days=365))
+                      + AstroEngine.find_meteor_showers(dte, num_days=365)
+                      + AstroEngine.find_comet_events(dte, num_days=365))
             events.sort(key=lambda e: e["date"])
             if self._lat is not None:
                 AstroEngine.event_visibility(events, self._lat, self._lon, self._elevation(), self._zone)
@@ -3631,6 +3659,12 @@ class AstroApp(QMainWindow):
             (m1, d1), (m2, d2) = ev["activity"]
             details += [tf("meteors.zhr", value=ev["zhr"]), tf("meteors.speed", value=ev["velocity"]),
                         tf("meteors.activity", start=f"{d1:02d}/{m1:02d}", end=f"{d2:02d}/{m2:02d}")]
+        elif kind.startswith("comet_"):
+            symbole = SYMBOL[a]
+            if kind != "comet_brightest":
+                key = "events.distance_au" if kind == "comet_perihelion" else "events.distance_earth"
+                details.append(tf(key, value=_num(ev["distance_au"], 3)))
+            details.append(tf("events.magnitude", value=_num(ev["mag"], 1)))
         elif kind in ("perihelion", "aphelion"):
             symbole = SYMBOL["Earth"]
             details.append(tf("events.distance_au", value=_num(ev["distance_au"], 5)))

@@ -47,6 +47,12 @@ v4.3:
   • Sedna among MINOR_PLANETS; MINOR_PLANET_NUMBERS, the Minor Planet
     Center's numbers (« (136199) Éris »)
 
+v4.6:
+  • COMETS — comets followed during their apparition (JPL Horizons tables of
+    2025–2031, total magnitudes M1, K1), comets_at(), find_comet_events()
+  • tonight(), upcoming_events() — the night seen from the observer
+  • moon_calendar() — the Moon day by day over a month
+
 v4.5:
   • find_meteor_showers() — maxima of the major meteor showers (IMO calendar),
     meteor_visibility(): the night of the maximum seen from the observer
@@ -112,6 +118,14 @@ MINOR_PLANETS = ("Ceres", "Pallas", "Juno", "Vesta", "Pluto", "Eris", "Haumea", 
 MINOR_PLANET_NUMBERS = {"Ceres": 1, "Pallas": 2, "Juno": 3, "Vesta": 4, "Pluto": 134340,
                         "Eris": 136199, "Haumea": 136108, "Makemake": 136472, "Sedna": 90377}
 _MINOR_TABLE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "minor_planets.npz")
+
+# Comets followed by Céleste, those that become easy to see from 2027 to 2029:
+# JPL Horizons tables over the years of their apparition only, 2025 to 2031
+# (assets/comets.npz, scripts/make_comets.py); outside, they are not shown.
+COMETS = ("Panstarrs", "Honda", "Tsuchinshan", "Borrelly")
+COMET_DESIGNATIONS = {"Panstarrs": "C/2026 O1 (PANSTARRS)", "Honda": "45P/Honda-Mrkos-Pajdušáková",
+                      "Tsuchinshan": "C/2026 C1 (Tsuchinshan)", "Borrelly": "19P/Borrelly"}
+_COMET_TABLE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "comets.npz")
 
 # Eclipse projected on the ground: WGS84 ellipsoid, radii of the Sun and the Moon (km)
 _WGS84_A  = 6378.137
@@ -315,6 +329,18 @@ def _minor_planet(name):
                                 table[f"{name}_velocity"])
         hg = tuple(float(v) for v in table[f"{name}_hg"])
     return _sky()["sun"] + orbit, hg
+
+
+@functools.lru_cache(maxsize=None)
+def _comet(name):
+    """(DE440 Sun + tabulated orbit, (M1, K1), (first, last JD)) of a comet of the Horizons tables."""
+    with np.load(_COMET_TABLE) as table:
+        start = table[f"{name}_start"]
+        positions = table[f"{name}_position"]
+        orbit = _TabulatedOrbit(name, start, positions, table[f"{name}_velocity"])
+        m1k1 = tuple(float(v) for v in table[f"{name}_m1k1"])
+    first = float(start[0])
+    return _sky()["sun"] + orbit, m1k1, (first, first + float(start[1]) * (len(positions) - 1))
 
 
 def _fast_time(jd_ut):
@@ -1014,7 +1040,23 @@ class AstroEngine:
         name = body.capitalize()
         if name in _PLANETS:
             return sky["eph"][_PLANETS[name]]
+        if name in COMETS:
+            return _comet(name)[0]
         return _minor_planet(name)[0]
+
+    @staticmethod
+    def comet_years():
+        """(first, last) years covered by the comet tables, all comets together."""
+        from datetime import datetime as _dt
+        spans = [_comet(name)[2] for name in COMETS]
+        to_year = lambda jd: (_dt(2000, 1, 1, 12) + timedelta(days=jd - 2451545.0)).year
+        return to_year(min(a for a, _b in spans)), to_year(max(b for _a, b in spans))
+
+    @staticmethod
+    def comets_at(t):
+        """The comets whose table covers the instant t (Julian centuries of UT since J2000.0)."""
+        jd = 2451545.0 + 36525.0 * t
+        return tuple(name for name in COMETS if _comet(name)[2][0] + 1.0 <= jd <= _comet(name)[2][1] - 1.0)
 
     @classmethod
     def observations(cls, t, bodies=None):
@@ -1054,7 +1096,11 @@ class AstroEngine:
                 mag, elongation = _SUN_MAGNITUDE_1AU + 5.0 * math.log10(delta), None
             else:
                 elongation = float(apparent.separation_from(sun).degrees)
-                if body in MINOR_PLANETS and body != "Pluto":
+                if body in COMETS:
+                    r = (target.at(time) - sun_at).distance().au
+                    m1, k1 = _comet(body)[1]
+                    mag = m1 + 5.0 * math.log10(delta) + k1 * math.log10(r)
+                elif body in MINOR_PLANETS and body != "Pluto":
                     r = (target.at(time) - sun_at).distance().au
                     sun_dist = (sun_at - earth).distance().au
                     phase = math.degrees(math.acos(max(-1.0, min(1.0, (r*r + delta*delta - sun_dist*sun_dist)
@@ -1115,7 +1161,7 @@ class AstroEngine:
             cos_phase = float(np.dot(helio, geo) / (r * float(delta.au)))
             phase = math.degrees(math.acos(max(-1.0, min(1.0, cos_phase))))
             out.update(helio_au=r if body != "moon" else None, phase_angle=phase,
-                       illuminated=50.0 * (1.0 + math.cos(math.radians(phase))))
+                       illuminated=None if body in COMETS else 50.0 * (1.0 + math.cos(math.radians(phase))))
         return out
 
     # ──────────────────────────────────────────────────────────────────
@@ -1622,6 +1668,52 @@ class AstroEngine:
             out.append(r)
         return out
 
+    _COMET_EVENT_MAG = 12.0          # comet events brighter than this (a small telescope)
+
+    @classmethod
+    def find_comet_events(cls, dte_start, num_days=365):
+        """
+        For each comet of COMETS within its table: its perihelion (closest to
+        the Sun), its closest approach to the Earth and its greatest brightness
+        (total magnitude M1, K1), to about the minute (daily samples, then a
+        parabola through three); only those brighter than magnitude 12.
+
+        Returns:
+            list[dict]: date, type ('comet_perihelion' | 'comet_closest' |
+            'comet_brightest'), bodies (name,), distance_au (to the Sun, to the
+            Earth), mag (at that time), group 'comets', separation, side,
+            transit, kind (None).
+        """
+        sky = _sky()
+        jd0 = cls.julian_day(dte_start)
+        out = []
+        for name in COMETS:
+            target, (m1, k1), (first, last) = _comet(name)
+            lo, hi = max(jd0, first + 2.0), min(jd0 + num_days, last - 2.0)
+            if hi - lo < 3.0:
+                continue
+            days = lo - 1.0 + np.arange(int(hi - lo) + 3, dtype=float)
+            time = sky["ts"].ut1_jd(days)
+            r = (target.at(time) - sky["sun"].at(time)).distance().au
+            delta = sky["earth"].at(time).observe(target).distance().au
+            mag = m1 + 5.0 * np.log10(delta) + k1 * np.log10(r)
+            for kind, values in (("comet_perihelion", r), ("comet_closest", delta), ("comet_brightest", mag)):
+                i = int(np.argmin(values))
+                if i in (0, len(values) - 1):
+                    continue                                    # at the edge: not a true minimum
+                jd, value = cls._refine_extremum(days, values, i, 1)
+                if not lo <= jd < hi:
+                    continue
+                k = int(round(jd - days[0]))
+                if (value if kind == "comet_brightest" else mag[k]) > cls._COMET_EVENT_MAG:
+                    continue                                    # too faint to be worth an event
+                out.append(dict(date=cls._jd_to_datetime(jd, dte_start), type=kind, bodies=(name,),
+                                distance_au=float(value) if kind != "comet_brightest" else None,
+                                mag=float(value if kind == "comet_brightest" else mag[k]),
+                                group="comets", separation=None, side=None, transit=False, kind=None))
+        out.sort(key=lambda e: e["date"])
+        return out
+
     # Meteor showers: the major ones of the Working List of Visual Meteor Showers
     # (International Meteor Organization, Meteor Shower Calendar 2026, Table 5).
     # code: (IAU number, first and last day of activity (month, day), solar
@@ -1789,7 +1881,7 @@ class AstroEngine:
                 alt_az[k] = (alt.degrees[145 * n: 145 * (n + 1)], az.degrees[145 * n: 145 * (n + 1)])
         for k, e in enumerate(todo):
             alt, az = alt_az[k]
-            dark_limit = cls._DARKER_SUN if e.get("group") == "minor" else cls._DARK_SUN
+            dark_limit = cls._DARKER_SUN if e.get("group") in ("minor", "comets") else cls._DARK_SUN
             dark = sun_alt[k] < dark_limit
             up = alt >= cls._VISIBLE_ALTITUDE
             seen = dark & up
@@ -1855,8 +1947,10 @@ class AstroEngine:
         return out
 
     # « Ce soir » : planets seen when 5° high, the Sun 6° below the horizon
-    # (12° for Uranus and Neptune, too faint in the twilight)
+    # (12° for Uranus and Neptune, too faint in the twilight), and the comets
+    # brighter than magnitude 10 (binoculars)
     _FAINT_PLANETS = ("Uranus", "Neptune")
+    _BRIGHT_COMET = 10.0
 
     @classmethod
     def tonight(cls, dte, lat, lon, elevation_m=0.0, tz=0):
@@ -1871,9 +1965,10 @@ class AstroEngine:
             dawn (UT datetimes when the Sun goes below and back above it);
             moon (fraction at the middle of the night, rise, set during the
             night — Sun 6° below — or None, up: share of that night with the
-            Moon up); planets: the visible ones (dicts name, period 'evening'
-            | 'morning' | 'night', best, alt, az, mag, rise and set during the
-            night or None), by best time.
+            Moon up); planets: the visible ones, with the comets brighter
+            than magnitude 10 (dicts name, period 'evening' | 'morning' |
+            'night', best, alt, az, mag, rise and set during the night or
+            None), by best time.
         """
         sky = _sky()
         here = sky["earth"] + wgs84.latlon(lat, lon, elevation_m=elevation_m)
@@ -1919,10 +2014,15 @@ class AstroEngine:
                 "up": float((moon_alt[night] > 0).mean()) if night.any() else 0.0}
 
         planets = []
-        for name in PLANETS:
+        tc_middle = (middle - 2451545.0) / 36525.0
+        comets = cls.comets_at(tc_middle)
+        seen = cls.observations(tc_middle, comets) if comets else {}      # () would mean all the bodies
+        bright = [c for c in comets if seen[c]["mag"] <= cls._BRIGHT_COMET]
+        for name in PLANETS + tuple(bright):
             alt, az, _ = observer.observe(cls._target(name)).apparent().altaz()
             alt, az = alt.degrees, az.degrees
-            dark_here = sun < (cls._DARKER_SUN if name in cls._FAINT_PLANETS else cls._DARK_SUN)
+            faint = name in cls._FAINT_PLANETS or name in COMETS
+            dark_here = sun < (cls._DARKER_SUN if faint else cls._DARK_SUN)
             seen = dark_here & (alt >= cls._VISIBLE_ALTITUDE)
             if not seen.any():
                 continue
@@ -1945,12 +2045,13 @@ class AstroEngine:
     def upcoming_events(cls, dte, lat, lon, elevation_m=0.0, tz=0, num_days=30, count=3):
         """
         The next *count* events of the coming *num_days* seen from the
-        observer: conjunctions, oppositions, elongations, the Moon's events
-        and meteor showers whose night is visible (event_visibility).
+        observer: conjunctions, oppositions, elongations, the Moon's events,
+        meteor showers and comets whose night is visible (event_visibility).
         """
         events = (cls.find_conjunctions(dte, num_days=num_days, minor_planets=False)
                   + cls.find_moon_events(dte, num_days=num_days)
-                  + cls.find_meteor_showers(dte, num_days=num_days))
+                  + cls.find_meteor_showers(dte, num_days=num_days)
+                  + cls.find_comet_events(dte, num_days=num_days))
         events = [e for e in events if e["type"] not in ("perigee", "apogee")]
         cls.event_visibility(events, lat, lon, elevation_m, tz)
         seen = [e for e in events if e["visibility"] and e["visibility"]["period"] is not None]

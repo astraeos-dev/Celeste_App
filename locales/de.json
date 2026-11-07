@@ -231,6 +231,8 @@
     "group_planets_tip": "Merkur bis Neptun",
     "group_minor": "Kleinplaneten",
     "group_minor_tip": "Ceres, Pallas, Juno, Vesta, die Zwergplaneten Pluto, Eris, Haumea und Makemake sowie Sedna (JPL-Positionen)",
+    "group_comets": "Kometen",
+    "group_comets_tip": "Die Kometen, die Céleste während ihres Vorbeiflugs verfolgt (2025–2031)",
     "group_legend": "Angezeigte Himmelskörper",
     "group_all": "Alle",
     "group_all_tip": "Planeten und Kleinplaneten",
@@ -249,7 +251,9 @@
     "orrery_speed_year": "1 Jahr pro Schritt",
     "orrery_speed_tip": "Dauer eines Animationsschritts",
     "orrery_reset": "Zurück zum Datum",
-    "orrery_reset_tip": "Zurück zum Datum der Seitenleiste"
+    "orrery_reset_tip": "Zurück zum Datum der Seitenleiste",
+    "no_comet": "Kein verfolgter Komet an diesem Datum: Céleste verfolgt {comets} von {first} bis {last}.",
+    "none_visible": "Kein Himmelskörper dieser Gruppe über dem Horizont"
   },
   "chart": {
     "trajectory_title": "Höhe von Sonne und Mond — {date}",
@@ -309,7 +313,8 @@
     "rise": "Aufgang",
     "transit": "Kulmination",
     "set": "Untergang",
-    "click_tip": "Klicken Sie auf einen Himmelskörper, um sein Datenfenster zu öffnen"
+    "click_tip": "Klicken Sie auf einen Himmelskörper, um sein Datenfenster zu öffnen",
+    "type_comet": "Komet"
   },
   "events": {
     "search_eclipses": "Finsternisse suchen (12 Monate)",
@@ -365,6 +370,7 @@
     "export_error": "Export nicht möglich: {detail}",
     "filter_planets": "Planeten",
     "filter_minor": "Kleinplaneten",
+    "filter_comets": "Kometen",
     "filter_moon": "Mond",
     "filter_seasons": "Jahreszeiten",
     "filter_meteors": "Meteorströme",
@@ -415,7 +421,11 @@
     "local_sun_down": "Hier: Sonne während der ganzen Finsternis untergegangen",
     "sun_down": "Sonne untergegangen",
     "local_moon_down": "Hier: Mond während der ganzen Finsternis untergegangen",
-    "local_moon_partly": "Mond nur während eines Teils der Finsternis über dem Horizont"
+    "local_moon_partly": "Mond nur während eines Teils der Finsternis über dem Horizont",
+    "comet_perihelion": "{comet} im Perihel",
+    "comet_closest": "{comet} am nächsten an der Erde",
+    "comet_brightest": "{comet} am hellsten",
+    "distance_earth": "Entfernung zur Erde {value} AE"
   },
   "tonight": {
     "title": "Heute Nacht",

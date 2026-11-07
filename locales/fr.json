@@ -231,6 +231,8 @@
     "group_planets_tip": "Mercure à Neptune",
     "group_minor": "Planètes mineures",
     "group_minor_tip": "Cérès, Pallas, Junon, Vesta, les planètes naines Pluton, Éris, Hauméa et Makémaké, et Sedna (positions JPL)",
+    "group_comets": "Comètes",
+    "group_comets_tip": "Les comètes que Céleste suit pendant leur passage (2025–2031)",
     "group_legend": "Astres affichés",
     "group_all": "Tous",
     "group_all_tip": "Planètes et planètes mineures",
@@ -249,7 +251,9 @@
     "orrery_speed_year": "1 an par pas",
     "orrery_speed_tip": "Durée d'un pas de l'animation",
     "orrery_reset": "Revenir à la date",
-    "orrery_reset_tip": "Revenir à la date de la barre latérale"
+    "orrery_reset_tip": "Revenir à la date de la barre latérale",
+    "no_comet": "Aucune comète suivie à cette date : Céleste suit {comets} de {first} à {last}.",
+    "none_visible": "Aucun astre de ce groupe au-dessus de l'horizon"
   },
   "chart": {
     "trajectory_title": "Hauteur du Soleil et de la Lune — {date}",
@@ -309,7 +313,8 @@
     "rise": "Lever",
     "transit": "Culmination",
     "set": "Coucher",
-    "click_tip": "Cliquez sur un astre pour ouvrir sa fenêtre de données"
+    "click_tip": "Cliquez sur un astre pour ouvrir sa fenêtre de données",
+    "type_comet": "Comète"
   },
   "events": {
     "search_eclipses": "Rechercher les éclipses (12 mois)",
@@ -365,6 +370,7 @@
     "export_error": "Export impossible : {detail}",
     "filter_planets": "Planètes",
     "filter_minor": "Planètes mineures",
+    "filter_comets": "Comètes",
     "filter_moon": "Lune",
     "filter_seasons": "Saisons",
     "filter_meteors": "Étoiles filantes",
@@ -415,7 +421,11 @@
     "local_sun_down": "Ici : Soleil couché pendant toute l'éclipse",
     "sun_down": "Soleil couché",
     "local_moon_down": "Ici : Lune couchée pendant toute l'éclipse",
-    "local_moon_partly": "Lune levée pendant une partie de l'éclipse seulement"
+    "local_moon_partly": "Lune levée pendant une partie de l'éclipse seulement",
+    "comet_perihelion": "{comet} au périhélie",
+    "comet_closest": "{comet} au plus près de la Terre",
+    "comet_brightest": "{comet} à son plus brillant",
+    "distance_earth": "Distance à la Terre {value} UA"
   },
   "tonight": {
     "title": "Ce soir",

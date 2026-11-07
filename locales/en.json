@@ -231,6 +231,8 @@
     "group_planets_tip": "Mercury to Neptune",
     "group_minor": "Minor planets",
     "group_minor_tip": "Ceres, Pallas, Juno, Vesta, the dwarf planets Pluto, Eris, Haumea and Makemake, and Sedna (JPL positions)",
+    "group_comets": "Comets",
+    "group_comets_tip": "The comets Céleste follows during their passage (2025–2031)",
     "group_legend": "Bodies shown",
     "group_all": "All",
     "group_all_tip": "Planets and minor planets",
@@ -249,7 +251,9 @@
     "orrery_speed_year": "1 year per step",
     "orrery_speed_tip": "Length of a step of the animation",
     "orrery_reset": "Back to the date",
-    "orrery_reset_tip": "Back to the date of the side panel"
+    "orrery_reset_tip": "Back to the date of the side panel",
+    "no_comet": "No comet followed on this date: Céleste follows {comets} from {first} to {last}.",
+    "none_visible": "No body of this group above the horizon"
   },
   "chart": {
     "trajectory_title": "Altitude of the Sun and the Moon — {date}",
@@ -309,7 +313,8 @@
     "rise": "Rise",
     "transit": "Transit",
     "set": "Set",
-    "click_tip": "Click a body to open its data window"
+    "click_tip": "Click a body to open its data window",
+    "type_comet": "Comet"
   },
   "events": {
     "search_eclipses": "Search eclipses (12 months)",
@@ -365,6 +370,7 @@
     "export_error": "Export failed: {detail}",
     "filter_planets": "Planets",
     "filter_minor": "Minor planets",
+    "filter_comets": "Comets",
     "filter_moon": "Moon",
     "filter_seasons": "Seasons",
     "filter_meteors": "Meteor showers",
@@ -415,7 +421,11 @@
     "local_sun_down": "Here: the Sun is down during the whole eclipse",
     "sun_down": "Sun down",
     "local_moon_down": "Here: the Moon is down during the whole eclipse",
-    "local_moon_partly": "Moon up during part of the eclipse only"
+    "local_moon_partly": "Moon up during part of the eclipse only",
+    "comet_perihelion": "{comet} at perihelion",
+    "comet_closest": "{comet} closest to the Earth",
+    "comet_brightest": "{comet} at its brightest",
+    "distance_earth": "Distance to the Earth {value} AU"
   },
   "tonight": {
     "title": "Tonight",

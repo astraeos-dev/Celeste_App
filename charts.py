@@ -38,7 +38,7 @@ from matplotlib.ticker import FuncFormatter, MultipleLocator
 from config import Config, FONT_SANS, mix
 from constellations import CONSTELLATIONS
 from star_catalog import CATALOG
-from engine import EPHEMERIS_YEARS, AstroEngine, _HORIZON_CORRECTION_SUN
+from engine import COMETS, EPHEMERIS_YEARS, AstroEngine, _HORIZON_CORRECTION_SUN
 
 # Astronomical symbols (Astraeos Symboles). Matplotlib never draws emoji, so
 # they go without the U+FE0E selector here.
@@ -46,6 +46,7 @@ SYMBOL = {"Sun": "☉", "Moon": "☽", "Earth": "⊕", "Mercury": "☿", "Venus"
           "Mars": "♂", "Jupiter": "♃", "Saturn": "♄", "Uranus": "♅", "Neptune": "♆",
           "Pluto": "♇", "vernal": "♈", "Ceres": "⚳", "Pallas": "⚴", "Juno": "⚵", "Vesta": "⚶",
           "Eris": "\U00002BF1", "Haumea": "\U0001F77B", "Makemake": "\U0001F77C", "Sedna": "\U00002BF2"}
+SYMBOL.update({name: "\u2604" for name in COMETS})          # ☄ : the comets
 
 # Text sizes of the design system (px) converted to points at the figures'
 # 100 dpi: legende 13 px, corps 15 px, sous-titre 17 px.

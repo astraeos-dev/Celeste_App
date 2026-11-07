@@ -231,6 +231,8 @@
     "group_planets_tip": "De Mercurio a Neptuno",
     "group_minor": "Planetas menores",
     "group_minor_tip": "Ceres, Palas, Juno, Vesta, los planetas enanos Plutón, Eris, Haumea y Makemake, y Sedna (posiciones JPL)",
+    "group_comets": "Cometas",
+    "group_comets_tip": "Los cometas que Céleste sigue durante su paso (2025–2031)",
     "group_legend": "Astros mostrados",
     "group_all": "Todos",
     "group_all_tip": "Planetas y planetas menores",
@@ -249,7 +251,9 @@
     "orrery_speed_year": "1 año por paso",
     "orrery_speed_tip": "Duración de un paso de la animación",
     "orrery_reset": "Volver a la fecha",
-    "orrery_reset_tip": "Volver a la fecha de la barra lateral"
+    "orrery_reset_tip": "Volver a la fecha de la barra lateral",
+    "no_comet": "Ningún cometa seguido en esta fecha: Céleste sigue {comets} de {first} a {last}.",
+    "none_visible": "Ningún astro de este grupo sobre el horizonte"
   },
   "chart": {
     "trajectory_title": "Altura del Sol y de la Luna — {date}",
@@ -309,7 +313,8 @@
     "rise": "Salida",
     "transit": "Culminación",
     "set": "Puesta",
-    "click_tip": "Haga clic en un astro para abrir su ventana de datos"
+    "click_tip": "Haga clic en un astro para abrir su ventana de datos",
+    "type_comet": "Cometa"
   },
   "events": {
     "search_eclipses": "Buscar eclipses (12 meses)",
@@ -365,6 +370,7 @@
     "export_error": "Exportación imposible: {detail}",
     "filter_planets": "Planetas",
     "filter_minor": "Planetas menores",
+    "filter_comets": "Cometas",
     "filter_moon": "Luna",
     "filter_seasons": "Estaciones",
     "filter_meteors": "Lluvias de meteoros",
@@ -415,7 +421,11 @@
     "local_sun_down": "Aquí: el Sol está bajo el horizonte durante todo el eclipse",
     "sun_down": "Sol bajo el horizonte",
     "local_moon_down": "Aquí: la Luna está bajo el horizonte durante todo el eclipse",
-    "local_moon_partly": "Luna sobre el horizonte solo durante parte del eclipse"
+    "local_moon_partly": "Luna sobre el horizonte solo durante parte del eclipse",
+    "comet_perihelion": "{comet} en el perihelio",
+    "comet_closest": "{comet} lo más cerca de la Tierra",
+    "comet_brightest": "{comet} en su máximo brillo",
+    "distance_earth": "Distancia a la Tierra {value} UA"
   },
   "tonight": {
     "title": "Esta noche",

@@ -30,3 +30,9 @@ réduits à leur contour extérieur et à deux décimales ; fond de la carte des
 licence [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)), réduites par `scripts/make_cities.py` : nom,
 autres noms en écriture latine (villes de plus de 100 000 habitants), pays, région, coordonnées, altitude,
 population. Elles servent à la recherche de lieu par son nom (`places.py`) et à nommer un point sans réseau.
+
+## Comètes
+
+`comets.npz` : positions et vitesses héliocentriques (ICRF, UA, TDB) des comètes suivies, tous les 2 jours de 2025 à
+2031, et leurs paramètres de magnitude M1, K1 ; tirées de **JPL Horizons** et de la Small-Body Database par
+`scripts/make_comets.py`. Voir la fiche du wiki « Ajouter une comète ».

@@ -124,6 +124,16 @@ class TestCalculation:
         shown = [r for r in range(window.planet_table.rowCount()) if not window.planet_table.isRowHidden(r)]
         assert len(shown) == 7                                             # Mercure à Neptune
 
+    def test_tonight(self, window):
+        """« Ce soir » (heures en TU dans ces tests) : la nuit, la Lune, les planètes, la suite."""
+        lines = [text for text, _tone in window._tonight_lines()]
+        assert lines[0] == "Nuit noire de 18:33 à 05:08"
+        assert lines[1].endswith("Lune éclairée à 49 %, se lève à 22:42")
+        assert any("Jupiter · visible le matin" in x and "magnitude −2,0" in x for x in lines)
+        assert lines[-1].startswith("À venir : 03/11 Lune et Mars, le matin")
+        shown = [w.text() for w in window.findChildren(QLabel) if w.isVisible()]
+        assert "Nuit noire de 18:33 à 05:08" in shown
+
     def test_minor_planets_of_the_planet_table(self, window):
         """Le choix « Planètes mineures » montre Cérès … Makemake, magnitude comprise."""
         window._planet_selector.buttons["minor"].click()
@@ -544,7 +554,8 @@ class TestLiveAndExport:
 # ──────────────────────────────────────────────────────────────────────
 
 # Symboles astronomiques admis (police Astraeos Symboles), point des pastilles
-_ALLOWED = set("☉☽☾♀♂♃♄⊕♈★●○☌☍☄")
+# symboles astronomiques de la police Astraeos Symboles (présentation texte, U+FE0E)
+_ALLOWED = set("☉☽☾☿♀♂♃♄♅♆♇⊕♈★●○☌☍☄⚳⚴⚵⚶\u2bf1\u2bf2\U0001f77b\U0001f77c")
 
 
 def _is_emoji(ch):

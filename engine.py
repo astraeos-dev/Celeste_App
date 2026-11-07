@@ -1809,6 +1809,108 @@ class AstroEngine:
                 e["occultation"] = cls.moon_occultation(e, lat, lon, elevation_m)
         return events
 
+    # « Ce soir » : planets seen when 5° high, the Sun 6° below the horizon
+    # (12° for Uranus and Neptune, too faint in the twilight)
+    _FAINT_PLANETS = ("Uranus", "Neptune")
+
+    @classmethod
+    def tonight(cls, dte, lat, lon, elevation_m=0.0, tz=0):
+        """
+        The night of dte seen from the observer: from the local noon before
+        it to the next noon (dte in the morning: the night under way), every
+        5 minutes, times to about the minute.
+
+        Returns:
+            dict: start, end (UT datetimes of the two noons); dark ('astro',
+            'naut', 'civil' or None: the darkest twilight reached), dusk,
+            dawn (UT datetimes when the Sun goes below and back above it);
+            moon (fraction at the middle of the night, rise, set during the
+            night — Sun 6° below — or None, up: share of that night with the
+            Moon up); planets: the visible ones (dicts name, period 'evening'
+            | 'morning' | 'night', best, alt, az, mag, rise and set during the
+            night or None), by best time.
+        """
+        sky = _sky()
+        here = sky["earth"] + wgs84.latlon(lat, lon, elevation_m=elevation_m)
+        local = dte.replace(tzinfo=None) - timedelta(hours=12)
+        start = cls._local_day(local, tz)[0] + timedelta(hours=12)
+        if start.tzinfo is not None:
+            start = start.replace(tzinfo=None)
+        jd0 = cls.julian_day(start)
+        jds = jd0 + np.arange(289) / 288.0
+        observer = here.at(_fast_time(jds))
+
+        def when(jd):
+            return None if jd is None else cls._jd_to_datetime(jd, start)
+
+        def crossing(alt, level, rising, lo=0, hi=len(jds) - 1):
+            """First crossing of *level* between the samples lo and hi."""
+            above = alt >= level
+            idx = np.flatnonzero(above[1:] & ~above[:-1] if rising else ~above[1:] & above[:-1])
+            idx = idx[(idx >= lo) & (idx < hi)]
+            if not len(idx):
+                return None
+            i = int(idx[0])
+            f = (level - alt[i]) / (alt[i + 1] - alt[i])
+            return float(jds[i] + f * (jds[i + 1] - jds[i]))
+
+        sun = observer.observe(sky["sun"]).apparent().altaz()[0].degrees
+        dark, dusk, dawn = None, None, None
+        for kind, depth in (("astro", -18.0), ("naut", -12.0), ("civil", -6.0)):
+            if (sun < depth).any():
+                dark, dusk, dawn = kind, crossing(sun, depth, False), crossing(sun, depth, True)
+                break
+        middle = jds[int(np.argmin(sun))]
+
+        # rises and sets that matter: during the night (Sun 6° below), or the whole
+        # window when it never gets that dark
+        night = sun < -6.0
+        night_idx = np.flatnonzero(night)
+        lo, hi = (int(night_idx[0]), int(night_idx[-1])) if len(night_idx) else (0, len(jds) - 1)
+        moon_alt = observer.observe(sky["moon"]).apparent().altaz()[0].degrees
+        moon = {"fraction": float(almanac.fraction_illuminated(sky["eph"], "moon", _fast_time(middle))),
+                "rise": when(crossing(moon_alt, -0.83, True, lo, hi)),
+                "set": when(crossing(moon_alt, -0.83, False, lo, hi)),
+                "up": float((moon_alt[night] > 0).mean()) if night.any() else 0.0}
+
+        planets = []
+        for name in PLANETS:
+            alt, az, _ = observer.observe(cls._target(name)).apparent().altaz()
+            alt, az = alt.degrees, az.degrees
+            dark_here = sun < (cls._DARKER_SUN if name in cls._FAINT_PLANETS else cls._DARK_SUN)
+            seen = dark_here & (alt >= cls._VISIBLE_ALTITUDE)
+            if not seen.any():
+                continue
+            i = int(np.flatnonzero(seen)[np.argmax(alt[seen])])
+            share = seen.sum() / dark_here.sum()
+            dark_idx = np.flatnonzero(dark_here)
+            period = "night" if share >= 0.85 else (
+                "evening" if i <= 0.5 * (dark_idx[0] + dark_idx[-1]) else "morning")
+            tc = (jds[i] - 2451545.0) / 36525.0
+            planets.append({"name": name, "period": period, "best": when(jds[i]),
+                            "alt": float(alt[i]), "az": float(az[i]),
+                            "mag": cls.observations(tc, [name])[name]["mag"],
+                            "rise": when(crossing(alt, -0.57, True, lo, hi)),
+                            "set": when(crossing(alt, -0.57, False, lo, hi))})
+        planets.sort(key=lambda p: p["best"])
+        return {"start": start, "end": when(jds[-1]), "dark": dark, "dusk": when(dusk), "dawn": when(dawn),
+                "moon": moon, "planets": planets}
+
+    @classmethod
+    def upcoming_events(cls, dte, lat, lon, elevation_m=0.0, tz=0, num_days=30, count=3):
+        """
+        The next *count* events of the coming *num_days* seen from the
+        observer: conjunctions, oppositions, elongations, the Moon's events
+        and meteor showers whose night is visible (event_visibility).
+        """
+        events = (cls.find_conjunctions(dte, num_days=num_days, minor_planets=False)
+                  + cls.find_moon_events(dte, num_days=num_days)
+                  + cls.find_meteor_showers(dte, num_days=num_days))
+        events = [e for e in events if e["type"] not in ("perigee", "apogee")]
+        cls.event_visibility(events, lat, lon, elevation_m, tz)
+        seen = [e for e in events if e["visibility"] and e["visibility"]["period"] is not None]
+        return sorted(seen, key=lambda e: e["date"])[:count]
+
     @classmethod
     def moon_occultation(cls, event, lat, lon, elevation_m=0.0):
         """

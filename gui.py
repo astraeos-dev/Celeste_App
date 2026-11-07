@@ -286,6 +286,20 @@ def _planet_name(name, symbol=False, numbered=False):
     return f"{SYMBOL[name]} {text}" if symbol else text
 
 
+_TONIGHT_CACHE = {}
+
+
+def _tonight_and_upcoming(key, dte, lat, lon, elev, zone):
+    """« Ce soir » et les trois prochains évènements visibles (0,3 s), gardés pour la nuit et
+    le lieu *key* : un changement de thème ou de langue ne les recalcule pas."""
+    if key not in _TONIGHT_CACHE:
+        if len(_TONIGHT_CACHE) >= 8:
+            _TONIGHT_CACHE.pop(next(iter(_TONIGHT_CACHE)))
+        _TONIGHT_CACHE[key] = (AstroEngine.tonight(dte, lat, lon, elev, zone),
+                               AstroEngine.upcoming_events(dte, lat, lon, elev, zone))
+    return _TONIGHT_CACHE[key]
+
+
 def _plural_key(base, n):
     """Clé « _one » ou « _many » ; en français, 0 est singulier."""
     one = n == 1 or (n == 0 and get_lang() == "fr")
@@ -1242,6 +1256,24 @@ class AstroApp(QMainWindow):
                      self.card_moon_illum):
             cards.addWidget(card, stretch=1)
         lay.addLayout(cards)
+
+        # Ce soir : la nuit, la Lune, les planètes visibles et les prochains évènements
+        card = _card()
+        card.setObjectName("card")
+        outer = QVBoxLayout(card)
+        outer.setContentsMargins(16, 16, 16, 16)
+        outer.setSpacing(6)
+        head = QHBoxLayout()
+        head.setSpacing(8)
+        head.addWidget(_label(SYMBOL["star"], "symbole", tone="or"))
+        head.addWidget(_label(t("tonight.title"), "sous-titre"))
+        head.addStretch()
+        outer.addLayout(head)
+        self._tonight_box = QVBoxLayout()
+        self._tonight_box.setSpacing(6)
+        outer.addLayout(self._tonight_box)
+        self._tonight_key = None
+        lay.addWidget(card)
 
         row = QHBoxLayout()
         row.setSpacing(16)
@@ -2565,6 +2597,7 @@ class AstroApp(QMainWindow):
         self.visible_planets_map = [p["name"] for p in self.planets if p["alt"] > 0]
 
         self._update_data_cards()
+        self._update_tonight(dte, lat, lon, elev)
         self._update_sun_card()
         self._update_moon_card()
         self._update_planet_table()
@@ -2622,6 +2655,68 @@ class AstroApp(QMainWindow):
         phase = self._sun_phase()
         _set_pastille(self._lbl_sun_state, t(f"sun.state_{phase}"),
                       "info" if phase == "day" else "neutre")
+
+    def _update_tonight(self, dte, lat, lon, elev):
+        """Résumé « Ce soir », recalculé quand la nuit, le lieu ou le fuseau changent."""
+        start = AstroEngine._local_day(dte - timedelta(hours=12), self._zone)[0]
+        key = (f"{start:%Y-%m-%d %H}", round(lat, 4), round(lon, 4),
+               getattr(self._zone, "key", "UTC"), elev)
+        if key == self._tonight_key:
+            return
+        self._tonight_key = key
+        self._tonight, self._upcoming = _tonight_and_upcoming(key, dte, lat, lon, elev, self._zone)
+        while self._tonight_box.count():
+            item = self._tonight_box.takeAt(0)
+            if item.widget():
+                item.widget().hide()                  # deleteLater() n'agit qu'au tour suivant
+                item.widget().deleteLater()
+        for text, tone in self._tonight_lines():
+            self._tonight_box.addWidget(_label(text, "corps" if tone is None else "legende",
+                                               tone=tone or None, wrap=True))
+
+    def _tonight_lines(self):
+        """[(texte, ton)] du résumé : la nuit, la Lune, une ligne par planète visible, la suite."""
+        n, clock = self._tonight, self._clock
+        lines = []
+        if n["dark"] is None:
+            lines.append((t("tonight.no_night"), None))
+        else:
+            lines.append((tf(f"tonight.dark_{n['dark']}", start=clock(n["dusk"]), end=clock(n["dawn"])), None))
+        moon = n["moon"]
+        rise, sets = moon["rise"], moon["set"]
+        if rise and sets:
+            when = (tf("tonight.moon_rises_sets", rise=clock(rise), set=clock(sets)) if rise < sets
+                    else tf("tonight.moon_sets_rises", rise=clock(rise), set=clock(sets)))
+        elif rise:
+            when = tf("tonight.moon_rises", time=clock(rise))
+        elif sets:
+            when = tf("tonight.moon_sets", time=clock(sets))
+        else:
+            when = t("tonight.moon_up" if moon["up"] > 0.5 else "tonight.moon_down")
+        lines.append((f"{SYMBOL['Moon']} " + tf("tonight.moon", pct=_num(100.0 * moon["fraction"]), when=when),
+                      None))
+        if not n["planets"]:
+            lines.append((t("tonight.no_planet"), "attenuee"))
+        for planet in n["planets"]:
+            seen = self._visibility_text(planet)
+            text = f"{_planet_name(planet['name'], symbol=True)} · {seen[:1].lower()}{seen[1:]}"
+            mag = tf("events.magnitude", value=_num(planet["mag"], 1))
+            text += f" · {mag[:1].lower()}{mag[1:]}"
+            if planet["rise"]:
+                text += " · " + tf("tonight.rises", time=clock(planet["rise"]))
+            if planet["set"]:
+                text += " · " + tf("tonight.sets", time=clock(planet["set"]))
+            lines.append((text, None))
+        if self._upcoming:
+            items = []
+            for ev in self._upcoming:
+                best = self._local(ev["visibility"]["best"])
+                items.append(tf("tonight.event", date=f"{best:%d/%m}", title=self._event_title(ev, symbol=False),
+                                when=t(f"tonight.period_{ev['visibility']['period']}")))
+            lines.append((tf("tonight.upcoming", events=" · ".join(items)), "attenuee"))
+        else:
+            lines.append((t("tonight.no_upcoming"), "attenuee"))
+        return lines
 
     def _update_moon_card(self):
         md, lb, ev = self.moon_data, self.moon_labels, self.moon_events

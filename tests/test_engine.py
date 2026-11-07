@@ -720,6 +720,63 @@ class TestLocalVisibility:
         assert abs(star.separation_from(moon).degrees - limb) * 3600 < 2.0
 
 
+class TestTonight:
+    """The night of 1 November 2026 at Cherbourg (UT; the zone only cuts the local day)."""
+    LAT, LON = 49.6333, -1.6167
+
+    @pytest.fixture(scope="class")
+    @classmethod
+    def night(cls):
+        from zoneinfo import ZoneInfo
+        return AstroEngine.tonight(datetime(2026, 11, 1, 21, 30), cls.LAT, cls.LON, 0.0,
+                                   ZoneInfo("Europe/Paris"))
+
+    def test_dark_night_matches_the_twilights(self, night):
+        from zoneinfo import ZoneInfo
+        zone = ZoneInfo("Europe/Paris")
+        today = AstroEngine.find_events(datetime(2026, 11, 1, 12), self.LAT, self.LON, "sun", zone)
+        tomorrow = AstroEngine.find_events(datetime(2026, 11, 2, 12), self.LAT, self.LON, "sun", zone)
+        assert night["dark"] == "astro"
+        assert abs(night["dusk"] - today["dusk_astro"].replace(tzinfo=None)) < timedelta(minutes=1)
+        assert abs(night["dawn"] - tomorrow["dawn_astro"].replace(tzinfo=None)) < timedelta(minutes=1)
+
+    def test_moon(self, night):
+        """Last quarter: rises at 23:42 local time, does not set before dawn."""
+        moon = night["moon"]
+        assert abs(moon["fraction"] - 0.49) < 0.02 and moon["set"] is None
+        assert abs(moon["rise"] - datetime(2026, 11, 1, 22, 42)) < timedelta(minutes=2)
+        assert 0.4 < moon["up"] < 0.7
+
+    def test_planets(self, night):
+        planets = {p["name"]: p for p in night["planets"]}
+        assert set(planets) == {"Saturn", "Neptune", "Uranus", "Mars", "Jupiter"}
+        assert planets["Saturn"]["period"] == "evening" and planets["Jupiter"]["period"] == "morning"
+        assert planets["Jupiter"]["rise"] is not None and planets["Jupiter"]["set"] is None
+        assert abs(planets["Jupiter"]["mag"] + 2.0) < 0.2
+        assert [p["best"] for p in night["planets"]] == sorted(p["best"] for p in night["planets"])
+
+    def test_the_night_under_way(self, night):
+        """At 3 a.m., « tonight » is the night already begun."""
+        from zoneinfo import ZoneInfo
+        later = AstroEngine.tonight(datetime(2026, 11, 2, 3, 0), self.LAT, self.LON, 0.0,
+                                    ZoneInfo("Europe/Paris"))
+        assert later["dusk"] == night["dusk"] and later["start"] == night["start"]
+
+    def test_white_night(self):
+        """Tromsø at the summer solstice: no darkness, no planet."""
+        from zoneinfo import ZoneInfo
+        night = AstroEngine.tonight(datetime(2026, 6, 21, 12), 69.65, 18.96, 0.0, ZoneInfo("Europe/Oslo"))
+        assert night["dark"] is None and night["dusk"] is None and night["planets"] == []
+
+    def test_upcoming_events(self):
+        from zoneinfo import ZoneInfo
+        events = AstroEngine.upcoming_events(datetime(2026, 11, 1, 21, 30), self.LAT, self.LON, 0.0,
+                                             ZoneInfo("Europe/Paris"))
+        assert len(events) == 3 and [e["date"] for e in events] == sorted(e["date"] for e in events)
+        assert all(e["visibility"]["period"] for e in events)
+        assert events[0]["bodies"] == ("Moon", "Mars")
+
+
 class TestMeteorShowers:
     """Maxima of the meteor showers: the IMO Meteor Shower Calendar 2026 (λ☉ J2000, times in UT)."""
 

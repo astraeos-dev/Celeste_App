@@ -6,7 +6,8 @@ Le numéro de version est à **un seul endroit** : `APP_VERSION` dans
 [`config.py`](https://github.com/astraeos-dev/Celeste_App/blob/master/config.py). La fenêtre, Paramètres › À propos,
 l'exécutable, le programme d'installation et les formulaires GitHub le lisent là.
 
-- Fonctionnalité nouvelle : `4.2` → `4.3`. Correction seule : `4.2` → `4.2.1`.
+- Fonctionnalité nouvelle : `4.3` → `4.4`. Correction seule : `4.3` → `4.3.1` (le moteur ne change pas : pas de
+  nouveau paragraphe dans `engine.py`).
 - Notez les nouveautés du moteur en tête d'[`engine.py`](https://github.com/astraeos-dev/Celeste_App/blob/master/engine.py)
   (paragraphe `v4.3:`, que le test `test_version_is_single_sourced` réclame), et mettez le README à jour.
 
@@ -32,6 +33,9 @@ propose :
 - **Voir la version** : la page de la Release sur GitHub.
 - **Ignorer cette version** : elle n'est plus proposée au démarrage (le bouton de vérification la montre encore).
 - **Plus tard**.
+
+Si une mise à jour ne s'installe pas, le journal du programme d'installation est dans
+`%TEMP%\Celeste-update\install.log` (dans l'Explorateur : `%TEMP%` dans la barre d'adresse).
 
 La case « Vérifier au démarrage » coupe la recherche automatique. Depuis les sources (`python main.py`), la
 fenêtre rappelle de mettre à jour avec `git pull`.

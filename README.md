@@ -2,11 +2,20 @@
 
 > Application de bureau qui calcule et affiche la position du Soleil, de la Lune et des planètes, d'après l'éphéméride JPL DE440 (via Skyfield).
 
+[![Version](https://img.shields.io/github/v/release/astraeos-dev/Celeste_App?label=version&color=f2b84b)](https://github.com/astraeos-dev/Celeste_App/releases/latest)
+[![Télécharger pour Windows](https://img.shields.io/badge/T%C3%A9l%C3%A9charger-Windows-0078D6?logo=windows)](https://github.com/astraeos-dev/Celeste_App/releases/latest)
+[![CI](https://github.com/astraeos-dev/Celeste_App/actions/workflows/ci.yml/badge.svg)](https://github.com/astraeos-dev/Celeste_App/actions/workflows/ci.yml)
+[![Licence MIT](https://img.shields.io/github/license/astraeos-dev/Celeste_App?label=licence)](LICENSE)
+[![Dépôt GitHub](https://img.shields.io/github/stars/astraeos-dev/Celeste_App?style=social&label=D%C3%A9p%C3%B4t)](https://github.com/astraeos-dev/Celeste_App)
+[![Wiki](https://img.shields.io/badge/Wiki-fiches%20pratiques-1f2a3b)](https://github.com/astraeos-dev/Celeste_App/wiki)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python)
 ![PyQt6](https://img.shields.io/badge/UI-PyQt6-blueviolet)
-![Matplotlib](https://img.shields.io/badge/Graphiques-Matplotlib-orange)
-![Licence](https://img.shields.io/badge/Licence-MIT-green)
-![CI](https://github.com/astraeos-dev/Celeste_App/actions/workflows/ci.yml/badge.svg)
+
+<a href="https://buymeacoffee.com/gregorychau"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me a Coffee" height="40"></a>
+
+**Télécharger** : le programme d'installation Windows est sur la page
+[Releases](https://github.com/astraeos-dev/Celeste_App/releases/latest) ; Céleste se met ensuite à jour tout seul.
+Une idée, un problème, un astre à ajouter ? [Ouvrir une demande](https://github.com/astraeos-dev/Celeste_App/issues/new/choose).
 
 **Projet actif** · fait partie de la famille Ganymede : [site web](https://astraeos-dev.github.io/personnal-site/) ·
 [application Android](https://github.com/astraeos-dev/Ganymede) · [Céleste pour Home Assistant](https://github.com/astraeos-dev/Celeste_HA)

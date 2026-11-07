@@ -155,12 +155,13 @@ class TestCalculation:
                 if not table.isRowHidden(r)]
 
     def test_all_bodies_and_visible_only(self, window):
-        """Issue #21 : tous les astres, ou seulement ceux au-dessus de l'horizon."""
+        """Issue #21 : tous les astres, ou seulement ceux au-dessus de l'horizon ; en 2026,
+        7 planètes, 9 planètes mineures et les 4 comètes suivies."""
         window._planet_selector.buttons["all"].click()
-        assert len(self._shown(window)) == 16
+        assert len(self._shown(window)) == 20
         window._planet_visible.setChecked(True)
         up = self._shown(window)
-        assert 0 < len(up) < 16
+        assert 0 < len(up) < 20
         assert all(window._planet_alt[name] > 0 for name in up)
         window._planet_visible.setChecked(False)
         window._planet_selector.buttons["planets"].click()

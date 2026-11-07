@@ -47,6 +47,11 @@ v4.3:
   • Sedna among MINOR_PLANETS; MINOR_PLANET_NUMBERS, the Minor Planet
     Center's numbers (« (136199) Éris »)
 
+v4.5:
+  • find_meteor_showers() — maxima of the major meteor showers (IMO calendar),
+    meteor_visibility(): the night of the maximum seen from the observer
+    (radiant, hourly rate under a dark sky, moonlight)
+
 v4.4:
   • download_ephemeris() — the ephemeris is no longer in the Windows
     installer: downloaded once into ~/.celeste, with its progress, and
@@ -1617,6 +1622,127 @@ class AstroEngine:
             out.append(r)
         return out
 
+    # Meteor showers: the major ones of the Working List of Visual Meteor Showers
+    # (International Meteor Organization, Meteor Shower Calendar 2026, Table 5).
+    # code: (IAU number, first and last day of activity (month, day), solar
+    # longitude of the maximum (J2000, °), radiant α, δ at the maximum (J2000, °),
+    # V∞ (km/s), population index r, ZHR)
+    METEOR_SHOWERS = {
+        "QUA": (10, (12, 28), (1, 12), 283.15, 230.0, 49.0, 41, 2.1, 80),
+        "LYR": (6, (4, 14), (4, 30), 32.32, 271.0, 34.0, 49, 2.1, 18),
+        "ETA": (31, (4, 19), (5, 28), 45.5, 338.0, -1.0, 66, 2.4, 50),
+        "SDA": (5, (7, 12), (8, 23), 128.0, 340.0, -16.0, 41, 2.5, 25),
+        "CAP": (1, (7, 3), (8, 15), 128.0, 307.0, -10.0, 23, 2.5, 5),
+        "PER": (7, (7, 17), (8, 24), 140.0, 48.0, 58.0, 59, 2.2, 100),
+        "DRA": (9, (10, 6), (10, 10), 195.4, 262.0, 54.0, 20, 2.6, 5),
+        "ORI": (8, (10, 2), (11, 7), 208.0, 95.0, 16.0, 66, 2.5, 20),
+        "STA": (2, (9, 20), (11, 20), 223.0, 52.0, 15.0, 27, 2.3, 7),
+        "NTA": (17, (10, 20), (12, 10), 230.0, 58.0, 22.0, 29, 2.3, 5),
+        "LEO": (13, (11, 6), (11, 30), 235.27, 152.0, 22.0, 71, 2.5, 15),
+        "GEM": (4, (12, 4), (12, 20), 262.2, 112.0, 33.0, 35, 2.6, 150),
+        "URS": (15, (12, 17), (12, 26), 270.7, 217.0, 76.0, 33, 2.8, 10),
+    }
+
+    @classmethod
+    def _solar_longitude(cls, jds):
+        """Geocentric longitude of the Sun on the ecliptic and equinox J2000 (°), without
+        aberration, as in the meteor shower calendars (20″ earlier: 8 minutes)."""
+        sky = _sky()
+        sun = sky["earth"].at(_fast_time(jds)).observe(sky["sun"])
+        return sun.frame_latlon(ecliptic_J2000_frame)[1].degrees
+
+    @classmethod
+    def find_meteor_showers(cls, dte_start, num_days=365):
+        """
+        Maxima of the major meteor showers (METEOR_SHOWERS): the instant the
+        Sun reaches the solar longitude of each maximum (J2000), to the
+        minute, as in the calendar of the International Meteor Organization.
+
+        Returns:
+            list[dict]: date, type 'meteor_shower', kind (its IMO code),
+            iau (number), zhr, velocity (km/s), r, radiant (α, δ in °),
+            activity ((month, day), (month, day)), bodies ("Meteors",),
+            group 'meteors', separation, side, transit, mag (None).
+        """
+        jd0 = cls.julian_day(dte_start)
+        days = jd0 - 1.0 + np.arange(num_days + 3, dtype=float)
+        lon = np.degrees(np.unwrap(np.radians(cls._solar_longitude(days))))
+        out = []
+        for code, (iau, first, last, peak, ra, dec, speed, r, zhr) in cls.METEOR_SHOWERS.items():
+            for turn in range(int((lon[0] - peak) // 360.0), int((lon[-1] - peak) // 360.0) + 2):
+                target = peak + 360.0 * turn
+                k = np.flatnonzero((lon[:-1] <= target) & (lon[1:] > target))
+                if not len(k):
+                    continue
+                i = int(k[0])
+                jd = days[i] + (target - lon[i]) / (lon[i + 1] - lon[i])
+                for _ in range(2):                      # Newton, at about 0.99°/day
+                    rate = lon[i + 1] - lon[i]
+                    jd += (((peak - cls._solar_longitude(np.array([jd]))[0]) + 180.0) % 360.0 - 180.0) / rate
+                if jd0 <= jd < jd0 + num_days:
+                    out.append(dict(date=cls._jd_to_datetime(jd, dte_start), type="meteor_shower",
+                                    kind=code, iau=iau, zhr=zhr, velocity=speed, r=r, radiant=(ra, dec),
+                                    activity=(first, last), bodies=("Meteors",), group="meteors",
+                                    separation=None, side=None, transit=False, mag=None))
+        out.sort(key=lambda e: e["date"])
+        return out
+
+    @classmethod
+    def meteor_visibility(cls, event, lat, lon, elevation_m=0.0, tz=0):
+        """
+        The night of a meteor shower maximum seen from the observer: from the
+        local noon before the maximum (12 h earlier) to the next noon, every
+        10 minutes, the radiant 5° above the horizon while the Sun is 12°
+        below it. Its best moment is the radiant's highest in the dark.
+
+        Returns:
+            dict: as event_visibility (period, best, alt, az, reason), and
+            rate (meteors per hour under a dark sky at the best moment:
+            ZHR × sin of the radiant's altitude, at least 1), moon_fraction (0–1) and
+            moon_alt (°) at the best moment (at the maximum if invisible),
+            moon ('none' | 'low' | 'medium' | 'strong'): the moonlight.
+        """
+        sky = _sky()
+        here = sky["earth"] + wgs84.latlon(lat, lon, elevation_m=elevation_m)
+        day = cls._local_day(event["date"].replace(tzinfo=None) - timedelta(hours=12), tz)[0]
+        jds = cls.julian_day(day) + 0.5 + np.arange(145) / 144.0
+        observer = here.at(_fast_time(jds))
+        ra, dec = event["radiant"]
+        radiant = Star(ra_hours=ra / 15.0, dec_degrees=dec)
+        alt, az, _ = observer.observe(radiant).apparent().altaz()
+        alt, az = alt.degrees, az.degrees
+        sun_alt = observer.observe(sky["sun"]).apparent().altaz()[0].degrees
+        moon_alt = observer.observe(sky["moon"]).apparent().altaz()[0].degrees
+        dark = sun_alt < cls._DARKER_SUN
+        up = alt >= cls._VISIBLE_ALTITUDE
+        seen = dark & up
+        vis = {"period": None, "best": None, "alt": None, "az": None, "reason": None, "rate": None}
+        if seen.any():
+            i = int(np.flatnonzero(seen)[np.argmax(alt[seen])])
+            dark_idx = np.flatnonzero(dark)
+            middle = 0.5 * (dark_idx[0] + dark_idx[-1])
+            share = seen.sum() / dark.sum()
+            vis.update(period="night" if share >= 0.85 else ("evening" if i <= middle else "morning"),
+                       best=cls._jd_to_datetime(jds[i], event["date"]), alt=float(alt[i]),
+                       az=float(az[i]), rate=max(1, round(event["zhr"] * math.sin(math.radians(alt[i])))))
+            jd = jds[i]
+        else:
+            vis["reason"] = "no_night" if not dark.any() else ("daylight" if up.any() else "horizon")
+            i = int(np.argmin(np.abs(jds - cls.julian_day(event["date"]))))
+            jd = cls.julian_day(event["date"])
+        fraction = float(almanac.fraction_illuminated(sky["eph"], "moon", _fast_time(jd)))
+        vis.update(moon_fraction=fraction, moon_alt=float(moon_alt[i]),
+                   moon=cls._moonlight(fraction, float(moon_alt[i])))
+        return vis
+
+    @staticmethod
+    def _moonlight(fraction, moon_alt):
+        """How much the Moon brightens the sky: 'none' when set or nearly new,
+        else 'low', 'medium' or 'strong' with its illuminated fraction."""
+        if moon_alt < 0.0 or fraction < 0.1:
+            return "none"
+        return "low" if fraction < 0.4 else ("medium" if fraction < 0.75 else "strong")
+
     # Visibility of the events: altitude of the body at least _VISIBLE_ALTITUDE
     # while the Sun is lower than _DARK_SUN (bright bodies) or _DARKER_SUN
     _VISIBLE_ALTITUDE, _DARK_SUN, _DARKER_SUN = 5.0, -6.0, -12.0
@@ -1634,12 +1760,15 @@ class AstroEngine:
         az (°), reason when invisible ('daylight': only up by day,
         'horizon': under the horizon at night, 'no_night': no dark night).
         Lunar conjunctions closer than 1.5° also get occultation (see
-        moon_occultation).
+        moon_occultation); meteor showers, their night (meteor_visibility).
         """
         sky = _sky()
         here = sky["earth"] + wgs84.latlon(lat, lon, elevation_m=elevation_m)
         steps = np.arange(145) / 144.0                       # one day, every 10 minutes
-        todo = [e for e in events if e.get("group") != "seasons"]
+        for e in events:
+            if e.get("group") == "meteors":
+                e["visibility"] = cls.meteor_visibility(e, lat, lon, elevation_m, tz)
+        todo = [e for e in events if e.get("group") not in ("seasons", "meteors")]
         if not todo:
             return events
         starts = []

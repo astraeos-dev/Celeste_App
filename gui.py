@@ -106,7 +106,7 @@ _COORD_REGEX = r"^\s*[+\-−]?\d{0,3}(?:[.,]\d{0,8})?\s*$"
 _VS15 = "︎"
 SYMBOL = {name: glyph + _VS15 for name, glyph in charts.SYMBOL.items()}
 SYMBOL.update({"star": "★" + _VS15, "conjunction": "☌" + _VS15,
-               "opposition": "☍" + _VS15, "dot": "●"})
+               "opposition": "☍" + _VS15, "meteors": "☄" + _VS15, "dot": "●"})
 
 # Polices de secours si les fichiers de fonts/ manquent. Aucune police emoji :
 # placée dans une pile, elle dessinerait aussi les chiffres et les espaces.
@@ -1508,7 +1508,7 @@ class AstroApp(QMainWindow):
                           tf("update.available", version=release["version"], current=APP_VERSION),
                           parent=self)
         box.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)           # fermée, elle ne reste pas en mémoire
-        notes = release.get("notes", "").strip()
+        notes = updater.plain_notes(release.get("notes", ""))
         if len(notes) > 800:
             notes = notes[:800].rsplit("\n", 1)[0] + "\n…"
         info = notes or ""
@@ -3129,7 +3129,7 @@ class AstroApp(QMainWindow):
 
     # ── Évènements de l'année : planètes, planètes mineures, Lune, saisons ─────
 
-    _EVENT_GROUPS = ("planets", "minor", "moon", "seasons")
+    _EVENT_GROUPS = ("planets", "minor", "moon", "seasons", "meteors")
     _WINDS = ("n", "ne", "e", "se", "s", "sw", "w", "nw")
 
     def _body_name(self, name, symbol=False):
@@ -3146,6 +3146,8 @@ class AstroApp(QMainWindow):
         kind = ev["type"]
         if kind == "season":
             return t(f"events.{ev['kind']}")
+        if kind == "meteor_shower":
+            return tf("meteors.title", name=t(f"meteors.name_{ev['kind']}"))
         if kind in ("perihelion", "aphelion", "perigee", "apogee"):
             return t(f"events.{kind}")
         a = ev["bodies"][0]
@@ -3182,6 +3184,21 @@ class AstroApp(QMainWindow):
         return tf(f"events.visible_{vis['period']}", alt=_num(vis["alt"]),
                   dir=t(f"skymap.cardinal_{wind}"), time=self._clock(vis["best"]))
 
+    def _meteor_lines(self, vis):
+        """La nuit du maximum d'ici : meilleur moment (radiant, taux attendu), puis la Lune."""
+        if vis["period"] is None:
+            first = t(f"events.invisible_{vis['reason']}")
+        else:
+            wind = self._WINDS[int(round(vis["az"] / 45.0)) % 8]
+            first = tf("meteors.best", time=self._clock(vis["best"]), alt=_num(vis["alt"]),
+                       dir=t(f"skymap.cardinal_{wind}"), rate=vis["rate"])
+        moon = vis["moon"]
+        if moon == "none":
+            moon_text = t("meteors.moon_new" if vis["moon_fraction"] < 0.1 else "meteors.moon_set")
+        else:
+            moon_text = tf(f"meteors.moon_{moon}", pct=_num(100.0 * vis["moon_fraction"]))
+        return [first, moon_text]
+
     def _event_shown(self, ev):
         if not self._evt_filters[ev.get("group", "planets")].isChecked():
             return False
@@ -3190,12 +3207,14 @@ class AstroApp(QMainWindow):
 
     def _search_conjunctions_gui(self):
         """Recherche les évènements des 12 mois : conjonctions, oppositions et
-        élongations, planètes mineures, Lune, saisons ; leur visibilité d'ici."""
+        élongations, planètes mineures, Lune, saisons, étoiles filantes ; leur
+        visibilité d'ici."""
         dte = self._search_start("conjunctions")
         try:
             events = (AstroEngine.find_conjunctions(dte, num_days=365)
                       + AstroEngine.find_moon_events(dte, num_days=365)
-                      + AstroEngine.find_seasons(dte, num_days=365))
+                      + AstroEngine.find_seasons(dte, num_days=365)
+                      + AstroEngine.find_meteor_showers(dte, num_days=365))
             events.sort(key=lambda e: e["date"])
             if self._lat is not None:
                 AstroEngine.event_visibility(events, self._lat, self._lon, self._elevation(), self._zone)
@@ -3234,6 +3253,11 @@ class AstroApp(QMainWindow):
         pills, details, lines, action = [], [], [], None
         if kind == "season":
             symbole = SYMBOL["Sun"]
+        elif kind == "meteor_shower":
+            symbole = SYMBOL["meteors"]
+            (m1, d1), (m2, d2) = ev["activity"]
+            details += [tf("meteors.zhr", value=ev["zhr"]), tf("meteors.speed", value=ev["velocity"]),
+                        tf("meteors.activity", start=f"{d1:02d}/{m1:02d}", end=f"{d2:02d}/{m2:02d}")]
         elif kind in ("perihelion", "aphelion"):
             symbole = SYMBOL["Earth"]
             details.append(tf("events.distance_au", value=_num(ev["distance_au"], 5)))
@@ -3269,7 +3293,9 @@ class AstroApp(QMainWindow):
             details.append(tf("events.local_time", time=f"{local:%d/%m} {self._fmt_clock(local)}",
                               zone=getattr(self._zone, "key", "UTC")))
         vis = ev.get("visibility")
-        if vis is not None and kind not in ("perigee", "apogee"):
+        if vis is not None and kind == "meteor_shower":
+            lines += self._meteor_lines(vis)
+        elif vis is not None and kind not in ("perigee", "apogee"):
             lines.append(self._visibility_text(vis))
         occ = ev.get("occultation")
         if occ and any((occ.get(k) or -90.0) > 0.0 for k in ("moon_alt_start", "moon_alt_end")):

@@ -5,6 +5,7 @@
 - [Ajouter une planète mineure](Ajouter-une-planete-mineure.md)
 - [Ajouter une comète](Ajouter-une-comete.md)
 - [Ajouter une étoile](Ajouter-une-etoile.md)
+- [Ajouter une pluie d'étoiles filantes](Ajouter-une-pluie-d-etoiles-filantes.md)
 - [Ajouter une langue](Ajouter-une-langue.md)
 - [Tester ses modifications](Tester-ses-modifications.md)
 - [Publier une version](Publier-une-version.md)

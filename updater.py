@@ -162,13 +162,15 @@ def installer_command(setup_path, app_dir=None):
     Programme d'installation en mode silencieux : fenêtre de progression seule,
     Céleste fermé puis rouvert ([Run] … skipifnotsilent de installer/celeste.iss),
     dans le même mode qu'à la première installation (tous les utilisateurs si
-    Céleste est dans Program Files).
+    Céleste est dans Program Files). Journal de l'installation : install.log, à
+    côté du programme d'installation (%TEMP%\\Celeste-update).
     """
     app_dir = os.path.normcase(os.path.abspath(app_dir or os.path.dirname(sys.executable)))
     program_files = [os.environ.get(k) for k in ("ProgramFiles", "ProgramFiles(x86)", "ProgramW6432")]
     machine = any(p and app_dir.startswith(os.path.normcase(os.path.abspath(p))) for p in program_files)
+    log = os.path.join(os.path.dirname(os.path.abspath(setup_path)), "install.log")
     return [setup_path, "/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CLOSEAPPLICATIONS",
-            "/ALLUSERS" if machine else "/CURRENTUSER"]
+            "/ALLUSERS" if machine else "/CURRENTUSER", f"/LOG={log}"]
 
 
 def launch_installer(setup_path):

@@ -964,10 +964,11 @@ class TestStarsOfTheDate:
 
 
 def test_version_is_single_sourced():
-    """The engine's docstring describes the version the interface and the PDF show."""
+    """The engine's docstring describes the version the interface shows (its x.y:
+    a corrective x.y.z release does not change the engine)."""
     import engine
     from config import APP_VERSION
-    assert f"v{APP_VERSION}" in engine.__doc__
+    assert "v" + ".".join(APP_VERSION.split(".")[:2]) + ":" in engine.__doc__
 
 
 # ──────────────────────────────────────────────────────────────────────

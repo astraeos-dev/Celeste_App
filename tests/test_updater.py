@@ -116,6 +116,7 @@ class TestInstaller:
     def test_silent_and_current_user(self, tmp_path):
         command = updater.installer_command("Setup.exe", str(tmp_path / "Celeste"))
         assert command[0] == "Setup.exe" and "/SILENT" in command and "/CURRENTUSER" in command
+        assert command[-1].startswith("/LOG=") and command[-1].endswith("install.log")
 
     def test_all_users_under_program_files(self, tmp_path, monkeypatch):
         monkeypatch.setenv("ProgramFiles", str(tmp_path / "Program Files"))

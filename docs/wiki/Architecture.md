@@ -23,7 +23,8 @@ Le projet suit le modèle **modèle-vue-contrôleur** : le moteur calcule, l'int
 ## D'où viennent les positions
 
 - **Soleil, Lune, planètes, Pluton** : éphéméride JPL DE440 (`de440s.bsp`, 1850–2149) lue par Skyfield. Elle est
-  cherchée dans `data/`, puis dans `~/.celeste`, et téléchargée au premier lancement.
+  cherchée dans `data/`, puis dans `~/.celeste`, et téléchargée au premier lancement (`download_ephemeris()`,
+  vérifiée par sa taille et son SHA-256). Elle n'est pas dans le programme d'installation, pour alléger les mises à jour.
 - **Planètes mineures** (Cérès … Sedna) : table de JPL Horizons, position et vitesse tous les 10 ou 60 jours,
   interpolées par Hermite (`_TabulatedOrbit` dans `engine.py`).
 - **Étoiles** : Yale Bright Star Catalogue, ramenées à la date (mouvement propre, précession, nutation, aberration).

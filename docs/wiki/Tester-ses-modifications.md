@@ -15,7 +15,7 @@ Sous Windows (PowerShell), la variable s'écrit autrement :
 $env:QT_QPA_PLATFORM="offscreen"; python -m pytest -q tests/
 ```
 
-La suite complète prend une vingtaine de minutes, surtout à cause des tests d'interface. Pendant le travail,
+La suite complète prend environ deux minutes, dont une et demie pour les tests d'interface. Pendant le travail,
 lancez seulement ce qui vous concerne :
 
 | Changement | Tests |
@@ -24,8 +24,15 @@ lancez seulement ce qui vous concerne :
 | Calculs (`engine.py`) | `python -m pytest -q tests/test_engine.py -k "MinorPlanets"` (un nom de classe ou de test) |
 | Graphiques, symboles | `python -m pytest -q tests/test_charts.py` |
 | Interface | `QT_QPA_PLATFORM=offscreen python -m pytest -q tests/test_gui.py -k "planet_table"` |
+| Éphéméride (téléchargement) | `python -m pytest -q tests/test_ephemeris.py` |
+| Mises à jour | `python -m pytest -q tests/test_updater.py` |
 
 La CI de GitHub relance tout à chaque push, sous Python 3.10 à 3.13.
+
+Un test d'interface qui ouvre une fenêtre doit la **détruire** en partant, pas seulement la fermer : la fixture
+`window` le fait (`_destroy()`). Sans cela, les fenêtres des tests précédents restent en mémoire, chaque changement
+de thème ou de langue les restyle toutes, et la suite passe de deux minutes à une demi-heure. De même, dans
+l'application, une fenêtre secondaire (`QDialog`, `QMessageBox`) reçoit `WA_DeleteOnClose`.
 
 ## L'auto-test
 

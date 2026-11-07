@@ -7,7 +7,7 @@
   },
   "startup": {
     "downloading": "Premier lancement : téléchargement de l'éphéméride JPL DE440 (32 Mo)…",
-    "ephemeris_error": "Impossible de charger l'éphéméride JPL DE440 nécessaire aux calculs.\nVérifiez la connexion Internet, ou placez de440s.bsp dans le dossier data/ de Céleste.\n\n{error}"
+    "ephemeris_error": "Impossible de charger l'éphéméride JPL DE440 nécessaire aux calculs.\nVérifiez la connexion Internet et relancez Céleste, ou placez de440s.bsp dans le dossier {folder}.\n\n{error}"
   },
   "side": {
     "datetime": "Date et heure (TU)",

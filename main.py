@@ -37,28 +37,52 @@ def parse_args(argv):
 
 def ensure_ephemeris():
     """
-    Loads the JPL DE440 ephemeris, downloading it (32 MB) at the first launch.
-    Returns False, after telling the user, when it can be neither found nor
-    downloaded.
+    Loads the JPL DE440 ephemeris. At the first launch it is downloaded
+    (32 MB) into ~/.celeste, in the background, with its progress; it is not
+    in the installer, so that updates do not download it again. Returns
+    False when it can be neither found nor downloaded (after telling the
+    user) or when the download is cancelled.
     """
     import os
+    import threading
     from PyQt6.QtWidgets import QMessageBox, QProgressDialog
     import engine
 
-    dialog = None
+    def fail(exc):
+        folder = os.path.dirname(engine.user_ephemeris_path())
+        QMessageBox.critical(None, "Céleste", t("startup.ephemeris_error").format(error=exc, folder=folder))
+        return False
+
     if not os.path.isfile(engine.ephemeris_path()):
-        dialog = QProgressDialog(t("startup.downloading"), None, 0, 0)
+        state = {"done": 0, "total": engine._EPHEMERIS_SIZE, "cancel": False, "error": None}
+        dialog = QProgressDialog(t("startup.downloading"), t("update.cancel"), 0, 1000)
         dialog.setWindowTitle("Céleste")
+        dialog.setMinimumDuration(0)
+        dialog.canceled.connect(lambda: state.update(cancel=True))
+
+        def fetch():
+            try:
+                engine.download_ephemeris(progress=lambda d, n: state.update(done=d, total=n),
+                                          cancelled=lambda: state["cancel"])
+            except engine.EphemerisUnavailable as exc:
+                state["error"] = exc
+
+        worker = threading.Thread(target=fetch, daemon=True)
+        worker.start()
         dialog.show()
-        QApplication.processEvents()
+        while worker.is_alive():
+            dialog.setValue(int(1000 * state["done"] / state["total"]) if state["total"] else 0)
+            QApplication.processEvents()
+            worker.join(0.05)
+        dialog.close()
+        if isinstance(state["error"], engine.DownloadCancelled):
+            return False
+        if state["error"] is not None:
+            return fail(state["error"])
     try:
         engine.load_ephemeris()
     except engine.EphemerisUnavailable as exc:
-        QMessageBox.critical(None, "Céleste", t("startup.ephemeris_error").format(error=exc))
-        return False
-    finally:
-        if dialog is not None:
-            dialog.close()
+        return fail(exc)
     return True
 
 

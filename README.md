@@ -244,7 +244,7 @@ Les planètes mineures (sauf Pluton, dans DE440) viennent d'une table de **JPL H
 Makemake et Sedna), interpolées par Hermite ; positions à 0,001″ d'Horizons de 1850 à 2149.
 
 L'éphéméride (32 Mo) est cherchée dans `data/` à côté du programme, puis dans `~/.celeste` (ou `$CELESTE_DATA`), où elle
-est téléchargée depuis le serveur JPL/NAIF au premier lancement.
+est téléchargée depuis le serveur JPL/NAIF au premier lancement, puis vérifiée (taille et SHA-256 du fichier publié).
 
 | Méthode | Rôle |
 |---------|------|
@@ -308,8 +308,10 @@ affiché est redessiné ; les autres le sont quand on les ouvre.
 
 ## Application Windows
 
-Céleste se construit en application Windows autonome (`Celeste.exe`) avec [PyInstaller]. L'éphéméride JPL est incluse :
-l'application fonctionne hors ligne dès le premier lancement.
+Céleste se construit en application Windows autonome (`Celeste.exe`) avec [PyInstaller]. L'éphéméride JPL (32 Mo) n'est
+pas dans le programme d'installation : Céleste la télécharge une seule fois, à son premier lancement, dans `~/.celeste`.
+Il faut donc une connexion Internet ce jour-là ; ensuite tout fonctionne hors ligne, et les mises à jour (≈ 80 Mo) ne la
+retéléchargent pas.
 
 - **Depuis GitHub** : onglet *Actions*, workflow « Build — application Windows », bouton *Run workflow* (ou pousser un
   tag `v*`). Deux artefacts : `Celeste-Windows-Setup`, le programme d'installation `Celeste-<version>-Setup.exe`

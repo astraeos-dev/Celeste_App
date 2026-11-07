@@ -47,16 +47,23 @@ v4.3:
   • Sedna among MINOR_PLANETS; MINOR_PLANET_NUMBERS, the Minor Planet
     Center's numbers (« (136199) Éris »)
 
+v4.4:
+  • download_ephemeris() — the ephemeris is no longer in the Windows
+    installer: downloaded once into ~/.celeste, with its progress, and
+    checked (size and SHA-256 of the NAIF file)
+
 The ephemeris (32 MB) is looked for in data/ next to this module, then in
 ~/.celeste (or $CELESTE_DATA), where it is downloaded from the JPL/NAIF
-server the first time (load_ephemeris()).
+server the first time (load_ephemeris(), download_ephemeris()).
 
 This module is completely independent from the graphical interface (MVC model).
 """
 
 import functools
+import hashlib
 import math
 import os
+import urllib.request
 from datetime import timedelta, timezone
 
 import numpy as np
@@ -73,6 +80,9 @@ from skyfield.framelib import ecliptic_frame, ecliptic_J2000_frame, itrs, true_e
 # JPL DE440, short version: 1849-12-26 → 2150-01-22
 _EPHEMERIS_URL  = "https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/de440s.bsp"
 _EPHEMERIS_FILE = "de440s.bsp"
+# The NAIF file, as published (MD5 3917ee56769db332790c751e2168843d in its aa_checksums.txt)
+_EPHEMERIS_SIZE   = 32726016
+_EPHEMERIS_SHA256 = "c1c7feeab882263fc493a9d5a5b2ddd71b54826cdf65d8d17a76126b260a49f2"
 EPHEMERIS_YEARS = (1850, 2149)            # whole years covered by the ephemeris
 _DATA_DIRS = (
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "data"),
@@ -165,7 +175,16 @@ class EphemerisUnavailable(RuntimeError):
     """The DE440 file is missing and could not be downloaded."""
 
 
+class DownloadCancelled(EphemerisUnavailable):
+    """The download of the DE440 file was interrupted by the user."""
+
+
 _SKY = {}
+
+
+def user_ephemeris_path():
+    """Where the DE440 file is downloaded: ~/.celeste (or $CELESTE_DATA)."""
+    return os.path.join(_DATA_DIRS[-1], _EPHEMERIS_FILE)
 
 
 def ephemeris_path():
@@ -174,25 +193,77 @@ def ephemeris_path():
         path = os.path.join(directory, _EPHEMERIS_FILE)
         if os.path.isfile(path):
             return path
-    return os.path.join(_DATA_DIRS[-1], _EPHEMERIS_FILE)
+    return user_ephemeris_path()
 
 
-def load_ephemeris():
+def download_ephemeris(path=None, progress=None, cancelled=None, timeout=30):
+    """
+    Downloads the DE440 file from the JPL/NAIF server into *path* (by default
+    ~/.celeste), checks its size and SHA-256, and only then gives it its name:
+    an interrupted download leaves nothing behind.
+
+    Args:
+        progress: called with (bytes received, total size).
+        cancelled: returns True to interrupt (DownloadCancelled).
+
+    Returns:
+        str: the path of the file.
+    """
+    path = path or user_ephemeris_path()
+    partial = path + ".part"
+    digest, done = hashlib.sha256(), 0
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        request = urllib.request.Request(_EPHEMERIS_URL, headers={"User-Agent": "Celeste (Skyfield)"})
+        with urllib.request.urlopen(request, timeout=timeout) as resp, open(partial, "wb") as out:
+            total = int(resp.headers.get("Content-Length") or _EPHEMERIS_SIZE)
+            while True:
+                if cancelled is not None and cancelled():
+                    raise DownloadCancelled("download cancelled")
+                block = resp.read(1 << 16)
+                if not block:
+                    break
+                out.write(block)
+                digest.update(block)
+                done += len(block)
+                if progress is not None:
+                    progress(done, total)
+        if done != _EPHEMERIS_SIZE or digest.hexdigest() != _EPHEMERIS_SHA256:
+            raise EphemerisUnavailable(f"{_EPHEMERIS_FILE}: corrupt download ({done} bytes)")
+        os.replace(partial, path)
+    except EphemerisUnavailable:
+        _remove(partial)
+        raise
+    except Exception as exc:                                # network, disk
+        _remove(partial)
+        raise EphemerisUnavailable(
+            f"{_EPHEMERIS_FILE}: not found in {os.path.dirname(path)} and not downloadable "
+            f"from {_EPHEMERIS_URL} ({exc})") from exc
+    return path
+
+
+def _remove(path):
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+
+
+def load_ephemeris(progress=None, cancelled=None):
     """
     Skyfield timescale and DE440 bodies, loaded once (downloaded the first
-    time). Raises EphemerisUnavailable when the file can be neither found
-    nor downloaded.
+    time, see download_ephemeris()). Raises EphemerisUnavailable when the
+    file can be neither found nor downloaded.
     """
     if not _SKY:
-        directory = os.path.dirname(ephemeris_path())
+        path = ephemeris_path()
+        if not os.path.isfile(path):
+            download_ephemeris(path, progress, cancelled)
         try:
-            os.makedirs(directory, exist_ok=True)
-            loader = Loader(directory, verbose=False)
-            eph = loader(_EPHEMERIS_URL)
-        except Exception as exc:                            # network, disk, corrupt file
-            raise EphemerisUnavailable(
-                f"{_EPHEMERIS_FILE}: not found in {directory} and not downloadable "
-                f"from {_EPHEMERIS_URL} ({exc})") from exc
+            loader = Loader(os.path.dirname(path), verbose=False)
+            eph = loader(_EPHEMERIS_URL)                    # the file is there: no download
+        except Exception as exc:                            # disk, corrupt file
+            raise EphemerisUnavailable(f"{path}: unreadable ({exc})") from exc
         _SKY.update(ts=loader.timescale(), eph=eph,
                     earth=eph["earth"], sun=eph["sun"], moon=eph["moon"])
     return _SKY

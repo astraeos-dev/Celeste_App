@@ -7,7 +7,7 @@
   },
   "startup": {
     "downloading": "First launch: downloading the JPL DE440 ephemeris (32 MB)…",
-    "ephemeris_error": "The JPL DE440 ephemeris needed for the calculations could not be loaded.\nCheck the Internet connection, or put de440s.bsp in Céleste's data/ folder.\n\n{error}"
+    "ephemeris_error": "The JPL DE440 ephemeris needed for the calculations could not be loaded.\nCheck the Internet connection and start Céleste again, or put de440s.bsp in the folder {folder}.\n\n{error}"
   },
   "side": {
     "datetime": "Date and time (UT)",

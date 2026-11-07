@@ -32,4 +32,4 @@ body:
     id: version
     attributes:
       label: Version de Céleste
-      placeholder: "4.3.1"
+      placeholder: "4.4"

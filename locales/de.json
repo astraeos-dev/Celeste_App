@@ -7,7 +7,7 @@
   },
   "startup": {
     "downloading": "Erster Start: JPL-Ephemeride DE440 wird heruntergeladen (32 MB)…",
-    "ephemeris_error": "Die für die Berechnungen nötige JPL-Ephemeride DE440 konnte nicht geladen werden.\nPrüfen Sie die Internetverbindung oder legen Sie de440s.bsp in den Ordner data/ von Céleste.\n\n{error}"
+    "ephemeris_error": "Die für die Berechnungen nötige JPL-Ephemeride DE440 konnte nicht geladen werden.\nPrüfen Sie die Internetverbindung und starten Sie Céleste erneut, oder legen Sie de440s.bsp in den Ordner {folder}.\n\n{error}"
   },
   "side": {
     "datetime": "Datum und Uhrzeit (UT)",

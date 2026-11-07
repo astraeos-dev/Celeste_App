@@ -1,10 +1,11 @@
 """
 scripts/build_exe.py — Construit Céleste.exe pour Windows
 ===========================================================
-1. place l'éphéméride JPL DE440 dans data/ (copiée de ~/.celeste, ou
-   téléchargée la première fois) : l'application fonctionne hors ligne ;
+1. place l'éphéméride JPL DE440 dans ~/.celeste (copiée de data/, ou
+   téléchargée) pour l'essai de l'étape 4 : elle n'est pas dans
+   l'application, qui la télécharge à son premier lancement ;
 2. dessine l'icône (build/icons/celeste.ico) depuis assets/astraeos-icone.svg ;
-3. lance PyInstaller avec celeste.spec ;
+3. lance PyInstaller avec celeste.spec, et vérifie que l'éphéméride n'y est pas ;
 4. vérifie que l'application construite démarre (--self-test) ;
 5. réunit le résultat dans dist/Celeste-<version>-Windows.zip ;
 6. avec Inno Setup 6, construit le programme d'installation
@@ -24,14 +25,27 @@ sys.path.insert(0, ROOT)
 
 
 def ensure_ephemeris():
+    """L'éphéméride dans ~/.celeste, où l'application construite la lit (--self-test)."""
     import engine
-    target = os.path.join(ROOT, "data", engine._EPHEMERIS_FILE)
-    if os.path.isfile(target):
-        return target
-    engine.load_ephemeris()                       # téléchargée dans ~/.celeste au besoin
-    os.makedirs(os.path.dirname(target), exist_ok=True)
-    shutil.copyfile(engine.ephemeris_path(), target)
+    target = engine.user_ephemeris_path()
+    if not os.path.isfile(target):
+        local = os.path.join(ROOT, "data", engine._EPHEMERIS_FILE)
+        if os.path.isfile(local):
+            os.makedirs(os.path.dirname(target), exist_ok=True)
+            shutil.copyfile(local, target)
+        else:
+            engine.download_ephemeris(target)
     return target
+
+
+def check_no_ephemeris():
+    """L'éphéméride reste hors de l'application : les mises à jour en sont allégées de 32 Mo."""
+    import engine
+    folder = os.path.join(ROOT, "dist", "Celeste")
+    found = [os.path.join(d, f) for d, _, files in os.walk(folder) for f in files
+             if f == engine._EPHEMERIS_FILE]
+    if found:
+        sys.exit(f"éphéméride dans l'application : {found}")
 
 
 def make_icons():
@@ -105,6 +119,7 @@ def main():
     make_icons()
     subprocess.check_call([sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean",
                            "celeste.spec"], cwd=ROOT)
+    check_no_ephemeris()
     self_test()
     package()
     make_installer()

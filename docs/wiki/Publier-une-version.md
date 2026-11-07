@@ -29,10 +29,15 @@ propose :
 
 - **Mettre à jour** : le programme d'installation est téléchargé, son empreinte SHA-256 vérifiée, puis il
   s'installe par-dessus l'ancienne version en mode silencieux (fenêtre de progression seule) ; Céleste se ferme
-  et se rouvre. Réglages et favoris (`%USERPROFILE%\.celeste`) sont conservés.
+  et se rouvre. Réglages, favoris et éphéméride (`%USERPROFILE%\.celeste`) sont conservés.
 - **Voir la version** : la page de la Release sur GitHub.
 - **Ignorer cette version** : elle n'est plus proposée au démarrage (le bouton de vérification la montre encore).
 - **Plus tard**.
+
+L'éphéméride JPL (32 Mo) n'est pas dans le programme d'installation : Céleste la télécharge une fois, à son premier
+lancement, dans `%USERPROFILE%\.celeste`, et une mise à jour ne pèse donc qu'environ 80 Mo. Une installation antérieure
+à la 4.4 garde la sienne dans le dossier du programme, où Céleste la trouve encore : rien n'est retéléchargé.
+`scripts/build_exe.py` vérifie qu'elle n'est pas dans l'application construite.
 
 Si une mise à jour ne s'installe pas, le journal du programme d'installation est dans
 `%TEMP%\Celeste-update\install.log` (dans l'Explorateur : `%TEMP%` dans la barre d'adresse).

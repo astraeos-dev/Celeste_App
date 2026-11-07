@@ -31,9 +31,9 @@ pytest.importorskip("PyQt6.QtWidgets", reason="PyQt6 ou les bibliothèques de Qt
 pytest.importorskip("matplotlib")
 
 from matplotlib.backend_bases import MouseEvent  # noqa: E402
-from PyQt6.QtCore import Qt  # noqa: E402
+from PyQt6.QtCore import QEvent, Qt  # noqa: E402
 from PyQt6.QtWidgets import (  # noqa: E402
-    QAbstractButton, QApplication, QDialog, QFrame, QLabel,
+    QAbstractButton, QApplication, QDialog, QFrame, QLabel, QMessageBox,
 )
 
 DTE = datetime(2026, 11, 1, 21, 30, 0)     # nuit à Cherbourg, Véga bien haute
@@ -77,10 +77,18 @@ def window(qapp, tmp_path, monkeypatch):
 
     win.toggle_live(False)
     win.close()
-    win.deleteLater()
-    qapp.processEvents()
+    _destroy(qapp, win)
     Config.apply_theme("nuit")
     switch_lang("fr")
+
+
+def _destroy(qapp, widget):
+    """Détruit vraiment la fenêtre : processEvents() seul ne traite pas deleteLater(),
+    et les fenêtres des tests précédents, toujours là, ralentissaient chaque
+    changement de thème ou de langue (toute l'application est restylée)."""
+    widget.deleteLater()
+    qapp.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    qapp.processEvents()
 
 
 def _pump(qapp, n=10):
@@ -894,6 +902,70 @@ class TestDataWindow:
         assert "(4) Vesta" in window._detail_dialog.windowTitle()
         window._detail_dialog.close()
 
+    def test_closed_windows_are_freed(self, window, qapp):
+        """Fenêtres de données et cartes fermées ne restent pas en mémoire, sous la fenêtre."""
+        for name in ("Jupiter", "Vesta", "sun"):
+            window._show_body_detail(name)
+            qapp.processEvents()
+            window._detail_dialog.reject()
+        qapp.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        assert window.findChildren(QDialog) == []
+
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Premier lancement : téléchargement de l'éphéméride
+# ──────────────────────────────────────────────────────────────────────
+
+def tmp_user(engine):
+    return os.path.dirname(engine.user_ephemeris_path())
+
+
+class TestFirstLaunch:
+    @pytest.fixture
+    def missing(self, qapp, tmp_path, monkeypatch):
+        """Pas d'éphéméride : main.ensure_ephemeris() la télécharge (ici, sans réseau)."""
+        import engine
+        import main
+        monkeypatch.setattr(engine, "ephemeris_path", lambda: str(tmp_path / "absente.bsp"))
+        monkeypatch.setattr(engine, "user_ephemeris_path", lambda: str(tmp_path / "user" / "de440s.bsp"))
+        loaded = []
+        monkeypatch.setattr(engine, "load_ephemeris", lambda *a, **k: loaded.append(True))
+        errors = []
+        monkeypatch.setattr(QMessageBox, "critical",
+                            staticmethod(lambda _parent, _title, text: errors.append(text)))
+        return engine, main, loaded, errors
+
+    def test_downloaded_with_its_progress(self, missing, monkeypatch):
+        engine, main, loaded, errors = missing
+        steps = []
+
+        def download(progress=None, cancelled=None, **_kw):
+            for done in (0, 16, 32):
+                progress(done, 32)
+                steps.append(cancelled())
+        monkeypatch.setattr(engine, "download_ephemeris", download)
+        assert main.ensure_ephemeris() is True
+        assert steps == [False, False, False] and loaded == [True] and errors == []
+
+    def test_cancelled(self, missing, monkeypatch):
+        engine, main, loaded, errors = missing
+
+        def download(**_kw):
+            raise engine.DownloadCancelled("download cancelled")
+        monkeypatch.setattr(engine, "download_ephemeris", download)
+        assert main.ensure_ephemeris() is False
+        assert loaded == [] and errors == []               # pas de message : on a choisi d'annuler
+
+    def test_no_network(self, missing, monkeypatch):
+        engine, main, loaded, errors = missing
+
+        def download(**_kw):
+            raise engine.EphemerisUnavailable("pas de réseau")
+        monkeypatch.setattr(engine, "download_ephemeris", download)
+        assert main.ensure_ephemeris() is False
+        assert loaded == [] and len(errors) == 1
+        assert "pas de réseau" in errors[0] and str(tmp_user(engine)) in errors[0]
 
 
 # ──────────────────────────────────────────────────────────────────────

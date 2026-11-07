@@ -1507,6 +1507,7 @@ class AstroApp(QMainWindow):
         box = QMessageBox(QMessageBox.Icon.Information, t("update.title"),
                           tf("update.available", version=release["version"], current=APP_VERSION),
                           parent=self)
+        box.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)           # fermée, elle ne reste pas en mémoire
         notes = release.get("notes", "").strip()
         if len(notes) > 800:
             notes = notes[:800].rsplit("\n", 1)[0] + "\n…"
@@ -2357,6 +2358,7 @@ class AstroApp(QMainWindow):
         """Fenêtre (non bloquante) : position de l'IP, pourquoi, et les réglages à ouvrir."""
         box = QMessageBox(QMessageBox.Icon.Information, t("errors.geoloc_title"),
                           tf("errors.geoloc_ip_short", city=city, country=country), parent=self)
+        box.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         box.setInformativeText(t(f"errors.geoloc_reason_{reason}"))
         url = _LOCATION_SETTINGS.get(sys.platform)
         settings = None
@@ -2867,6 +2869,7 @@ class AstroApp(QMainWindow):
         if obj["kind"] in ("sun", "moon", "planet") and self._dte is not None:
             rows += self._data_rows(obj)
         dlg = QDialog(self)
+        dlg.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         dlg.setWindowTitle(tf("detail.title", name=title))
         dlg.setMinimumWidth(380)
         lay = QVBoxLayout(dlg)
@@ -3106,6 +3109,7 @@ class AstroApp(QMainWindow):
             "decimal": _locale().decimalPoint(),
         }
         dlg = QDialog(self)
+        dlg.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)           # et sa figure avec elle
         dlg.setWindowTitle(t("eclipse_map.window_title"))
         dlg.resize(1000, 640)
         lay = QVBoxLayout(dlg)
@@ -3328,6 +3332,7 @@ class AstroApp(QMainWindow):
             "date_format": t("event_map.date_format"), "hour_format": t("event_map.hour_format"),
         }
         dlg = QDialog(self)
+        dlg.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         dlg.setWindowTitle(t("event_map.window_title"))
         dlg.resize(820, 720)
         lay = QVBoxLayout(dlg)

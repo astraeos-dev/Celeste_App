@@ -1111,7 +1111,8 @@ class TestEclipseMap:
     }
 
     @pytest.fixture(scope="class")
-    def solar(self):
+    @classmethod
+    def solar(cls):
         found = AstroEngine.find_eclipses(datetime(2026, 7, 1), 14)
         return {e["greatest"].replace(hour=0, minute=0, second=0): e for e in found if e["type"] == "solar"}
 

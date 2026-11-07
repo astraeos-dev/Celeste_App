@@ -238,7 +238,18 @@
     "visible_only_tip": "Solo los astros sobre el horizonte en el instante calculado; haga clic en un encabezado para ordenar",
     "sorted_ascending": "Ordenado de menor a mayor (haga clic para invertir)",
     "sorted_descending": "Ordenado de mayor a menor (haga clic para invertir)",
-    "sedna": "Sedna"
+    "sedna": "Sedna",
+    "orrery_back": "Retroceder un paso",
+    "orrery_play": "Animar el planetario",
+    "orrery_pause": "Detener la animación",
+    "orrery_forward": "Avanzar un paso",
+    "orrery_speed_day": "1 día por paso",
+    "orrery_speed_week": "1 semana por paso",
+    "orrery_speed_month": "1 mes por paso",
+    "orrery_speed_year": "1 año por paso",
+    "orrery_speed_tip": "Duración de un paso de la animación",
+    "orrery_reset": "Volver a la fecha",
+    "orrery_reset_tip": "Volver a la fecha de la barra lateral"
   },
   "chart": {
     "trajectory_title": "Altura del Sol y de la Luna — {date}",

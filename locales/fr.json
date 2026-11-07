@@ -238,7 +238,18 @@
     "visible_only_tip": "Seulement les astres au-dessus de l'horizon à l'instant calculé ; cliquez sur un en-tête pour trier",
     "sorted_ascending": "Trié par ordre croissant (cliquez pour inverser)",
     "sorted_descending": "Trié par ordre décroissant (cliquez pour inverser)",
-    "sedna": "Sedna"
+    "sedna": "Sedna",
+    "orrery_back": "Reculer d'un pas",
+    "orrery_play": "Animer le planétaire",
+    "orrery_pause": "Arrêter l'animation",
+    "orrery_forward": "Avancer d'un pas",
+    "orrery_speed_day": "1 jour par pas",
+    "orrery_speed_week": "1 semaine par pas",
+    "orrery_speed_month": "1 mois par pas",
+    "orrery_speed_year": "1 an par pas",
+    "orrery_speed_tip": "Durée d'un pas de l'animation",
+    "orrery_reset": "Revenir à la date",
+    "orrery_reset_tip": "Revenir à la date de la barre latérale"
   },
   "chart": {
     "trajectory_title": "Hauteur du Soleil et de la Lune — {date}",

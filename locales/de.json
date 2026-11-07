@@ -238,7 +238,18 @@
     "visible_only_tip": "Nur die Himmelskörper über dem Horizont zum berechneten Zeitpunkt; zum Sortieren auf eine Kopfzeile klicken",
     "sorted_ascending": "Aufsteigend sortiert (zum Umkehren klicken)",
     "sorted_descending": "Absteigend sortiert (zum Umkehren klicken)",
-    "sedna": "Sedna"
+    "sedna": "Sedna",
+    "orrery_back": "Einen Schritt zurück",
+    "orrery_play": "Planetarium animieren",
+    "orrery_pause": "Animation anhalten",
+    "orrery_forward": "Einen Schritt vor",
+    "orrery_speed_day": "1 Tag pro Schritt",
+    "orrery_speed_week": "1 Woche pro Schritt",
+    "orrery_speed_month": "1 Monat pro Schritt",
+    "orrery_speed_year": "1 Jahr pro Schritt",
+    "orrery_speed_tip": "Dauer eines Animationsschritts",
+    "orrery_reset": "Zurück zum Datum",
+    "orrery_reset_tip": "Zurück zum Datum der Seitenleiste"
   },
   "chart": {
     "trajectory_title": "Höhe von Sonne und Mond — {date}",

@@ -674,6 +674,46 @@ class TestMoonCalendar:
         dlg.close()
 
 
+class TestOrreryAnimation:
+    def _planets_tab(self, window, qapp):
+        window.tabs.setCurrentWidget(next(p for p, n in window._chart_tabs.items() if n == "orrery"))
+        _pump(qapp)
+
+    def test_steps_move_the_planets(self, window, qapp):
+        self._planets_tab(window, qapp)
+        assert window._orrery_date.text() == "01/11/2026"
+        mars = next(m for name, m, _l in window.fig_orrery._orrery_moving if name == "Mars")
+        before = mars.get_xydata().copy()
+        window._orrery_speed.setCurrentIndex(2)                       # 1 mois par pas
+        window._orrery_step(+1)
+        assert window._orrery_offset == 30.0 and window._orrery_date.text() == "01/12/2026"
+        assert window._orrery_date.property("tone") == "or"
+        assert (mars.get_xydata() != before).any()
+        window._orrery_step(-1)
+        assert window._orrery_offset == 0.0 and window._orrery_date.property("tone") is None
+
+    def test_play_pause_and_leaving_the_tab(self, window, qapp):
+        self._planets_tab(window, qapp)
+        window._orrery_play.click()
+        assert window._orrery_timer.isActive()
+        window.tabs.setCurrentIndex(0)
+        assert not window._orrery_timer.isActive()
+
+    def test_back_to_the_date(self, window, qapp):
+        self._planets_tab(window, qapp)
+        window._orrery_speed.setCurrentIndex(3)                       # 1 an par pas
+        window._orrery_step(+1)
+        window._reset_orrery()
+        assert window._orrery_offset == 0.0 and window._orrery_date.text() == "01/11/2026"
+
+    def test_stops_at_the_end_of_the_ephemeris(self, window, qapp):
+        self._planets_tab(window, qapp)
+        window._toggle_orrery()
+        window._orrery_offset = 200 * 365.25
+        window._orrery_step(+1)
+        assert window._orrery_date.text() == "30/12/2149" and not window._orrery_timer.isActive()
+
+
 class TestPlaceSearch:
     def test_suggestions_then_choice(self, window, qapp):
         """« londres » propose London ; la choisir remplit lieu, altitude et nom."""

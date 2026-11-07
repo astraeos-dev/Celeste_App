@@ -238,7 +238,18 @@
     "visible_only_tip": "Only the bodies above the horizon at the computed instant; click a header to sort",
     "sorted_ascending": "Sorted in ascending order (click to reverse)",
     "sorted_descending": "Sorted in descending order (click to reverse)",
-    "sedna": "Sedna"
+    "sedna": "Sedna",
+    "orrery_back": "Step back",
+    "orrery_play": "Animate the orrery",
+    "orrery_pause": "Stop the animation",
+    "orrery_forward": "Step forward",
+    "orrery_speed_day": "1 day per step",
+    "orrery_speed_week": "1 week per step",
+    "orrery_speed_month": "1 month per step",
+    "orrery_speed_year": "1 year per step",
+    "orrery_speed_tip": "Length of a step of the animation",
+    "orrery_reset": "Back to the date",
+    "orrery_reset_tip": "Back to the date of the side panel"
   },
   "chart": {
     "trajectory_title": "Altitude of the Sun and the Moon — {date}",

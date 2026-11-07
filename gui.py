@@ -1540,6 +1540,38 @@ class AstroApp(QMainWindow):
         card = _card()
         card_l = QVBoxLayout(card)
         card_l.setContentsMargins(8, 8, 8, 8)
+        # animation : le planétaire avance de jour en jour à partir de la date choisie
+        bar = QHBoxLayout()
+        bar.setContentsMargins(8, 4, 8, 0)
+        bar.setSpacing(4)
+        back = _bouton_icone("step_back", t("planets.orrery_back"), compact=True)
+        back.clicked.connect(lambda: self._orrery_step(-1))
+        self._orrery_play = _bouton_icone("play", t("planets.orrery_play"), compact=True)
+        self._orrery_play.clicked.connect(self._toggle_orrery)
+        forward = _bouton_icone("step_forward", t("planets.orrery_forward"), compact=True)
+        forward.clicked.connect(lambda: self._orrery_step(+1))
+        self._orrery_speed = QComboBox()
+        for key, days in (("day", 1.0), ("week", 7.0), ("month", 30.0), ("year", 365.25)):
+            self._orrery_speed.addItem(t(f"planets.orrery_speed_{key}"), days)
+        self._orrery_speed.setCurrentIndex(1)
+        self._orrery_speed.setToolTip(t("planets.orrery_speed_tip"))
+        self._orrery_date = _label("", "donnee")
+        reset = _bouton(t("planets.orrery_reset"), "reset", "discret", compact=True)
+        reset.setToolTip(t("planets.orrery_reset_tip"))
+        reset.clicked.connect(self._reset_orrery)
+        for widget in (back, self._orrery_play, forward, self._orrery_speed):
+            bar.addWidget(widget)
+        bar.addSpacing(12)
+        bar.addWidget(self._orrery_date)
+        bar.addStretch()
+        bar.addWidget(reset)
+        card_l.addLayout(bar)
+        if getattr(self, "_orrery_timer", None) is None:
+            self._orrery_timer = QTimer(self)
+            self._orrery_timer.setInterval(80)
+            self._orrery_timer.timeout.connect(lambda: self._orrery_step(+1))
+            self._orrery_offset = 0.0                     # jours depuis la date choisie
+        self._orrery_timer.stop()
         self.fig_orrery = Figure(facecolor=Config.CIEL_100)
         self.canvas_orrery = FigureCanvasQTAgg(self.fig_orrery)
         card_l.addWidget(self.canvas_orrery)
@@ -2905,6 +2937,9 @@ class AstroApp(QMainWindow):
     # ──────────────────────────────────────────────────────────────────────────
 
     def _on_tab_changed(self, _index):
+        timer = getattr(self, "_orrery_timer", None)
+        if timer is not None and timer.isActive() and self._chart_tabs.get(self.tabs.currentWidget()) != "orrery":
+            self._toggle_orrery()                         # l'animation cachée ne tourne pas
         self._draw_visible_chart()
         self._refresh_coordinates()
 
@@ -2965,9 +3000,59 @@ class AstroApp(QMainWindow):
             "vernal": t("planets.orrery_vernal"),
             "planets": {n: _planet_name(n) for n in _PLANETS},
         }
-        tc = AstroEngine.julian_century_j2000(self._dte)
-        charts.draw_orrery(self.fig_orrery, charts.orrery_scene(tc), labels)
+        charts.draw_orrery(self.fig_orrery, charts.orrery_scene(self._orrery_tc()), labels)
         self.canvas_orrery.draw_idle()
+        self._show_orrery_date()
+
+    # ── Planétaire animé ─────────────────────────────────────────────────────
+
+    def _orrery_tc(self):
+        """Siècles juliens du planétaire : la date choisie, plus le décalage de l'animation,
+        bornés aux années de l'éphéméride."""
+        first, last = (AstroEngine.julian_day(datetime(y, m, d)) for y, m, d in
+                       ((EPHEMERIS_YEARS[0], 1, 2), (EPHEMERIS_YEARS[1], 12, 30)))
+        jd = AstroEngine.julian_day(self._dte) + self._orrery_offset
+        if not first <= jd <= last:
+            jd = min(max(jd, first), last)
+            self._orrery_offset = jd - AstroEngine.julian_day(self._dte)
+            self._orrery_timer.stop()
+            self._orrery_play.setIcon(_icon("play", Config.ENCRE, 16))
+        return (jd - 2451545.0) / 36525.0
+
+    def _show_orrery_date(self):
+        when = self._dte + timedelta(seconds=round(self._orrery_offset * 86400.0))
+        self._orrery_date.setText(when.strftime("%d/%m/%Y"))
+        self._orrery_date.setProperty("tone", "or" if abs(self._orrery_offset) >= 0.5 else None)
+        self._orrery_date.style().polish(self._orrery_date)
+
+    def _orrery_step(self, sign):
+        """Une image : le planétaire avance (ou recule) du pas choisi."""
+        if self._dte is None:
+            return
+        self._orrery_offset += sign * self._orrery_speed.currentData()
+        scene = charts.orrery_scene(self._orrery_tc())
+        if charts.move_orrery(self.fig_orrery, scene):
+            self.canvas_orrery.draw_idle()
+            self._show_orrery_date()
+        else:
+            self._draw_orrery()
+
+    def _toggle_orrery(self):
+        running = not self._orrery_timer.isActive()
+        if running:
+            self._orrery_timer.start()
+        else:
+            self._orrery_timer.stop()
+        self._orrery_play.setIcon(_icon("pause" if running else "play", Config.ENCRE, 16))
+        self._orrery_play.setToolTip(t("planets.orrery_pause" if running else "planets.orrery_play"))
+
+    def _reset_orrery(self):
+        """Retour à la date choisie dans la barre latérale."""
+        if self._orrery_timer.isActive():
+            self._toggle_orrery()
+        self._orrery_offset = 0.0
+        if self._dte is not None:
+            self._draw_orrery()
 
     # ── Survol et clic ───────────────────────────────────────────────────────
 

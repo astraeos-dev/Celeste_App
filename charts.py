@@ -600,6 +600,8 @@ def draw_orrery(fig, scene, labels):
         (fig.add_subplot(1, 2, 2), 31.5, ("Jupiter", "Saturn", "Uranus", "Neptune"), labels["outer"]),
     )
     earth = scene["earth"]
+    fig._orrery_moving = []                     # (name, marker, label): what move_orrery moves
+    fig._orrery_frozen = False
     for ax, lim, named, title in panels:
         _style_axes(ax)
         ax.set_aspect("equal")
@@ -632,14 +634,40 @@ def draw_orrery(fig, scene, labels):
             xs, ys = zip(*body["orbit"])
             ax.plot(xs, ys, color=color, linewidth=0.9,
                     alpha=0.45 if main else 0.2, zorder=2)
+            marker, label = None, None
             if main or name == "Earth":
-                ax.plot(body["x"], body["y"], "o", color=color,
-                        markersize=size if main else 3.5,
-                        markeredgecolor=Config.CIEL_100, markeredgewidth=1, zorder=6)
+                marker, = ax.plot(body["x"], body["y"], "o", color=color,
+                                  markersize=size if main else 3.5,
+                                  markeredgecolor=Config.CIEL_100, markeredgewidth=1, zorder=6)
             if main:
                 text = labels["earth"] if name == "Earth" else labels["planets"][name]
-                _body_label(ax, body["x"], body["y"], f"{SYMBOL[name]} {text}", color,
-                            dx=7, dy=6)
+                label = ax.annotate(f"{SYMBOL[name]} {text}", (body["x"], body["y"]), xytext=(7, 6),
+                                    textcoords="offset points", fontsize=SIZE_LEGENDE, color=color,
+                                    zorder=8, ha="left", va="baseline")
+            if marker is not None:
+                fig._orrery_moving.append((name, marker, label))
+
+
+def move_orrery(fig, scene):
+    """
+    Moves the bodies of an orrery drawn by ``draw_orrery`` to the positions of
+    *scene* (another date), without redrawing the figure: an animation frame.
+
+    Returns:
+        bool: False when the figure holds no orrery yet (draw it first).
+    """
+    moving = getattr(fig, "_orrery_moving", None)
+    if not moving:
+        return False
+    if not getattr(fig, "_orrery_frozen", False):
+        fig.set_layout_engine("none")           # layout kept: a frame in 55 ms instead of 105
+        fig._orrery_frozen = True
+    for name, marker, label in moving:
+        body = scene["earth"] if name == "Earth" else scene["planets"][name]
+        marker.set_data([body["x"]], [body["y"]])
+        if label is not None:
+            label.xy = (body["x"], body["y"])
+    return True
 
 
 # ──────────────────────────────────────────────────────────────────────────────

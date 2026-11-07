@@ -28,6 +28,8 @@ Le projet suit le modèle **modèle-vue-contrôleur** : le moteur calcule, l'int
 - **Planètes mineures** (Cérès … Sedna) : table de JPL Horizons, position et vitesse tous les 10 ou 60 jours,
   interpolées par Hermite (`_TabulatedOrbit` dans `engine.py`).
 - **Étoiles** : Yale Bright Star Catalogue, ramenées à la date (mouvement propre, précession, nutation, aberration).
+- **Étoiles filantes** : liste de travail de l'IMO (`METEOR_SHOWERS`) ; le maximum est l'instant où le Soleil atteint
+  la longitude de la table, chaque année ([fiche](Ajouter-une-pluie-d-etoiles-filantes.md)).
 
 Toutes les positions passent par **`AstroEngine._target(nom)`**, qui rend l'objet Skyfield d'un astre : c'est le
 point d'entrée à connaître quand on ajoute un corps.

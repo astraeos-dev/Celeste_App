@@ -720,6 +720,80 @@ class TestLocalVisibility:
         assert abs(star.separation_from(moon).degrees - limb) * 3600 < 2.0
 
 
+class TestMeteorShowers:
+    """Maxima of the meteor showers: the IMO Meteor Shower Calendar 2026 (λ☉ J2000, times in UT)."""
+
+    @pytest.fixture(scope="class")
+    @classmethod
+    def year_2026(cls):
+        return {e["kind"]: e for e in AstroEngine.find_meteor_showers(datetime(2026, 1, 1), 365)}
+
+    @pytest.mark.parametrize("code, expected, minutes", [
+        ("QUA", datetime(2026, 1, 3, 21, 0), 60),          # « close to 21h UT »
+        ("LYR", datetime(2026, 4, 22, 19, 40), 10),        # 19h 40m UT
+        ("PER", datetime(2026, 8, 13, 3, 0), 60),          # 02h to 04h UT
+        ("DRA", datetime(2026, 10, 9, 1, 0), 30),          # 01h UT
+        ("LEO", datetime(2026, 11, 17, 23, 45), 10),       # 23h 45m UT
+        ("GEM", datetime(2026, 12, 14, 14, 0), 30),        # 14h UT
+        ("URS", datetime(2026, 12, 22, 22, 0), 30),        # 22h UT
+    ])
+    def test_times_of_the_imo_calendar(self, year_2026, code, expected, minutes):
+        assert abs(year_2026[code]["date"] - expected) <= timedelta(minutes=minutes)
+
+    def test_dates_of_the_imo_calendar(self, year_2026):
+        """Table 5: dates of the maxima, accurate for 2026."""
+        dates = {"ETA": "06/05", "SDA": "31/07", "CAP": "31/07", "ORI": "21/10", "STA": "05/11",
+                 "NTA": "12/11"}
+        for code, day in dates.items():
+            assert year_2026[code]["date"].strftime("%d/%m") == day, code
+        assert len(year_2026) == len(AstroEngine.METEOR_SHOWERS)
+
+    def test_over_the_new_year(self):
+        """From 1 November: the Quadrantids and the Lyrids of the next year, in order."""
+        events = AstroEngine.find_meteor_showers(datetime(2026, 11, 1), 365)
+        assert len(events) == 13 and [e["date"] for e in events] == sorted(e["date"] for e in events)
+        assert all(datetime(2026, 11, 1) <= e["date"] < datetime(2027, 11, 1) for e in events)
+        qua = next(e for e in events if e["kind"] == "QUA")
+        assert qua["date"].year == 2027 and qua["date"].strftime("%d/%m") == "04/01"
+        assert events[0]["kind"] == "STA" and events[0]["group"] == "meteors"
+
+    def test_perseids_from_cherbourg(self, year_2026):
+        """2026: new Moon (total solar eclipse of 12 August), radiant high before dawn."""
+        event = dict(year_2026["PER"])
+        vis = AstroEngine.meteor_visibility(event, 49.64, -1.62, 0.0, 1)
+        assert vis["period"] is not None and vis["alt"] > 55
+        assert vis["moon"] == "none" and vis["moon_fraction"] < 0.02
+        assert vis["rate"] == round(100 * math.sin(math.radians(vis["alt"])))
+        assert vis["best"].date() == datetime(2026, 8, 13).date() and vis["best"].hour < 4
+
+    def test_moonlight(self, year_2026):
+        """The Quadrantids at full Moon, the Geminids with the Moon set (IMO, 2026)."""
+        qua = AstroEngine.meteor_visibility(year_2026["QUA"], 49.64, -1.62, 0.0, 1)
+        gem = AstroEngine.meteor_visibility(year_2026["GEM"], 49.64, -1.62, 0.0, 1)
+        assert qua["moon"] == "strong" and qua["moon_fraction"] > 0.95
+        assert gem["moon"] == "none" and gem["moon_alt"] < 0
+
+    def test_from_the_south(self, year_2026):
+        """Santiago: the η-Aquariids are higher than in Cherbourg, the Ursids never rise."""
+        north = AstroEngine.meteor_visibility(year_2026["ETA"], 49.64, -1.62, 0.0, 1)
+        south = AstroEngine.meteor_visibility(year_2026["ETA"], -33.45, -70.67, 500.0, -4)
+        assert north["period"] == "morning" and north["alt"] < 20
+        assert south["alt"] > north["alt"] + 20
+        assert AstroEngine.meteor_visibility(year_2026["URS"], -33.45, -70.67, 500.0, -3)["reason"] == "horizon"
+
+    def test_no_dark_night(self, year_2026):
+        """Tromsø in mid-August: the Sun never 12° below the horizon."""
+        vis = AstroEngine.meteor_visibility(year_2026["PER"], 69.65, 18.96, 0.0, 2)
+        assert vis["period"] is None and vis["reason"] == "no_night" and vis["rate"] is None
+
+    def test_with_the_other_events(self, year_2026):
+        """event_visibility gives meteor showers their own night."""
+        events = [dict(year_2026["GEM"])] + AstroEngine.find_seasons(datetime(2026, 12, 1), 30)
+        AstroEngine.event_visibility(events, 49.64, -1.62, 0.0, 1)
+        assert events[0]["visibility"]["rate"] > 100
+        assert all(e.get("visibility") is None for e in events[1:])
+
+
 class TestLocalEclipses:
     @pytest.fixture(scope="class")
     @classmethod

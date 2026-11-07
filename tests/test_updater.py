@@ -134,3 +134,18 @@ class TestInstaller:
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         script = open(os.path.join(root, "installer", "celeste.iss"), encoding="utf-8-sig").read()
         assert "skipifnotsilent" in script and "commandline" in script
+
+
+class TestPlainNotes:
+    def test_changelog_section(self):
+        text = "- Première ligne\n  qui continue\n- **Gras**, `code` et [lien](https://x.test)"
+        assert updater.plain_notes(text) == "• Première ligne qui continue\n• Gras, code et lien"
+
+    def test_notes_generated_by_github(self):
+        """Les notes des Releases ≤ 4.4 (anglais, générées) restent lisibles."""
+        text = "## What's Changed\r\n* Version 4.4 by @x in https://x.test/pull/28\r\n\r\n\r\n**Full Changelog**: v4.3.1...v4.4"
+        assert updater.plain_notes(text) == ("What's Changed\n• Version 4.4 by @x in https://x.test/pull/28"
+                                             "\n\nFull Changelog: v4.3.1...v4.4")
+
+    def test_empty(self):
+        assert updater.plain_notes("") == "" and updater.plain_notes(None) == ""

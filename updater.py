@@ -79,6 +79,28 @@ def latest_release(timeout=10):
     }
 
 
+def plain_notes(markdown):
+    """
+    Note de version (Markdown de la Release, tirée de CHANGELOG.md) en texte
+    simple pour la fenêtre de mise à jour : titres, gras, code et liens sans
+    leurs balises, puces « • », lignes de suite rattachées à leur puce.
+    """
+    lines = []
+    for raw in (markdown or "").replace("\r\n", "\n").split("\n"):
+        line = re.sub(r"^#{1,6}\s*", "", raw.rstrip())
+        line = re.sub(r"\*\*(.+?)\*\*|__(.+?)__", lambda m: m.group(1) or m.group(2), line)
+        line = re.sub(r"`([^`]*)`", r"\1", line)
+        line = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", line)
+        bullet = re.match(r"^[-*+]\s+(.*)", line)
+        if bullet:
+            lines.append("• " + bullet.group(1))
+        elif line.startswith((" ", "\t")) and line.strip() and lines and lines[-1].startswith("• "):
+            lines[-1] += " " + line.strip()
+        else:
+            lines.append(line.strip())
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
+
+
 def can_self_update():
     """Une application installée sous Windows (exécutable PyInstaller) se met à jour seule ;
     depuis les sources, c'est git pull."""

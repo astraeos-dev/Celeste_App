@@ -60,6 +60,10 @@ jobs:
               release=true
             fi
           fi
+          if [[ "$release" == "true" ]] && ! python scripts/release_notes.py "$version" > /dev/null; then
+            echo "::error::CHANGELOG.md n'a pas de section « ## $version » : la Release n'aurait pas de note"
+            exit 1
+          fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "build=$build" >> "$GITHUB_OUTPUT"
           echo "release=$release" >> "$GITHUB_OUTPUT"
@@ -110,7 +114,8 @@ jobs:
           if-no-files-found: error
 
       # La Release : l'installateur et son empreinte SHA-256, que l'application
-      # vérifie avant d'installer une mise à jour
+      # vérifie avant d'installer une mise à jour, et sa note, la section de la
+      # version dans CHANGELOG.md (montrée par la fenêtre de mise à jour)
       - name: Publish the release
         if: steps.version.outputs.release == 'true'
         shell: bash
@@ -118,13 +123,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
+          python scripts/release_notes.py "$VERSION" release-notes.md
+          cat release-notes.md
           cd dist
           setup="Celeste-$VERSION-Setup.exe"
           sha256sum "$setup" | sed 's/ \*/  /' > "$setup.sha256"
           cat "$setup.sha256"
           if gh release view "v$VERSION" > /dev/null 2>&1; then
             gh release upload "v$VERSION" "$setup" "$setup.sha256" --clobber
+            gh release edit "v$VERSION" --notes-file ../release-notes.md
           else
             gh release create "v$VERSION" "$setup" "$setup.sha256" \
-              --target "$GITHUB_SHA" --title "Céleste $VERSION" --generate-notes
+              --target "$GITHUB_SHA" --title "Céleste $VERSION" --notes-file ../release-notes.md
           fi

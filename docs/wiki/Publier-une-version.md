@@ -9,19 +9,37 @@ l'exécutable, le programme d'installation et les formulaires GitHub le lisent l
 - Fonctionnalité nouvelle : `4.3` → `4.4`. Correction seule : `4.3` → `4.3.1` (le moteur ne change pas : pas de
   nouveau paragraphe dans `engine.py`).
 - Notez les nouveautés du moteur en tête d'[`engine.py`](https://github.com/astraeos-dev/Celeste_App/blob/master/engine.py)
-  (paragraphe `v4.3:`, que le test `test_version_is_single_sourced` réclame), et mettez le README à jour.
+  (paragraphe `v4.5:`, que le test `test_version_is_single_sourced` réclame), et mettez le README à jour.
 
-## 2. Fusionner : la version se publie toute seule
+## 2. La note de version : `CHANGELOG.md`
+
+Ajoutez en tête de [`CHANGELOG.md`](https://github.com/astraeos-dev/Celeste_App/blob/master/CHANGELOG.md) une
+section au numéro de la version :
+
+```markdown
+## 4.6
+
+- Ce qui change pour l'utilisateur, en une phrase.
+- Une ligne par nouveauté ou correction.
+```
+
+Cette section devient **la note de la Release** sur GitHub et le texte de la **fenêtre de mise à jour** : écrivez
+pour les utilisateurs, en français, en tirets, sans gras ni code (les versions 4.4 et antérieures afficheraient les
+balises), en 800 caractères au plus (la fenêtre coupe la suite). `scripts/release_notes.py 4.6` montre ce qui sera
+publié. Les tests (`tests/test_release_notes.py`) refusent une version sans section, et le workflow s'arrête avant
+de construire plutôt que de publier une Release sans note.
+
+## 3. Fusionner : la version se publie toute seule
 
 Quand une PR qui change `APP_VERSION` est fusionnée dans `master`, le workflow **Build — application Windows**
 construit l'application et publie la **Release** `v4.3` : le programme d'installation `Celeste-4.3-Setup.exe` et
-son empreinte `Celeste-4.3-Setup.exe.sha256`, avec des notes tirées des PR fusionnées. Rien ne se passe si la
+son empreinte `Celeste-4.3-Setup.exe.sha256`, avec la note de la version tirée de `CHANGELOG.md`. Rien ne se passe si la
 version est déjà publiée : modifier `config.py` sans changer le numéro ne publie pas deux fois.
 
 On peut encore pousser un tag à la main (`git tag v4.3` puis `git push origin v4.3`) : le workflow vérifie qu'il
 correspond à `APP_VERSION`. Depuis l'onglet *Actions* (*Run workflow*), il construit sans publier.
 
-## 3. La mise à jour chez l'utilisateur
+## 4. La mise à jour chez l'utilisateur
 
 Céleste installé cherche une version plus récente au démarrage (après quelques secondes, sans bloquer la fenêtre)
 et quand on clique sur **Paramètres › À propos › Vérifier les mises à jour**. S'il en trouve une, une fenêtre la
@@ -52,7 +70,7 @@ de `installer/celeste.iss`.
 > La première version qui sait se mettre à jour (4.3) s'installe encore à la main ; les suivantes se mettent à
 > jour seules.
 
-## 4. Les artefacts du workflow
+## 5. Les artefacts du workflow
 
 Dans chaque run du workflow, rubrique *Artifacts* :
 

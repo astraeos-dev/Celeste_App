@@ -432,6 +432,30 @@ class TestEvents:
         assert all(len(line.encode("utf-8")) <= 75 for line in text.split("\r\n"))
         window._evt_filters["moon"].setChecked(True)
 
+    def test_meteor_showers(self, window, tmp_path, monkeypatch):
+        """Les étoiles filantes : leur filtre, la nuit du maximum vue d'ici, l'agenda."""
+        import gui
+        window._search_conjunctions_gui()
+        for key, box in window._evt_filters.items():
+            box.setChecked(key == "meteors")
+        texts = self._texts(window)
+        assert len(texts) == 13 and all(x.startswith("☄") for x in texts)
+        gem = next(x for x in texts if "Maximum des Géminides" in x)
+        assert "14/12/2026 13:41 TU" in gem and "Taux zénithal 150 météores/h" in gem
+        assert "Actives du 04/12 au 20/12" in gem and "Lune couchée : pas de gêne" in gem
+        assert re.search(r"Meilleur moment vers \d\d:\d\d : radiant à \d+° de hauteur", gem)
+        qua = next(x for x in texts if "Maximum des Quadrantides" in x)
+        assert "04/01/2027" in qua
+        assert any("gêne forte" in x for x in texts)            # les Ursides, à la pleine Lune
+        target = tmp_path / "agenda.ics"
+        monkeypatch.setattr(gui.QFileDialog, "getSaveFileName",
+                            staticmethod(lambda *a, **k: (str(target), "")))
+        window._btn_ics.click()
+        agenda = target.read_bytes().decode("utf-8")
+        assert agenda.count("BEGIN:VEVENT") == 13 and "SUMMARY:Maximum des Géminides\r\n" in agenda
+        for box in window._evt_filters.values():
+            box.setChecked(box is not window._evt_filters["visible"])
+
     def test_eclipses_seen_from_here(self, window):
         """Cherbourg : l'éclipse annulaire du 06/02/2027 n'y passe pas, celle du 02/08/2027 oui."""
         window._search_eclipses_gui()
@@ -1009,6 +1033,14 @@ class TestUpdates:
         assert box.isVisible() and "Céleste 99.0 est disponible" in box.text()
         assert {b.text() for b in box.buttons()} >= {"Mettre à jour", "Voir la version",
                                                      "Ignorer cette version", "Plus tard"}
+        box.close()
+
+    def test_notes_in_plain_text(self, window, offline):
+        """La note de la Release (CHANGELOG.md) s'affiche sans balises Markdown."""
+        offline["release"] = dict(self.RELEASE, notes="- Étoiles **filantes**\n  dans `Évènements`")
+        window.check_updates()
+        box = window._update_dialog
+        assert box.informativeText().startswith("• Étoiles filantes dans Évènements")
         box.close()
 
     def test_from_the_sources_git_pull(self, window, offline, monkeypatch):

@@ -74,6 +74,8 @@ Jour et Observation), avec des graphiques interactifs et une carte du ciel.
   l'évènement
 - **Lune et saisons** — rapprochements de la Lune avec les planètes et Aldébaran, les Pléiades, Régulus, Spica et
   Antarès, occultations vues d'ici ; périgées, apogées et super lunes ; équinoxes, solstices, périhélie et aphélie
+- **Étoiles filantes** — maxima des 13 grandes pluies de l'année (calendrier de l'IMO) ; la nuit du maximum vue d'ici :
+  meilleur moment, hauteur et direction du radiant, météores par heure sous un ciel noir, gêne due à la Lune
 - **Visibilité d'ici** — pour chaque évènement, la nuit où le voir (le soir, le matin ou toute la nuit), avec la
   hauteur, la direction et l'heure ; filtres par groupe et « Visibles d'ici seulement » ; export vers un agenda (.ics)
 - **Équation du temps** — écart entre temps solaire vrai et temps solaire moyen
@@ -272,6 +274,8 @@ est téléchargée depuis le serveur JPL/NAIF au premier lancement, puis vérifi
 | `find_conjunctions(dte_start, num_days, max_separation)` | Conjonctions (inférieure, supérieure, transit ; nord ou sud), oppositions et plus grandes élongations, à la minute |
 | `find_moon_events(dte_start, num_days, max_separation)` | Conjonctions de la Lune avec les planètes et les étoiles brillantes de son chemin, périgées, apogées, super lunes |
 | `find_seasons(dte_start, num_days)` | Équinoxes, solstices, périhélie et aphélie de la Terre |
+| `find_meteor_showers(dte_start, num_days)` | Maxima des grandes pluies d'étoiles filantes (`METEOR_SHOWERS`, calendrier de l'IMO), à la longitude du Soleil de leur maximum |
+| `meteor_visibility(event, lat, lon, elevation_m, tz)` | Nuit du maximum vue du lieu : meilleur moment, radiant, taux horaire sous un ciel noir, Lune |
 | `event_visibility(events, lat, lon, elevation_m, tz)` | Visibilité de chaque évènement depuis le lieu, la nuit venue (soir, matin, toute la nuit), occultations |
 | `moon_occultation(event, lat, lon, elevation_m)` | Occultation vue du lieu : disparition, réapparition, hauteur de la Lune |
 | `eclipse_local(eclipse, lat, lon, elevation_m)` | Circonstances locales d'une éclipse : contacts, magnitude, obscuration, durée de la totalité |
@@ -301,6 +305,8 @@ affiché est redessiné ; les autres le sont quand on les ouvre.
 - **JPL Horizons** et **USNO** (aa.usno.navy.mil) — valeurs de référence des tests de positions, levers et couchers
 - **D. Hoffleit et W. H. Warren** (1991), *Yale Bright Star Catalogue*, 5e éd. — étoiles de la carte du ciel (domaine public)
 - **Natural Earth** (naturalearthdata.com), terres au 1/110 000 000 — fond de carte des éclipses (domaine public)
+- **International Meteor Organization**, *Meteor Shower Calendar 2026* (J. Rendtel), table 5 — pluies d'étoiles
+  filantes : activité, longitude du Soleil au maximum, radiant, vitesse, ZHR
 - **E. Bowell et al.** (1989), *Application of photometric models to asteroids*, Asteroids II — magnitudes H, G des
   planètes mineures (paramètres de la JPL Small-Body Database)
 
@@ -318,7 +324,8 @@ retéléchargent pas.
   (raccourcis du menu Démarrer et du Bureau, désinstallation depuis les paramètres de Windows), et `Celeste-Windows`,
   le dossier de l'application à lancer sans installer (`Celeste.exe`).
 - **Nouvelle version** : changer `APP_VERSION` dans `config.py` (seul endroit : fenêtre, installateur, demandes
-  GitHub) et fusionner : le workflow publie la Release `v<version>` (installateur et empreinte SHA-256).
+  GitHub), écrire ses nouveautés dans [`CHANGELOG.md`](CHANGELOG.md) et fusionner : le workflow publie la Release
+  `v<version>` (installateur, empreinte SHA-256, et la note de la version, en français).
 - **Mise à jour automatique** : Céleste installé cherche une version plus récente au démarrage (ou par Paramètres ›
   À propos › Vérifier les mises à jour), la télécharge, vérifie son empreinte, l'installe par-dessus l'ancienne et
   se rouvre, réglages et favoris conservés (`updater.py`). Voir le wiki,
@@ -366,6 +373,7 @@ avec le projet (`fonts/`, `assets/`) : rien à installer.
 - [x] **Conjonctions et oppositions** — prochains événements planétaires, à la minute, avec leur carte
 - [x] **Planètes mineures** — Cérès, Pallas, Junon, Vesta, Pluton, Éris, Haumea, Makemake, Sedna (JPL Horizons)
 - [x] **Évènements vus d'ici** — visibilité, occultations, Lune, saisons, circonstances locales des éclipses, export .ics
+- [x] **Étoiles filantes** — maxima des grandes pluies, radiant et Lune la nuit du maximum
 - [x] **Précision** — éphéméride JPL DE440 (Skyfield) à la place des séries de Meeus ; levers et couchers à la seconde
 - [x] **Équation du temps**
 - [ ] **Planétaire 2D** — orbites animées

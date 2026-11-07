@@ -13,6 +13,10 @@
     "datetime": "Fecha y hora (UT)",
     "datetime_tip": "Fecha y hora en tiempo universal; la flecha abre el calendario",
     "now_tip": "Volver al momento actual",
+    "place": "Buscar un lugar",
+    "place_placeholder": "Ciudad: París, Tokio…",
+    "place_tip": "Escriba el nombre de una ciudad y elíjala: se rellenan latitud, longitud y altitud (ciudades de más de 15 000 habitantes, GeoNames, sin conexión). « Paris, US » para un país.",
+    "place_unknown": "Ninguna ciudad conocida se llama « {name} »",
     "latitude": "Latitud",
     "latitude_tip": "Grados decimales, positivos al norte (48.85 para París)",
     "longitude": "Longitud",
@@ -481,7 +485,7 @@
     "theme_hint": "El tema se elige al pie de la barra lateral: Noche, Día u Observación (rojo sobre negro, para observar al aire libre de noche).",
     "reset_hint": "Devuelve el tema, el idioma, el formato de hora, el lugar de inicio y el tiempo real a sus valores de origen. Los favoritos se conservan.",
     "about_section": "Acerca de",
-    "credits": "Diseño Astræos. Fuentes IBM Plex Sans e IBM Plex Mono (licencia OFL), Astraeos Symboles a partir de Noto Sans Symbols (licencia OFL). Iconos Material Design Icons (licencia Apache 2.0)."
+    "credits": "Diseño Astræos. Fuentes IBM Plex Sans e IBM Plex Mono (licencia OFL), Astraeos Symboles a partir de Noto Sans Symbols (licencia OFL). Iconos Material Design Icons (licencia Apache 2.0). Ciudades de la búsqueda de lugar: GeoNames (licencia CC BY 4.0)."
   },
   "constellations": {
     "Orion": "Orión",

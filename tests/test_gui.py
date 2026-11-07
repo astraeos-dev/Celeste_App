@@ -632,6 +632,41 @@ class _FakeResponse(io.BytesIO):
         return False
 
 
+class TestPlaceSearch:
+    def test_suggestions_then_choice(self, window, qapp):
+        """« londres » propose London ; la choisir remplit lieu, altitude et nom."""
+        window._on_place_typed("londres")
+        assert window._place_model.stringList() == ["London · England · GB"]
+        window._on_place_chosen("London · England · GB")
+        _pump(qapp)
+        assert window.entry_lat.text() == "51,5085" and window.entry_lon.text() == "−0,1257"
+        assert window.location_name == "London" and window.entry_place.text() == ""
+        assert window._lbl_pos.text().startswith("London · 51,5085° N")
+        assert window.combo_fav.currentIndex() == -1
+
+    def test_return_takes_the_first(self, window, qapp):
+        window.entry_place.setText("tokyo")
+        window._on_place_return()
+        _pump(qapp)
+        assert window.location_name == "Tokyo" and window.entry_lat.text().startswith("35,6")
+
+    def test_unknown_place(self, window):
+        window.entry_place.setText("zzzqqq")
+        window._on_place_return()
+        assert "zzzqqq" in window.statusBar().currentMessage()
+
+    def test_one_letter_is_not_enough(self, window):
+        window._on_place_typed("p")
+        assert window._place_model.stringList() == []
+
+    def test_name_without_network(self, monkeypatch):
+        """Sans Nominatim, la ville la plus proche de la liste hors ligne nomme le point."""
+        import gui
+        monkeypatch.setattr(gui, "_nominatim_name", lambda lat, lon: "")
+        assert gui._place_name(49.6333, -1.6167) == "Cherbourg"
+        assert gui._place_name(48.0, -30.0) == ""
+
+
 class TestGeolocation:
     def test_device_position_is_used(self, window, monkeypatch):
         """Cherbourg donné par le service de l'appareil, nommé par OpenStreetMap."""

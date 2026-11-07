@@ -35,7 +35,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError, available_timezones
 
 from PyQt6.QtCore import (
     QDate, QDateTime, QEvent, QLocale, QPointF, QRectF, QRegularExpression, QSize,
-    Qt, QTime, QTimer, QTimeZone, QUrl,
+    QStringListModel, Qt, QTime, QTimer, QTimeZone, QUrl,
 )
 from PyQt6.QtGui import (
     QBrush, QColor, QDesktopServices, QFont, QFontDatabase, QKeySequence,
@@ -58,6 +58,7 @@ from matplotlib.figure import Figure  # noqa: E402
 
 import charts  # noqa: E402
 import icons  # noqa: E402
+import places  # noqa: E402
 import settings as prefs  # noqa: E402
 import updater  # noqa: E402
 from config import APP_VERSION, FONT_MONO, FONT_SANS, THEME_NAMES, Config, mix  # noqa: E402
@@ -232,6 +233,16 @@ def _elev_text(metres):
 
 
 def _place_name(lat, lon):
+    """Nom de la commune d'un point (OpenStreetMap Nominatim) ; sans réponse, la ville
+    la plus proche de la liste hors ligne (à moins de 25 km), sinon « »."""
+    name = _nominatim_name(lat, lon)
+    if name:
+        return name
+    near = places.nearest(lat, lon)
+    return near["name"] if near else ""
+
+
+def _nominatim_name(lat, lon):
     """Nom de la commune d'un point (OpenStreetMap Nominatim) ; « » sans réponse."""
     url = ("https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=10"
            f"&lat={lat:.5f}&lon={lon:.5f}&accept-language={get_lang()}")
@@ -1032,7 +1043,7 @@ class AstroApp(QMainWindow):
         root = QHBoxLayout(central)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
-        root.addWidget(self._build_sidebar())
+        root.addWidget(self._scrolling_sidebar(self._build_sidebar()))
 
         main = QWidget()
         main.setObjectName("central")
@@ -1064,10 +1075,9 @@ class AstroApp(QMainWindow):
     def _build_sidebar(self):
         side = QFrame()
         side.setObjectName("sidebar")
-        side.setFixedWidth(312)
         lay = QVBoxLayout(side)
         lay.setContentsMargins(24, 24, 24, 16)
-        lay.setSpacing(16)
+        lay.setSpacing(12)
 
         # En-tête : le symbole Astræos, puis le nom de l'application
         head = QHBoxLayout()
@@ -1102,7 +1112,22 @@ class AstroApp(QMainWindow):
         self.btn_now.clicked.connect(self.set_now)
         lay.addLayout(self._with_button(self.field_date, self.btn_now))
 
-        # Lieu
+        # Lieu : une ville cherchée par son nom (GeoNames, hors ligne), ou ses coordonnées
+        self.entry_place = QLineEdit()
+        self.entry_place.setPlaceholderText(t("side.place_placeholder"))
+        self.entry_place.setToolTip(t("side.place_tip"))
+        self.entry_place.setClearButtonEnabled(True)
+        self._place_model = QStringListModel(self)
+        self._place_found = {}
+        self._place_completer = QCompleter(self._place_model, self)
+        self._place_completer.setCompletionMode(QCompleter.CompletionMode.UnfilteredPopupCompletion)
+        self._place_completer.setMaxVisibleItems(10)
+        self._place_completer.activated.connect(self._on_place_chosen)
+        self.entry_place.setCompleter(self._place_completer)
+        self.entry_place.textEdited.connect(self._on_place_typed)
+        self.entry_place.returnPressed.connect(self._on_place_return)
+        lay.addWidget(ChampSaisie(t("side.place"), self.entry_place))
+
         validator = QRegularExpressionValidator(QRegularExpression(_COORD_REGEX))
         self.entry_lat = QLineEdit(_coord_text(_pref_float("default_lat", 49.6333)))
         self.entry_lon = QLineEdit(_coord_text(_pref_float("default_lon", -1.6167)))
@@ -1171,6 +1196,25 @@ class AstroApp(QMainWindow):
         lay.addWidget(self.theme_selector)
         lay.addWidget(_label(tf("app.version", version=APP_VERSION), "legende"))
         return side
+
+    @staticmethod
+    def _scrolling_sidebar(side):
+        """La barre latérale, qui défile quand la fenêtre est plus basse qu'elle
+        (écrans de 768 pixels de haut)."""
+        side.setMinimumWidth(280)          # sinon la largeur naturelle (337) déborderait de 312
+        scroll = QScrollArea()
+        scroll.setObjectName("sidebarScroll")
+        scroll.setWidget(side)
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        bar = scroll.verticalScrollBar()
+
+        def fit(_low=0, high=0):            # la barre de défilement s'ajoute aux 312 pixels
+            scroll.setFixedWidth(312 + (bar.sizeHint().width() if high > 0 else 0))
+        bar.rangeChanged.connect(fit)
+        fit()
+        return scroll
 
     @staticmethod
     def _with_button(field, *buttons):
@@ -2129,6 +2173,43 @@ class AstroApp(QMainWindow):
         self.entry_lon.setText(_coord_text(float(loc["lon"])))
         self.entry_elev.setText(_elev_text(float(loc.get("elev", 0))))
         self.location_name = name
+        self.calculate()
+
+    def _on_place_typed(self, text):
+        """Suggestions de villes à chaque lettre (deux au moins)."""
+        found = places.search(text) if len(text.strip()) >= 2 else []
+        self._place_found = {}
+        for place in found:
+            self._place_found.setdefault(places.label(place), place)
+        self._place_model.setStringList(list(self._place_found))
+        if self._place_found:
+            self._place_completer.complete()
+
+    def _on_place_chosen(self, text):
+        place = self._place_found.get(text)
+        if place:
+            self._apply_place(place)
+
+    def _on_place_return(self):
+        """Entrée sans choisir : la première suggestion."""
+        text = self.entry_place.text()
+        if not text.strip() or text in self._place_found:
+            return                                        # vide, ou déjà traité par le choix
+        found = places.search(text, limit=1)
+        if found:
+            self._apply_place(found[0])
+        else:
+            self.statusBar().showMessage(tf("side.place_unknown", name=text.strip()), 5000)
+
+    def _apply_place(self, place):
+        """Ville choisie : coordonnées, altitude et nom, puis calcul."""
+        self._place_completer.popup().hide()
+        self.entry_lat.setText(_coord_text(place["lat"]))
+        self.entry_lon.setText(_coord_text(place["lon"]))
+        self.entry_elev.setText(_elev_text(place["elevation"]))
+        self.location_name = place["name"]
+        self.combo_fav.setCurrentIndex(-1)
+        QTimer.singleShot(0, self.entry_place.clear)
         self.calculate()
 
     def _on_coords_edited(self, _text):

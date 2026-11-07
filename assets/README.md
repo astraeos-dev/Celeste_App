@@ -23,3 +23,10 @@ icônes sous licence Apache 2.0 — voir `LICENSE-MDI.txt`.
 `world_land.json` : contours des terres de **Natural Earth** au 1/110 000 000 (naturalearthdata.com, domaine public),
 réduits à leur contour extérieur et à deux décimales ; fond de la carte des éclipses projetées au sol (`charts.py`).
 
+
+## Villes
+
+`cities.tsv.gz` : les 34 205 villes de plus de 15 000 habitants de **GeoNames** (`cities15000`, www.geonames.org,
+licence [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)), réduites par `scripts/make_cities.py` : nom,
+autres noms en écriture latine (villes de plus de 100 000 habitants), pays, région, coordonnées, altitude,
+population. Elles servent à la recherche de lieu par son nom (`places.py`) et à nommer un point sans réseau.

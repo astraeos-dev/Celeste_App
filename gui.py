@@ -1297,6 +1297,10 @@ class AstroApp(QMainWindow):
 
         # Lune
         card, body, self._lbl_moon_state = self._body_card(SYMBOL["Moon"], "lune", t("moon.title"))
+        btn_calendar = _bouton(t("calendar.button"), "calendar", "secondaire", compact=True)
+        btn_calendar.setToolTip(t("calendar.button_tip"))
+        btn_calendar.clicked.connect(lambda _=False: self._show_moon_calendar())
+        card.layout().itemAt(0).layout().insertWidget(3, btn_calendar)
         self.moon_labels = {}
         r = self._section_rows(body, 0, t("moon.section_position"), [
             ("ra", "moon.ra"), ("dec", "moon.dec"), ("alt", "moon.alt"),
@@ -2717,6 +2721,114 @@ class AstroApp(QMainWindow):
         else:
             lines.append((t("tonight.no_upcoming"), "attenuee"))
         return lines
+
+    # ── Calendrier lunaire ────────────────────────────────────────────────────
+
+    def _show_moon_calendar(self, year=None, month=None):
+        """Fenêtre (non bloquante) : la Lune jour par jour sur un mois, vue d'ici."""
+        if not self._check_inputs():
+            self._warn_invalid_coords()
+            return
+        local = self._local(self._dte or _utc_now())
+        dlg = getattr(self, "_calendar_dialog", None)
+        if dlg is None:
+            dlg = QDialog(self)
+            dlg.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+            dlg.setWindowTitle(t("calendar.window_title"))
+            dlg.resize(980, 720)
+            lay = QVBoxLayout(dlg)
+            lay.setContentsMargins(24, 24, 24, 16)
+            lay.setSpacing(12)
+            head = QHBoxLayout()
+            prev = _bouton_icone("previous", t("calendar.previous"))
+            nxt = _bouton_icone("next", t("calendar.next"))
+            prev.clicked.connect(lambda: self._fill_moon_calendar(-1))
+            nxt.clicked.connect(lambda: self._fill_moon_calendar(+1))
+            dlg._title = _label("", "sous-titre")
+            head.addWidget(prev)
+            head.addWidget(dlg._title)
+            head.addWidget(nxt)
+            head.addStretch()
+            lay.addLayout(head)
+            dlg._grid = QGridLayout()
+            dlg._grid.setSpacing(6)
+            lay.addLayout(dlg._grid, stretch=1)
+            dlg._note = _label("", "legende", tone="attenuee", wrap=True)
+            lay.addWidget(dlg._note)
+            buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+            buttons.rejected.connect(dlg.reject)
+            lay.addWidget(buttons)
+            dlg.destroyed.connect(lambda *_: setattr(self, "_calendar_dialog", None))
+            self._calendar_dialog = dlg
+        dlg._month = (year or local.year, month or local.month)
+        self._fill_moon_calendar(0)
+        dlg.show()
+        dlg.raise_()
+
+    def _fill_moon_calendar(self, step):
+        """Remplit la grille du mois affiché, décalé de *step* mois."""
+        dlg = self._calendar_dialog
+        year, month = dlg._month
+        month += step
+        year, month = year + (month - 1) // 12, (month - 1) % 12 + 1
+        dlg._month = (year, month)
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            days = AstroEngine.moon_calendar(year, month, self._lat, self._lon, self._elevation(), self._zone)
+        finally:
+            QApplication.restoreOverrideCursor()
+        grid = dlg._grid
+        while grid.count():
+            item = grid.takeAt(0)
+            if item.widget():
+                item.widget().hide()
+                item.widget().deleteLater()
+        loc = _locale()
+        name = loc.standaloneMonthName(month, QLocale.FormatType.LongFormat)
+        dlg._title.setText(f"{name[:1].upper()}{name[1:]} {year}")
+        first = loc.firstDayOfWeek().value                # 1 lundi … 7 dimanche
+        for col in range(7):
+            day = (first - 1 + col) % 7 + 1
+            head = _label(loc.standaloneDayName(day, QLocale.FormatType.ShortFormat), "legende",
+                          tone="attenuee")
+            head.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            grid.addWidget(head, 0, col)
+        offset = (days[0]["date"].isoweekday() - first) % 7
+        today = self._local(self._dte).date() if self._dte else None
+        southern = (self._lat or 0) < 0
+        for i, d in enumerate(days):
+            cell = _card()
+            cell.setProperty("calendarDay", True)
+            box = QVBoxLayout(cell)
+            box.setContentsMargins(8, 6, 8, 6)
+            box.setSpacing(2)
+            top = QHBoxLayout()
+            top.addWidget(_label(str(d["date"].day), "corps", tone="or" if d["date"] == today else None,
+                                 strong=True))
+            top.addStretch()
+            disc = PhaseLune(26)
+            disc.set_phase(d["phase"], southern=southern)
+            top.addWidget(disc)
+            box.addLayout(top)
+            box.addWidget(_label(f"{_num(100.0 * d['fraction'])} %", "legende"))
+            rise = self._clock(d["rise"]) if d["rise"] else "—"
+            sets = self._clock(d["set"]) if d["set"] else "—"
+            times = _label(f"↑ {rise}   ↓ {sets}", "legende", tone="attenuee")
+            times.setToolTip(t("calendar.rise_set_tip"))
+            box.addWidget(times)
+            if d["event"]:
+                ev = d["event"]
+                box.addWidget(_label(f"{t('phases.' + ev['kind'])} {self._clock(ev['time'])}", "legende",
+                                     tone="lune", strong=True))
+            box.addStretch()
+            grid.addWidget(cell, 1 + (offset + i) // 7, (offset + i) % 7)
+        for row in range(1, 7):
+            grid.setRowStretch(row, 1)
+        for col in range(7):
+            grid.setColumnStretch(col, 1)
+            grid.setColumnMinimumWidth(col, 110)
+        dlg._note.setText(tf("calendar.note", zone=getattr(self._zone, "key", "UTC"),
+                             place=self.location_name or f"{_fmt_lat(self._lat)}, {_fmt_lon(self._lon)}"))
 
     def _update_moon_card(self):
         md, lb, ev = self.moon_data, self.moon_labels, self.moon_events

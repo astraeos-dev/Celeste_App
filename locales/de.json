@@ -429,6 +429,15 @@
     "period_night": "die ganze Nacht",
     "no_upcoming": "In den nächsten 30 Tagen nichts von hier aus sichtbar"
   },
+  "calendar": {
+    "button": "Kalender",
+    "button_tip": "Mondkalender des Monats: Phase, beleuchteter Anteil, Auf- und Untergang jedes Tages",
+    "window_title": "Mondkalender",
+    "previous": "Vorheriger Monat",
+    "next": "Nächster Monat",
+    "rise_set_tip": "↑ Mondaufgang und ↓ Monduntergang, Ortszeit (—: nicht an diesem Tag)",
+    "note": "{place} · Ortszeit ({zone}). Phase und beleuchteter Anteil um 12 Uhr; Auf- ↑ und Untergang ↓ des oberen Randes; Neumond, Viertel und Vollmond auf die Minute."
+  },
   "meteors": {
     "title": "Maximum der {name}",
     "zhr": "Zenitrate {value} Meteore/h",

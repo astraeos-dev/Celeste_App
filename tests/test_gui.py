@@ -643,6 +643,37 @@ class _FakeResponse(io.BytesIO):
         return False
 
 
+class TestMoonCalendar:
+    def _cells(self, dlg):
+        return [w for w in dlg.findChildren(QFrame) if w.property("calendarDay") and w.isVisibleTo(dlg)]
+
+    def test_month_and_navigation(self, window, qapp):
+        """Novembre 2026 (heures en TU ici), puis décembre, puis retour à travers l'année."""
+        window._show_moon_calendar()
+        _pump(qapp)
+        dlg = window._calendar_dialog
+        assert dlg._title.text() == "Novembre 2026" and len(self._cells(dlg)) == 30
+        texts = [" ".join(l.text() for l in c.findChildren(QLabel)) for c in self._cells(dlg)]
+        assert "Pleine lune 14:54" in texts[23] and texts[23].startswith("24 100 %")   # 14:53:34
+        assert "↑ —" in texts[1]                                  # pas de lever le 2
+        window._fill_moon_calendar(+1)
+        _pump(qapp)                                   # les nouvelles cases s'affichent au tour suivant
+        assert dlg._title.text() == "Décembre 2026" and len(self._cells(dlg)) == 31
+        window._fill_moon_calendar(-12)
+        assert dlg._title.text() == "Décembre 2025"
+        dlg.close()
+        qapp.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        assert window._calendar_dialog is None
+
+    def test_first_day_of_the_week(self, window, qapp):
+        """En français, la semaine commence le lundi : le 1er novembre 2026, un dimanche, est en 7e colonne."""
+        window._show_moon_calendar(2026, 11)
+        dlg = window._calendar_dialog
+        first = self._cells(dlg)[0]
+        assert dlg._grid.getItemPosition(dlg._grid.indexOf(first))[:2] == (1, 6)
+        dlg.close()
+
+
 class TestPlaceSearch:
     def test_suggestions_then_choice(self, window, qapp):
         """« londres » propose London ; la choisir remplit lieu, altitude et nom."""

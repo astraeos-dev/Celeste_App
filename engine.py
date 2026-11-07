@@ -1809,6 +1809,51 @@ class AstroEngine:
                 e["occultation"] = cls.moon_occultation(e, lat, lon, elevation_m)
         return events
 
+    @classmethod
+    def moon_calendar(cls, year, month, lat, lon, elevation_m=0.0, tz=0):
+        """
+        The Moon day by day over a month of the observer's calendar.
+
+        Returns:
+            list[dict]: one per local day: date (datetime.date), phase (Moon −
+            Sun longitude at local noon, °: 0 new, 180 full), fraction (0–1, at
+            local noon), rise, set (UT datetimes or None, find_events) and
+            event (None, or the principal phase of that day: kind 'new_moon' |
+            'first_quarter' | 'full_moon' | 'last_quarter', time in UT).
+        """
+        from datetime import date as _date, datetime as _datetime
+        sky = _sky()
+        first = _date(year, month, 1)
+        days = []
+        day = first
+        while day.month == month:
+            days.append(day)
+            day += timedelta(days=1)
+        starts = [cls._local_day(_datetime(d.year, d.month, d.day, 12), tz)[0] for d in days]
+        starts = [s.replace(tzinfo=None) if s.tzinfo else s for s in starts]
+        end = starts[-1] + timedelta(days=1)
+        noons = np.array([cls.julian_day(s) + 0.5 for s in starts])
+        noon_times = _fast_time(noons)
+        phase = almanac.moon_phase(sky["eph"], noon_times).degrees
+        fraction = almanac.fraction_illuminated(sky["eph"], "moon", noon_times)
+        t0, t1 = sky["ts"].ut1_jd(cls.julian_day(starts[0])), sky["ts"].ut1_jd(cls.julian_day(end))
+        times, kinds = almanac.find_discrete(t0, t1, almanac.moon_phases(sky["eph"]))
+        names = ("new_moon", "first_quarter", "full_moon", "last_quarter")
+        principal = {}
+        for tt, k in zip(times, kinds):
+            when = cls._jd_to_datetime(float(tt.ut1), starts[0])
+            i = max(j for j, s in enumerate(starts) if s <= when)
+            principal[i] = {"kind": names[int(k)], "time": when}
+        out = []
+        for i, d in enumerate(days):
+            ev = cls.find_events(_datetime(d.year, d.month, d.day, 12), lat, lon, "moon", tz, elevation_m)
+            rise, sets = ev.get("rise"), ev.get("set")
+            out.append({"date": d, "phase": float(phase[i]), "fraction": float(fraction[i]),
+                        "rise": rise.replace(tzinfo=None) if rise is not None and rise.tzinfo else rise,
+                        "set": sets.replace(tzinfo=None) if sets is not None and sets.tzinfo else sets,
+                        "event": principal.get(i)})
+        return out
+
     # « Ce soir » : planets seen when 5° high, the Sun 6° below the horizon
     # (12° for Uranus and Neptune, too faint in the twilight)
     _FAINT_PLANETS = ("Uranus", "Neptune")

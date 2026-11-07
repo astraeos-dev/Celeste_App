@@ -429,6 +429,15 @@
     "period_night": "all night",
     "no_upcoming": "Nothing visible from here in the next 30 days"
   },
+  "calendar": {
+    "button": "Calendar",
+    "button_tip": "Lunar calendar of the month: phase, illuminated fraction, rise and set of each day",
+    "window_title": "Lunar calendar",
+    "previous": "Previous month",
+    "next": "Next month",
+    "rise_set_tip": "↑ moonrise and ↓ moonset, local time (—: not that day)",
+    "note": "{place} · local time ({zone}). Phase and illuminated fraction at noon; rise ↑ and set ↓ of the upper limb; new moon, quarters and full moon to the minute."
+  },
   "meteors": {
     "title": "Peak of the {name}",
     "zhr": "Zenithal rate {value} meteors/h",

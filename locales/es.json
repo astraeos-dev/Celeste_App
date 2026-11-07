@@ -429,6 +429,15 @@
     "period_night": "toda la noche",
     "no_upcoming": "Nada visible desde aquí en los próximos 30 días"
   },
+  "calendar": {
+    "button": "Calendario",
+    "button_tip": "Calendario lunar del mes: fase, fracción iluminada, salida y puesta de cada día",
+    "window_title": "Calendario lunar",
+    "previous": "Mes anterior",
+    "next": "Mes siguiente",
+    "rise_set_tip": "↑ salida y ↓ puesta de la Luna, hora local (—: no ese día)",
+    "note": "{place} · hora local ({zone}). Fase y fracción iluminada a mediodía; salida ↑ y puesta ↓ del borde superior; luna nueva, cuartos y luna llena al minuto."
+  },
   "meteors": {
     "title": "Máximo de las {name}",
     "zhr": "Tasa cenital {value} meteoros/h",

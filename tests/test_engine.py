@@ -777,6 +777,45 @@ class TestTonight:
         assert events[0]["bodies"] == ("Moon", "Mars")
 
 
+class TestMoonCalendar:
+    """November 2026 at Cherbourg (Europe/Paris): principal phases of the USNO, in UT."""
+
+    @pytest.fixture(scope="class")
+    @classmethod
+    def november(cls):
+        from zoneinfo import ZoneInfo
+        return AstroEngine.moon_calendar(2026, 11, 49.6333, -1.6167, 0.0, ZoneInfo("Europe/Paris"))
+
+    def test_one_row_per_day(self, november):
+        assert len(november) == 30 and november[0]["date"].day == 1 and november[-1]["date"].day == 30
+
+    @pytest.mark.parametrize("day, kind, hour, minute", [
+        (1, "last_quarter", 20, 28), (9, "new_moon", 7, 2), (17, "first_quarter", 11, 48),
+        (24, "full_moon", 14, 53),
+    ])
+    def test_principal_phases(self, november, day, kind, hour, minute):
+        event = november[day - 1]["event"]
+        assert event["kind"] == kind
+        assert abs(event["time"] - datetime(2026, 11, day, hour, minute)) <= timedelta(minutes=1)
+        assert sum(1 for d in november if d["event"]) == 4
+
+    def test_fraction_and_phase(self, november):
+        assert november[8]["fraction"] < 0.01 and november[23]["fraction"] > 0.99
+        assert abs(november[16]["phase"] - 90.0) < 5.0          # first quarter, at noon
+
+    def test_rises_and_sets(self, november):
+        """The Moon rises about 50 minutes later each day, and skips a day once a month."""
+        assert november[1]["rise"] is None and november[2]["rise"] is not None
+        moon = AstroEngine.find_events(datetime(2026, 11, 1, 12), 49.6333, -1.6167, "moon", 1)
+        assert abs(november[0]["rise"] - moon["rise"]) < timedelta(seconds=2)
+
+    def test_local_days_of_the_zone(self):
+        """In Tokyo, the full Moon of 24 November 14:53 UT falls on the 24th at 23:53 local time."""
+        from zoneinfo import ZoneInfo
+        tokyo = AstroEngine.moon_calendar(2026, 11, 35.68, 139.69, 0.0, ZoneInfo("Asia/Tokyo"))
+        assert tokyo[23]["event"]["kind"] == "full_moon"
+
+
 class TestMeteorShowers:
     """Maxima of the meteor showers: the IMO Meteor Shower Calendar 2026 (λ☉ J2000, times in UT)."""
 

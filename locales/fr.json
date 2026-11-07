@@ -429,6 +429,15 @@
     "period_night": "toute la nuit",
     "no_upcoming": "Rien de visible d'ici dans les 30 prochains jours"
   },
+  "calendar": {
+    "button": "Calendrier",
+    "button_tip": "Calendrier lunaire du mois : phase, fraction éclairée, lever et coucher de chaque jour",
+    "window_title": "Calendrier lunaire",
+    "previous": "Mois précédent",
+    "next": "Mois suivant",
+    "rise_set_tip": "↑ lever et ↓ coucher de la Lune, à l'heure du lieu (— : pas ce jour-là)",
+    "note": "{place} · heure locale ({zone}). Phase et fraction éclairée à midi ; lever ↑ et coucher ↓ du bord supérieur ; nouvelle lune, quartiers et pleine lune à la minute."
+  },
   "meteors": {
     "title": "Maximum des {name}",
     "zhr": "Taux zénithal {value} météores/h",

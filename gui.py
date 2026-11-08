@@ -59,6 +59,7 @@ from matplotlib.figure import Figure  # noqa: E402
 import charts  # noqa: E402
 import icons  # noqa: E402
 import places  # noqa: E402
+import satellites  # noqa: E402
 import settings as prefs  # noqa: E402
 import updater  # noqa: E402
 from config import APP_VERSION, FONT_MONO, FONT_SANS, THEME_NAMES, Config, mix  # noqa: E402
@@ -302,11 +303,15 @@ _TONIGHT_CACHE = {}
 def _tonight_and_upcoming(key, dte, lat, lon, elev, zone):
     """« Ce soir » et les trois prochains évènements visibles (0,3 s), gardés pour la nuit et
     le lieu *key* : un changement de thème ou de langue ne les recalcule pas."""
+    key = (*key, satellites.CACHE, satellites.cache_stamp())     # new orbits: new passes
     if key not in _TONIGHT_CACHE:
         if len(_TONIGHT_CACHE) >= 8:
             _TONIGHT_CACHE.pop(next(iter(_TONIGHT_CACHE)))
-        _TONIGHT_CACHE[key] = (AstroEngine.tonight(dte, lat, lon, elev, zone),
-                               AstroEngine.upcoming_events(dte, lat, lon, elev, zone))
+        night = AstroEngine.tonight(dte, lat, lon, elev, zone)
+        elements = satellites.load()                     # no network here: the orbits on disk
+        if elements and satellites.epoch_age_days(elements) <= satellites.STALE_DAYS:
+            night["satellites"] = AstroEngine.satellite_passes(elements, night["start"], lat, lon, elev, 1)
+        _TONIGHT_CACHE[key] = (night, AstroEngine.upcoming_events(dte, lat, lon, elev, zone))
     return _TONIGHT_CACHE[key]
 
 
@@ -1916,8 +1921,12 @@ class AstroApp(QMainWindow):
         btn_ecl.clicked.connect(self._search_eclipses_gui)
         btn_conj = _bouton(t("events.search_conjunctions"), "search")
         btn_conj.clicked.connect(self._search_conjunctions_gui)
+        btn_sat = _bouton(t("satellites.search"), "search")
+        btn_sat.setToolTip(t("satellites.search_tip"))
+        btn_sat.clicked.connect(self._search_satellites_gui)
         bar.addWidget(btn_ecl)
         bar.addWidget(btn_conj)
+        bar.addWidget(btn_sat)
         bar.addStretch()
         self._btn_ics = _bouton(t("events.export_ics"), "export")
         self._btn_ics.setToolTip(t("events.export_tip"))
@@ -2148,6 +2157,8 @@ class AstroApp(QMainWindow):
             self._search_eclipses_gui()
         elif self._last_search == "conjunctions":
             self._search_conjunctions_gui()
+        elif self._last_search == "satellites":
+            self._search_satellites_gui()
 
     # ──────────────────────────────────────────────────────────────────────────
     # HANDLERS PARAMÈTRES
@@ -2791,6 +2802,11 @@ class AstroApp(QMainWindow):
             if planet["set"]:
                 text += " · " + tf("tonight.sets", time=clock(planet["set"]))
             lines.append((text, None))
+        if n.get("satellites"):
+            items = [tf("tonight.satellite_item", name=t(f"satellites.short_{p['name']}"),
+                        start=clock(p["start"]), end=clock(p["end"]), alt=_num(p["max_alt"]),
+                        dir=self._wind(p["max_az"])) for p in n["satellites"][:4]]
+            lines.append((tf("tonight.satellites", passes=" · ".join(items)), None))
         if n.get("deep_sky"):
             catalog = messier_catalog()
             items = [tf("tonight.deep_sky_item", name=_messier_label(catalog[o["m"] - 1]), alt=_num(o["alt"]),
@@ -3640,6 +3656,74 @@ class AstroApp(QMainWindow):
         else:
             moon_text = tf(f"meteors.moon_{moon}", pct=_num(100.0 * vis["moon_fraction"]))
         return [first, moon_text]
+
+    def _wind(self, az):
+        """Compass point of an azimuth, in the active language (« SO »)."""
+        return t(f"skymap.cardinal_{self._WINDS[int(round(az / 45.0)) % 8]}")
+
+    # ── Satellite passes ─────────────────────────────────────────────────────
+
+    def _search_satellites_gui(self):
+        """Visible passes of the ISS, Tiangong and Hubble over the next 10 days; the
+        orbits are downloaded in the background when older than two days."""
+        dte = self._search_start("satellites")
+        self._evt_layout.addWidget(_label(t("satellites.loading"), "legende", tone="attenuee"))
+
+        def done(result):
+            elements, error = result
+            QApplication.restoreOverrideCursor()
+            if self._last_search != "satellites":
+                return
+            self._clear_evt_layout()
+            if not elements:
+                self._search_failed(error or t("satellites.no_elements"))
+                return
+            passes = AstroEngine.satellite_passes(elements, dte, self._lat, self._lon, self._elevation())
+            self._render_satellites(dte, passes, elements, error)
+            _TONIGHT_CACHE.clear()                        # « Ce soir » can now show the passes
+            self._tonight_key = None
+            self._update_tonight(self._dte, self._lat, self._lon, self._elevation())
+
+        def failed(exc):
+            QApplication.restoreOverrideCursor()
+            if self._last_search == "satellites":
+                self._clear_evt_layout()
+                self._search_failed(exc)
+        _run_in_background(satellites.refresh, done, failed)
+
+    def _render_satellites(self, dte, passes, elements, error=None):
+        n = len(passes)
+        age = satellites.epoch_age_days(elements)
+        note = tf("satellites.note", days=_num(age, 1))
+        if error is not None:
+            note += " " + tf("satellites.not_refreshed", detail=error)
+        if age > satellites.STALE_DAYS:
+            note += " " + t("satellites.too_old")
+        self._events_header(tf("satellites.title", date=dte.strftime("%d/%m/%Y")),
+                            tf(_plural_key("satellites.count", n), n=n), note)
+        if not passes:
+            self._evt_layout.addWidget(_label(t("satellites.none"), "corps", tone="attenuee", wrap=True))
+        for p in passes:
+            clock = self._clock
+            first = tf("satellites.from_shadow" if p["from_shadow"] else "satellites.appears",
+                       time=clock(p["start"]), alt=_num(p["start_alt"]), dir=self._wind(p["start_az"]))
+            top = tf("satellites.highest", time=clock(p["max"]), alt=_num(p["max_alt"]),
+                     dir=self._wind(p["max_az"]))
+            last = tf("satellites.into_shadow" if p["into_shadow"] else "satellites.vanishes",
+                      time=clock(p["end"]), alt=_num(p["end_alt"]), dir=self._wind(p["end_az"]))
+            seconds = int(round((p["end"] - p["start"]).total_seconds()))
+            details = [tf("satellites.duration", min=seconds // 60, s=f"{seconds % 60:02d}")]
+            local = self._local(p["start"])
+            if local != p["start"].replace(tzinfo=None):
+                details.append(tf("events.local_time", time=f"{local:%d/%m} {self._fmt_clock(local)}",
+                                  zone=getattr(self._zone, "key", "UTC")))
+            pills = [(t("satellites.overhead"), "info")] if p["max_alt"] >= 60.0 else []
+            title = t(f"satellites.name_{p['name']}")
+            self._event_card(SYMBOL["dot"], "attenuee", title, self._event_when(p["start"]), pills, details,
+                             None, [f"{first} · {top} · {last}"])
+            self._ics_add(p["start"], p["end"], title, details + [f"{first} · {top} · {last}"])
+        self._evt_layout.addStretch()
+        self._btn_ics.setEnabled(bool(self._ics_items))
 
     def _event_shown(self, ev):
         if not self._evt_filters[ev.get("group", "planets")].isChecked():

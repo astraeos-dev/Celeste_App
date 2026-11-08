@@ -2018,6 +2018,68 @@ class AstroEngine:
         found.sort(key=lambda o: o["mag"])
         return found[:cls._DEEP_SKY_COUNT]
 
+    # Satellite passes: above 10°, lit by the Sun while the sky is dark (Sun 6°
+    # below the horizon), sampled every 10 seconds
+    _SATELLITE_ALTITUDE, _SATELLITE_STEP_S, _SATELLITE_MIN_S = 10.0, 10.0, 30.0
+
+    @classmethod
+    def satellite_passes(cls, elements, dte_start, lat, lon, elevation_m=0.0, num_days=10):
+        """
+        Visible passes of satellites over the observer (SGP4 from two-line
+        elements, Skyfield): the part of each pass above 10° where the
+        satellite is lit by the Sun and the observer's sky is dark, when it
+        lasts 30 seconds or more.
+
+        Args:
+            elements (dict): {name: (line1, line2)} (satellites.refresh()).
+
+        Returns:
+            list[dict], by time: name, start, max, end (UT datetimes), start_alt,
+            start_az, max_alt, max_az, end_alt, end_az (°), from_shadow (it
+            appears out of the Earth's shadow) and into_shadow (it vanishes into
+            it before setting).
+        """
+        from skyfield.api import EarthSatellite
+        sky = _sky()
+        ts = sky["ts"]
+        topos = wgs84.latlon(lat, lon, elevation_m=elevation_m)
+        here = sky["earth"] + topos
+        jd0 = cls.julian_day(dte_start)
+        t0, t1 = ts.ut1_jd(jd0), ts.ut1_jd(jd0 + num_days)
+        out = []
+        for name, (line1, line2) in elements.items():
+            sat = EarthSatellite(line1, line2, name, ts)
+            times, events = sat.find_events(topos, t0, t1, altitude_degrees=cls._SATELLITE_ALTITUDE)
+            rise = None
+            for tt, event in zip(times, events):
+                if event == 0:
+                    rise = tt
+                    continue
+                if event != 2 or rise is None:
+                    continue
+                n = max(2, int(round((tt.ut1 - rise.ut1) * 86400.0 / cls._SATELLITE_STEP_S)) + 1)
+                jds = np.linspace(rise.ut1, tt.ut1, n)
+                rise = None
+                t = ts.ut1_jd(jds)
+                alt, az, _ = (sat - topos).at(t).altaz()
+                alt, az = alt.degrees, az.degrees
+                lit = sat.at(t).is_sunlit(sky["eph"])
+                sun_alt = here.at(t).observe(sky["sun"]).apparent().altaz()[0].degrees
+                seen = np.flatnonzero(lit & (sun_alt < cls._DARK_SUN))
+                if len(seen) * cls._SATELLITE_STEP_S < cls._SATELLITE_MIN_S:
+                    continue                                # a glimpse at the edge of the shadow
+                a, b = int(seen[0]), int(seen[-1])
+                k = int(seen[np.argmax(alt[seen])])
+                when = lambda i: cls._jd_to_datetime(float(jds[i]), dte_start)
+                out.append({"name": name, "start": when(a), "max": when(k), "end": when(b),
+                            "start_alt": float(alt[a]), "start_az": float(az[a]),
+                            "max_alt": float(alt[k]), "max_az": float(az[k]),
+                            "end_alt": float(alt[b]), "end_az": float(az[b]),
+                            "from_shadow": bool(a > 0 and not lit[a - 1]),
+                            "into_shadow": bool(b < n - 1 and not lit[b + 1])})
+        out.sort(key=lambda p: p["start"])
+        return out
+
     # « Ce soir » : planets seen when 5° high, the Sun 6° below the horizon
     # (12° for Uranus and Neptune, too faint in the twilight), and the comets
     # brighter than magnitude 10 (binoculars)

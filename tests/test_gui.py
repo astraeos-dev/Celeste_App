@@ -63,6 +63,8 @@ def window(qapp, tmp_path, monkeypatch):
         "Tokyo": {"lat": 35.6762, "lon": 139.6503},
     }), encoding="utf-8")
     monkeypatch.setattr(gui, "_FAVORITES_FILE", str(favorites))
+    import satellites
+    monkeypatch.setattr(satellites, "CACHE", str(tmp_path / "satellites.tle"))    # none on disk
     Config.apply_theme("nuit")
     switch_lang("fr")
     gui.apply_theme(qapp)
@@ -713,6 +715,60 @@ class TestOrreryAnimation:
         window._orrery_offset = 200 * 365.25
         window._orrery_step(+1)
         assert window._orrery_date.text() == "30/12/2149" and not window._orrery_timer.isActive()
+
+
+class TestSatellites:
+    @pytest.fixture
+    def orbits(self, monkeypatch):
+        """Background tasks run at once; the elements of 7 November 2026."""
+        import gui
+        import satellites
+        from tests.test_satellites import ELEMENTS
+
+        def run_now(func, on_done, on_error):
+            try:
+                result = func()
+            except Exception as exc:  # noqa: BLE001
+                on_error(exc)
+            else:
+                on_done(result)
+        monkeypatch.setattr(gui, "_run_in_background", run_now)
+        answer = {"refresh": (ELEMENTS, None)}
+        monkeypatch.setattr(satellites, "refresh", lambda: answer["refresh"])
+        return answer
+
+    def test_search(self, window, qapp, orbits, tmp_path, monkeypatch):
+        """From Cherbourg, from 10 November 2026 (times in UT here): the ISS in the evening."""
+        import gui
+        window._set_datetime(datetime(2026, 11, 10, 12, 0))
+        window.calculate()
+        window._search_satellites_gui()
+        texts = [" ".join(l.text() for l in c.findChildren(QLabel)) for c in _event_cards(window)]
+        assert len(texts) >= 8 and QApplication.overrideCursor() is None
+        assert all("Station spatiale internationale (ISS)" in x or "Tiangong" in x for x in texts)
+        assert any("entre dans l'ombre de la Terre" in x for x in texts)
+        assert re.search(r"Visible \d+ min \d\d s", texts[0])
+        target = tmp_path / "passes.ics"
+        monkeypatch.setattr(gui.QFileDialog, "getSaveFileName", staticmethod(lambda *a, **k: (str(target), "")))
+        window._btn_ics.click()
+        assert target.read_bytes().decode("utf-8").count("BEGIN:VEVENT") == len(texts)
+
+    def test_offline_without_orbits(self, window, orbits):
+        import satellites
+        orbits["refresh"] = ({}, satellites.SatelliteError("offline"))
+        window._search_satellites_gui()
+        listed = [window._evt_layout.itemAt(i).widget() for i in range(window._evt_layout.count())]
+        assert any(isinstance(w, QLabel) and "offline" in w.text() for w in listed)
+        assert not _event_cards(window)
+
+    def test_tonight_from_the_orbits_on_disk(self, window, qapp, orbits):
+        import satellites
+        from tests.test_satellites import ELEMENTS
+        satellites.save(ELEMENTS)
+        window._set_datetime(datetime(2026, 11, 14, 20, 0))
+        window.calculate()
+        line = next(text for text, _tone in window._tonight_lines() if text.startswith("Passages"))
+        assert re.match(r"Passages : ISS 18:2\d–18:2\d \(\d+° [A-Z]+\)", line)
 
 
 class TestDeepSky:

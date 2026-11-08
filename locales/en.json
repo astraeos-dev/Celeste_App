@@ -320,8 +320,8 @@
     "size": "Apparent size"
   },
   "events": {
-    "search_eclipses": "Search eclipses (12 months)",
-    "search_conjunctions": "Search events (12 months)",
+    "search_eclipses": "Eclipses (12 months)",
+    "search_conjunctions": "Events (12 months)",
     "click_to_search": "Pick a search above: it starts from the date entered in the sidebar.",
     "eclipses_title": "Eclipses — 12 months from {date}",
     "conjunctions_title": "Events — 12 months from {date}",
@@ -453,7 +453,9 @@
     "period_night": "all night",
     "no_upcoming": "Nothing visible from here in the next 30 days",
     "deep_sky": "Deep sky: {objects}",
-    "deep_sky_item": "{name} ({alt}°, {time})"
+    "deep_sky_item": "{name} ({alt}°, {time})",
+    "satellites": "Passes: {passes}",
+    "satellite_item": "{name} {start}–{end} ({alt}° {dir})"
   },
   "calendar": {
     "button": "Calendar",
@@ -529,6 +531,32 @@
     "name_101": "Pinwheel Galaxy",
     "name_102": "Spindle Galaxy",
     "name_104": "Sombrero Galaxy"
+  },
+  "satellites": {
+    "search": "Satellites (10 days)",
+    "search_tip": "Visible passes of the International Space Station, Tiangong and Hubble; orbits downloaded from CelesTrak, refreshed every two days",
+    "loading": "Downloading the orbits…",
+    "no_elements": "No orbit available: check the Internet connection.",
+    "title": "Visible passes — 10 days from {date}",
+    "count_one": "{n} visible pass",
+    "count_many": "{n} visible passes",
+    "note": "Satellites lit by the Sun while the sky is dark (Sun 6° below the horizon), from 10° high. Orbits {days} days old: times to about the minute.",
+    "not_refreshed": "Orbits not refreshed ({detail}).",
+    "too_old": "They are more than two weeks old: times may be several minutes off.",
+    "none": "No visible pass from here in the next 10 days.",
+    "appears": "Appears at {time}, {alt}° {dir}",
+    "from_shadow": "Leaves the Earth's shadow at {time}, {alt}° {dir}",
+    "highest": "highest at {time}, {alt}° {dir}",
+    "vanishes": "vanishes at {time}, {alt}° {dir}",
+    "into_shadow": "enters the Earth's shadow at {time}, {alt}° {dir}",
+    "duration": "Visible {min} min {s} s",
+    "overhead": "Very high",
+    "name_ISS": "International Space Station (ISS)",
+    "name_Tiangong": "Chinese space station Tiangong",
+    "name_Hubble": "Hubble Space Telescope",
+    "short_ISS": "ISS",
+    "short_Tiangong": "Tiangong",
+    "short_Hubble": "Hubble"
   },
   "favs": {
     "save_title": "Add to favourites",

@@ -320,8 +320,8 @@
     "size": "Tamaño aparente"
   },
   "events": {
-    "search_eclipses": "Buscar eclipses (12 meses)",
-    "search_conjunctions": "Buscar eventos (12 meses)",
+    "search_eclipses": "Eclipses (12 meses)",
+    "search_conjunctions": "Eventos (12 meses)",
     "click_to_search": "Elija una búsqueda arriba: empieza en la fecha introducida en la barra lateral.",
     "eclipses_title": "Eclipses — 12 meses desde el {date}",
     "conjunctions_title": "Eventos — 12 meses desde el {date}",
@@ -453,7 +453,9 @@
     "period_night": "toda la noche",
     "no_upcoming": "Nada visible desde aquí en los próximos 30 días",
     "deep_sky": "Cielo profundo: {objects}",
-    "deep_sky_item": "{name} ({alt}°, {time})"
+    "deep_sky_item": "{name} ({alt}°, {time})",
+    "satellites": "Pasos: {passes}",
+    "satellite_item": "{name} {start}–{end} ({alt}° {dir})"
   },
   "calendar": {
     "button": "Calendario",
@@ -529,6 +531,32 @@
     "name_101": "Galaxia del Molinete",
     "name_102": "Galaxia del Huso",
     "name_104": "Galaxia del Sombrero"
+  },
+  "satellites": {
+    "search": "Satélites (10 días)",
+    "search_tip": "Pasos visibles de la Estación Espacial Internacional, Tiangong y Hubble; órbitas descargadas de CelesTrak, renovadas cada dos días",
+    "loading": "Descargando las órbitas…",
+    "no_elements": "Ninguna órbita disponible: compruebe la conexión a Internet.",
+    "title": "Pasos visibles — 10 días desde el {date}",
+    "count_one": "{n} paso visible",
+    "count_many": "{n} pasos visibles",
+    "note": "Satélites iluminados por el Sol con el cielo oscuro (Sol 6° bajo el horizonte), desde 10° de altura. Órbitas de hace {days} días: horas al minuto.",
+    "not_refreshed": "Órbitas no actualizadas ({detail}).",
+    "too_old": "Tienen más de dos semanas: las horas pueden fallar varios minutos.",
+    "none": "Ningún paso visible desde aquí en los próximos 10 días.",
+    "appears": "Aparece a las {time}, {alt}° {dir}",
+    "from_shadow": "Sale de la sombra de la Tierra a las {time}, {alt}° {dir}",
+    "highest": "lo más alto a las {time}, {alt}° {dir}",
+    "vanishes": "desaparece a las {time}, {alt}° {dir}",
+    "into_shadow": "entra en la sombra de la Tierra a las {time}, {alt}° {dir}",
+    "duration": "Visible {min} min {s} s",
+    "overhead": "Muy alto",
+    "name_ISS": "Estación Espacial Internacional (ISS)",
+    "name_Tiangong": "Estación espacial china Tiangong",
+    "name_Hubble": "Telescopio espacial Hubble",
+    "short_ISS": "ISS",
+    "short_Tiangong": "Tiangong",
+    "short_Hubble": "Hubble"
   },
   "favs": {
     "save_title": "Añadir a favoritos",

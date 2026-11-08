@@ -320,8 +320,8 @@
     "size": "Scheinbare Größe"
   },
   "events": {
-    "search_eclipses": "Finsternisse suchen (12 Monate)",
-    "search_conjunctions": "Ereignisse suchen (12 Monate)",
+    "search_eclipses": "Finsternisse (12 Monate)",
+    "search_conjunctions": "Ereignisse (12 Monate)",
     "click_to_search": "Wählen Sie oben eine Suche: Sie beginnt beim Datum aus der Seitenleiste.",
     "eclipses_title": "Finsternisse — 12 Monate ab {date}",
     "conjunctions_title": "Ereignisse — 12 Monate ab {date}",
@@ -453,7 +453,9 @@
     "period_night": "die ganze Nacht",
     "no_upcoming": "In den nächsten 30 Tagen nichts von hier aus sichtbar",
     "deep_sky": "Deep Sky: {objects}",
-    "deep_sky_item": "{name} ({alt}°, {time})"
+    "deep_sky_item": "{name} ({alt}°, {time})",
+    "satellites": "Überflüge: {passes}",
+    "satellite_item": "{name} {start}–{end} ({alt}° {dir})"
   },
   "calendar": {
     "button": "Kalender",
@@ -529,6 +531,32 @@
     "name_101": "Feuerradgalaxie",
     "name_102": "Spindelgalaxie",
     "name_104": "Sombrerogalaxie"
+  },
+  "satellites": {
+    "search": "Satelliten (10 Tage)",
+    "search_tip": "Sichtbare Überflüge der Internationalen Raumstation, von Tiangong und Hubble; Bahnen von CelesTrak, alle zwei Tage erneuert",
+    "loading": "Bahnen werden heruntergeladen…",
+    "no_elements": "Keine Bahn verfügbar: Internetverbindung prüfen.",
+    "title": "Sichtbare Überflüge — 10 Tage ab {date}",
+    "count_one": "{n} sichtbarer Überflug",
+    "count_many": "{n} sichtbare Überflüge",
+    "note": "Von der Sonne beleuchtete Satelliten bei dunklem Himmel (Sonne 6° unter dem Horizont), ab 10° Höhe. Bahnen {days} Tage alt: Zeiten auf etwa eine Minute.",
+    "not_refreshed": "Bahnen nicht aktualisiert ({detail}).",
+    "too_old": "Sie sind älter als zwei Wochen: die Zeiten können um einige Minuten abweichen.",
+    "none": "In den nächsten 10 Tagen kein sichtbarer Überflug von hier aus.",
+    "appears": "Erscheint um {time}, {alt}° {dir}",
+    "from_shadow": "Verlässt den Erdschatten um {time}, {alt}° {dir}",
+    "highest": "am höchsten um {time}, {alt}° {dir}",
+    "vanishes": "verschwindet um {time}, {alt}° {dir}",
+    "into_shadow": "tritt um {time} in den Erdschatten, {alt}° {dir}",
+    "duration": "Sichtbar {min} min {s} s",
+    "overhead": "Sehr hoch",
+    "name_ISS": "Internationale Raumstation (ISS)",
+    "name_Tiangong": "Chinesische Raumstation Tiangong",
+    "name_Hubble": "Hubble-Weltraumteleskop",
+    "short_ISS": "ISS",
+    "short_Tiangong": "Tiangong",
+    "short_Hubble": "Hubble"
   },
   "favs": {
     "save_title": "Zu den Favoriten hinzufügen",

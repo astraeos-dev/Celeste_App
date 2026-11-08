@@ -7,6 +7,15 @@ jour montre aux utilisateurs. Écrivez pour eux : des phrases courtes, en tirets
 versions 4.4 et antérieures les afficherait tels quels), en 800 caractères environ (la suite est coupée dans la
 fenêtre, pas sur GitHub). Voir la fiche du wiki « Publier une version ».
 
+## 4.7
+
+- Deep sky: the 110 Messier objects (nebulae, clusters, galaxies) on the sky map, with their card; a switch turns
+  them off.
+- Tonight lists the best deep-sky objects of the night and the visible passes of the space stations.
+- Satellite passes: the International Space Station, Tiangong and Hubble over the next 10 days, with the time they
+  appear, their highest point and when they vanish into the Earth's shadow. The orbits are downloaded every two days.
+- Release notes are now written in English.
+
 ## 4.6
 
 - Recherche de lieu : tapez le nom d'une ville (34 000 villes, sans connexion) ; latitude, longitude et altitude

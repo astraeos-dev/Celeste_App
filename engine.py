@@ -47,6 +47,12 @@ v4.3:
   • Sedna among MINOR_PLANETS; MINOR_PLANET_NUMBERS, the Minor Planet
     Center's numbers (« (136199) Éris »)
 
+v4.7:
+  • messier_catalog(), deep_sky_horizontal() — the 110 Messier objects (OpenNGC);
+    tonight() lists the night's best ones
+  • satellite_passes() — visible passes of satellites from two-line elements
+    (SGP4): sunlit, dark sky, Earth's shadow
+
 v4.6:
   • COMETS — comets followed during their apparition (JPL Horizons tables of
     2025–2031, total magnitudes M1, K1), comets_at(), find_comet_events()

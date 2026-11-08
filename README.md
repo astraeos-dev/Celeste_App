@@ -86,6 +86,10 @@ Jour et Observation), avec des graphiques interactifs et une carte du ciel.
   leur passage (2025–2031, tables JPL Horizons) : position, magnitude prévue, carte du ciel, périhélie, plus grand
   rapprochement et plus grand éclat parmi les évènements
 - **Planétaire animé** — onglet Planètes : le Système solaire vu de dessus, qui avance d'un jour à un an par pas
+- **Ciel profond** — les 110 objets de Messier sur la carte du ciel (symboles d'atlas, fiche au clic) et les plus
+  beaux de la nuit dans « Ce soir »
+- **Passages de satellites** — Station spatiale internationale, Tiangong et Hubble sur 10 jours : heure d'apparition,
+  point le plus haut, entrée dans l'ombre de la Terre ; orbites CelesTrak (AMSAT en secours) rafraîchies tous les deux jours
 - **Visibilité d'ici** — pour chaque évènement, la nuit où le voir (le soir, le matin ou toute la nuit), avec la
   hauteur, la direction et l'heure ; filtres par groupe et « Visibles d'ici seulement » ; export vers un agenda (.ics)
 - **Équation du temps** — écart entre temps solaire vrai et temps solaire moyen
@@ -287,6 +291,8 @@ est téléchargée depuis le serveur JPL/NAIF au premier lancement, puis vérifi
 | `tonight(dte, lat, lon, elevation_m, tz)` | La nuit vue du lieu : nuit noire, Lune, planètes et comètes visibles (meilleur moment, lever, coucher) |
 | `upcoming_events(dte, lat, lon, elevation_m, tz)` | Les trois prochains évènements visibles d'ici dans les 30 jours |
 | `moon_calendar(year, month, lat, lon, elevation_m, tz)` | La Lune jour par jour sur un mois : phase, fraction, lever, coucher, phases principales |
+| `messier_catalog()` / `deep_sky_horizontal(t, lat, lon)` | Les 110 objets de Messier (OpenNGC) et leur position vue du lieu |
+| `satellite_passes(elements, dte_start, lat, lon, elevation_m, num_days)` | Passages visibles de satellites (SGP4) : éclairés par le Soleil, ciel sombre, ombre de la Terre |
 | `comets_at(t)` / `find_comet_events(dte_start, num_days)` | Comètes dans leurs tables à une date ; leur périhélie, plus grand rapprochement et plus grand éclat |
 | `find_meteor_showers(dte_start, num_days)` | Maxima des grandes pluies d'étoiles filantes (`METEOR_SHOWERS`, calendrier de l'IMO), à la longitude du Soleil de leur maximum |
 | `meteor_visibility(event, lat, lon, elevation_m, tz)` | Nuit du maximum vue du lieu : meilleur moment, radiant, taux horaire sous un ciel noir, Lune |
@@ -322,6 +328,8 @@ affiché est redessiné ; les autres le sont quand on les ouvre.
 - **International Meteor Organization**, *Meteor Shower Calendar 2026* (J. Rendtel), table 5 — pluies d'étoiles
   filantes : activité, longitude du Soleil au maximum, radiant, vitesse, ZHR
 - **GeoNames** (www.geonames.org), villes de plus de 15 000 habitants, licence CC BY 4.0 — recherche de lieu
+- **OpenNGC** (M. Verga, licence CC BY-SA 4.0) et la base Messier de la **SEDS** — objets de Messier
+- **CelesTrak** et **AMSAT** — éléments orbitaux (TLE) des stations spatiales et de Hubble
 - **JPL Small-Body Database** — paramètres de magnitude M1, K1 des comètes ; **JPL Horizons** — leurs positions
 - **E. Bowell et al.** (1989), *Application of photometric models to asteroids*, Asteroids II — magnitudes H, G des
   planètes mineures (paramètres de la JPL Small-Body Database)

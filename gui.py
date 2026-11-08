@@ -303,7 +303,7 @@ _TONIGHT_CACHE = {}
 def _tonight_and_upcoming(key, dte, lat, lon, elev, zone):
     """« Ce soir » et les trois prochains évènements visibles (0,3 s), gardés pour la nuit et
     le lieu *key* : un changement de thème ou de langue ne les recalcule pas."""
-    key = (*key, satellites.CACHE, satellites.cache_stamp())     # new orbits: new passes
+    key = (*key, satellites.cache_stamp())                      # new orbits: new passes
     if key not in _TONIGHT_CACHE:
         if len(_TONIGHT_CACHE) >= 8:
             _TONIGHT_CACHE.pop(next(iter(_TONIGHT_CACHE)))

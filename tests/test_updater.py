@@ -19,9 +19,13 @@ SETUP = b"MZ" + b"\x00" * 5000          # an "installer"
 
 
 class _Response(io.BytesIO):
-    def __init__(self, data, length=True):
+    def __init__(self, data, length=True, url=None):
         super().__init__(data)
         self.headers = {"Content-Length": str(len(data))} if length else {}
+        self.url = url
+
+    def geturl(self):
+        return self.url
 
     def __enter__(self):
         return self
@@ -50,14 +54,20 @@ def network(monkeypatch, tmp_path):
     API or github.com. files["fail"]: addresses that answer 504 (all with "*");
     files["requests"]: (address, Accept) of each request."""
     files = {"release": _release(), "checksum": hashlib.sha256(SETUP).hexdigest(),
-             "fail": set(), "truncate": 0, "requests": []}
+             "fail": set(), "truncate": 0, "requests": [],
+             "tag_page": "https://github.com/astraeos-dev/Celeste_App/releases/tag/v9.1"}
 
     def urlopen(request, timeout=None):
         url = request.full_url
         files["requests"].append((url, request.get_header("Accept")))
+        if url in files["fail"]:
+            raise urllib.error.HTTPError(url, 503, "Service Unavailable", {}, None)
         if url == updater.LATEST_RELEASE_API:
             return _Response(json.dumps(files["release"]).encode())
-        if url in files["fail"] or "*" in files["fail"]:
+        if url == updater.LATEST_RELEASE_PAGE:
+            assert request.get_method() == "HEAD"
+            return _Response(b"", url=files["tag_page"])
+        if "*" in files["fail"]:
             raise urllib.error.HTTPError(url, 504, "Gateway Timeout", {}, None)
         if url.endswith(".sha256") or url == API_CHECKSUM:
             return _Response(f"{files['checksum']}  Celeste-9.1-Setup.exe\n".encode())
@@ -98,11 +108,39 @@ class TestLatestRelease:
         network["release"]["assets"] = []
         assert updater.latest_release() is None
 
-    def test_network_error(self, monkeypatch):
+    def test_network_error(self, monkeypatch, tmp_path):
         def fail(*_a, **_k):
             raise OSError("no network")
         monkeypatch.setattr(updater.urllib.request, "urlopen", fail)
-        with pytest.raises(updater.UpdateError):
+        monkeypatch.setattr(updater.tempfile, "gettempdir", lambda: str(tmp_path))
+        monkeypatch.setattr(updater, "_RETRY_DELAY_S", 0.0)
+        with pytest.raises(updater.UpdateError, match="no network"):
+            updater.latest_release()
+
+    def test_github_com_when_the_api_fails(self, network):
+        """v4.7.1: the API answers 503 (GitHub incident for applications without an
+        account); github.com's latest-release page redirects to the tag."""
+        network["fail"] = {updater.LATEST_RELEASE_API}
+        release = updater.latest_release()
+        assert release["version"] == "9.1" and release["tag"] == "v9.1" and release["notes"] == ""
+        assert release["page"].endswith("/releases/tag/v9.1")
+        assert release["setup_url"] == ("https://github.com/astraeos-dev/Celeste_App/releases/download/"
+                                        "v9.1/Celeste-9.1-Setup.exe")
+        assert release["sha256_url"] == release["setup_url"] + ".sha256"
+        assert release["setup_api_url"] is None
+        assert open(updater.download(release), "rb").read() == SETUP
+        assert "503" in open(updater.log_path(), encoding="utf-8").read()
+
+    def test_both_routes_fail_three_times(self, network):
+        network["fail"] = {updater.LATEST_RELEASE_API, updater.LATEST_RELEASE_PAGE}
+        with pytest.raises(updater.UpdateError, match="github.com: HTTP Error 503"):
+            updater.latest_release()
+        assert len(network["requests"]) == 2 * updater._ATTEMPTS
+
+    def test_page_without_a_version(self, network):
+        network["fail"] = {updater.LATEST_RELEASE_API}
+        network["tag_page"] = "https://github.com/astraeos-dev/Celeste_App/releases"
+        with pytest.raises(updater.UpdateError, match="no published version"):
             updater.latest_release()
 
 
@@ -137,12 +175,12 @@ class TestDownload:
                          (API_SETUP, "application/octet-stream")]
 
     def test_github_com_when_the_api_fails(self, network):
-        """v4.7.1: the API answers 504, github.com takes over; the failure is logged."""
+        """v4.7.1: the API answers 503, github.com takes over; the failure is logged."""
         network["fail"] = {API_CHECKSUM, API_SETUP}
         path = updater.download(updater.latest_release())
         assert open(path, "rb").read() == SETUP
         log = open(updater.log_path(), encoding="utf-8").read()
-        assert "504" in log and API_SETUP in log and "downloaded and verified" in log
+        assert "503" in log and API_SETUP in log and "downloaded and verified" in log
 
     def test_three_rounds_then_the_last_error(self, network):
         network["fail"] = {"*"}

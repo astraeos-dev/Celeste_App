@@ -59,10 +59,11 @@ lancement, dans `%USERPROFILE%\.celeste`, et une mise à jour ne pèse donc qu'e
 
 Si une mise à jour ne s'installe pas, le journal du programme d'installation est dans
 `%TEMP%\Celeste-update\install.log` (dans l'Explorateur : `%TEMP%` dans la barre d'adresse). Si elle ne se
-télécharge pas, `update.log`, dans le même dossier, garde chaque tentative et son erreur (depuis la 4.7.1) : les fichiers
-viennent d'abord de l'API GitHub, puis du lien github.com, en trois tentatives. Une version 4.7 ou antérieure fermait
-la fenêtre de progression sans rien dire en cas d'échec : il faut alors installer la nouvelle version à la main, depuis
-la page de la Release.
+télécharge pas, `update.log`, dans le même dossier, garde chaque tentative et son erreur (depuis la 4.7.1) : la
+dernière version et ses fichiers sont demandés à l'API GitHub, puis à github.com, en trois tentatives. Lors d'un
+incident GitHub, les applications sans compte, comme Céleste, peuvent recevoir des erreurs 503 ou 504 pendant un moment.
+Une version 4.7 ou antérieure fermait la fenêtre de progression sans rien dire en cas d'échec : il faut alors installer
+la nouvelle version à la main, depuis la page de la Release.
 
 La case « Vérifier au démarrage » coupe la recherche automatique. Depuis les sources (`python main.py`), la
 fenêtre rappelle de mettre à jour avec `git pull`.

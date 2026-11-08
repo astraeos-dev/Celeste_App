@@ -9,8 +9,8 @@ markup as it is), about 800 characters at most (the window cuts the rest, GitHub
 
 ## 4.7.1
 
-- Updates download again: the installer now comes through the GitHub API, which answers faster and more reliably,
-  with three attempts before giving up.
+- Updates hold up when GitHub answers badly (errors 503 or 504, as during its incidents): Céleste asks two ways,
+  through the GitHub API and through github.com, three times before giving up.
 - When an update cannot be downloaded, Céleste now says why, instead of closing the progress window without a word,
   and offers the release page to install it by hand.
 

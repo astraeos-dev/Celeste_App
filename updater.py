@@ -8,9 +8,10 @@ against the one published with it (.sha256), then it runs silently: it
 installs the new version over the old one (same Inno Setup AppId), keeping
 settings and favourites, and reopens Céleste.
 
-v4.7.1: the files come from the GitHub API first (the github.com links are
-sometimes slow or answer 504), with github.com as a fallback and up to three
-rounds of attempts; each failure goes to update.log, next to the installer.
+v4.7.1: the latest version and its files are asked to the GitHub API, then to
+github.com, for up to three rounds (either can answer 503 or 504 for a while,
+as during GitHub incidents that touch applications without an account); each
+failure goes to update.log, next to the installer.
 
 The Releases are created by the "Build — Windows application" workflow when
 APP_VERSION changes on master. This module does not depend on Qt.
@@ -29,7 +30,9 @@ from config import APP_VERSION
 
 REPOSITORY = "astraeos-dev/Celeste_App"
 LATEST_RELEASE_API = f"https://api.github.com/repos/{REPOSITORY}/releases/latest"
+LATEST_RELEASE_PAGE = f"https://github.com/{REPOSITORY}/releases/latest"
 _SETUP = re.compile(r"^Celeste-(?P<version>[\d.]+)-Setup\.exe$")
+_TAG_PAGE = re.compile(r"/releases/tag/(?P<tag>v?(?P<version>\d+(?:\.\d+)*))/?$")
 _ASSET = "application/octet-stream"     # a Release file, through the API or github.com
 _ATTEMPTS = 3                           # rounds over the sources (API, then github.com)
 _RETRY_DELAY_S = 2.0                    # pause before the 2nd round; twice as long before the 3rd
@@ -86,19 +89,25 @@ def log(message):
 
 def latest_release(timeout=10):
     """
-    The latest published Release (neither a draft nor a pre-release).
+    The latest published Release (neither a draft nor a pre-release), asked to
+    the GitHub API, then to github.com, for up to three rounds: either can fail
+    for a while for applications without an account (503, 504, timeouts).
 
     Returns:
         dict | None: version, tag, notes, page (address of the Release),
         setup_url, setup_name, setup_size, sha256_url (github.com links),
-        setup_api_url, sha256_api_url (the same files through the API);
-        None when the Release has no installer.
+        setup_api_url, sha256_api_url (the same files through the API, None
+        when the answer came from github.com); None when the Release has no
+        installer.
     """
-    try:
-        with urllib.request.urlopen(_request(LATEST_RELEASE_API), timeout=timeout) as resp:
-            release = json.loads(resp.read().decode("utf-8"))
-    except Exception as exc:                                  # network, 404 without a Release, JSON
-        raise UpdateError(str(exc)) from exc
+    def ask(url, _accept):
+        return _release_from_api(timeout) if url == LATEST_RELEASE_API else _release_from_page(timeout)
+    return _with_retries([(LATEST_RELEASE_API, None), (LATEST_RELEASE_PAGE, None)], ask)
+
+
+def _release_from_api(timeout):
+    with urllib.request.urlopen(_request(LATEST_RELEASE_API), timeout=timeout) as resp:
+        release = json.loads(resp.read().decode("utf-8"))
     assets = {a.get("name", ""): a for a in release.get("assets", [])}
     setup = next((a for name, a in assets.items() if _SETUP.match(name)), None)
     if setup is None:
@@ -116,6 +125,26 @@ def latest_release(timeout=10):
         "setup_api_url": setup.get("url"),
         "sha256_api_url": checksum.get("url") if checksum else None,
     }
+
+
+def _release_from_page(timeout):
+    """
+    Without the API: github.com/<repository>/releases/latest redirects to the
+    page of the latest tag, and the files of a Release have fixed names. The
+    note is not read (the page is HTML): the window shows the version only.
+    """
+    request = urllib.request.Request(LATEST_RELEASE_PAGE, method="HEAD", headers={
+        "User-Agent": f"Celeste/{APP_VERSION} (+https://github.com/{REPOSITORY})"})
+    with urllib.request.urlopen(request, timeout=timeout) as resp:
+        page = resp.geturl()
+    match = _TAG_PAGE.search(urllib.parse.urlsplit(page).path)
+    if not match:
+        raise UpdateError(f"no published version ({page})")
+    name = f"Celeste-{match['version']}-Setup.exe"
+    files = f"https://github.com/{REPOSITORY}/releases/download/{match['tag']}/{name}"
+    return {"version": match["version"], "tag": match["tag"], "notes": "", "page": page,
+            "setup_url": files, "setup_name": name, "setup_size": 0,
+            "sha256_url": files + ".sha256", "setup_api_url": None, "sha256_api_url": None}
 
 
 def plain_notes(markdown):

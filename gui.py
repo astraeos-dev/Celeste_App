@@ -319,7 +319,8 @@ def _messier_label(obj, named=True):
     """"M31 Andromeda Galaxy" (the common name in the active language, if it has
     one), or "M13" with *named* False."""
     if named and obj.get("name"):
-        return f"M{obj['m']} {t(f'messier.name_{obj['m']}')}"
+        name = t(f"messier.name_{obj['m']}")
+        return f"M{obj['m']} {name}"
     return f"M{obj['m']}"
 
 

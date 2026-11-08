@@ -1,13 +1,13 @@
 """
-scripts/release_notes.py — Note de version tirée de CHANGELOG.md
-================================================================
-Écrit la section « ## <version> » de CHANGELOG.md : le workflow de build en
-fait la note de la Release GitHub (gh release create --notes-file), que la
-fenêtre de mise à jour de Céleste montre ensuite aux utilisateurs.
+scripts/release_notes.py — The release note, from CHANGELOG.md
+===============================================================
+Writes the "## <version>" section of CHANGELOG.md: the build workflow makes it
+the note of the GitHub Release (gh release create --notes-file), which the
+update window of Céleste then shows to users.
 
-Usage : python scripts/release_notes.py <version> [fichier]
-        (sans fichier : à l'écran ; le fichier est toujours en UTF-8)
-Sort en erreur (code 1) si la version n'a pas de section, ou une section vide.
+Usage: python scripts/release_notes.py <version> [file]
+       (without a file: on screen; the file is always UTF-8)
+Exits with an error (code 1) when the version has no section, or an empty one.
 """
 import os
 import re
@@ -18,9 +18,9 @@ CHANGELOG = os.path.join(ROOT, "CHANGELOG.md")
 
 
 def sections(text):
-    """[(version, liste)] des sections « ## x.y[.z] », dans l'ordre du fichier :
-    les tirets qui suivent le titre, jusqu'au premier paragraphe ordinaire,
-    chacun sur une ligne (la fenêtre de mise à jour ne recoupe pas les lignes)."""
+    """[(version, list)] of the "## x.y[.z]" sections, in the order of the file:
+    the dashes after the heading, up to the first ordinary paragraph, each on
+    one line (the update window does not rewrap lines)."""
     found = []
     for match in re.finditer(r"^## +(\d+(?:\.\d+)+)[^\n]*\n(.*?)(?=^## |\Z)", text, re.M | re.S):
         items = []
@@ -36,7 +36,7 @@ def sections(text):
 
 
 def notes(version, text=None):
-    """Texte de la section de *version*, ou None."""
+    """Text of the section of *version*, or None."""
     if text is None:
         with open(CHANGELOG, encoding="utf-8") as f:
             text = f.read()
@@ -50,7 +50,7 @@ def main(argv):
     version = argv[1]
     body = notes(version)
     if not body:
-        sys.stderr.write(f"CHANGELOG.md : pas de section « ## {version} »\n")
+        sys.stderr.write(f"CHANGELOG.md: no \"## {version}\" section\n")
         return 1
     data = (body + "\n").encode("utf-8")
     if len(argv) > 2:

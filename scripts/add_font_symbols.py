@@ -1,19 +1,19 @@
 """
-scripts/add_font_symbols.py — Ajoute des symboles à la police Astraeos Symboles
-================================================================================
-Astraeos Symboles (fonts/AstraeosSymboles-Regular.ttf) est un sous-ensemble de
-Noto Sans Symbols, Symbols 2 et Math. Ce script y copie, sans les modifier, les
-glyphes de Noto Sans Symbols 2 (licence SIL OFL 1.1, comme Astraeos Symboles)
-des planètes naines qui lui manquaient :
+scripts/add_font_symbols.py — Adds symbols to the Astraeos Symboles font
+=========================================================================
+Astraeos Symboles (fonts/AstraeosSymboles-Regular.ttf) is a subset of Noto
+Sans Symbols, Symbols 2 and Math. This script copies into it, unchanged, the
+glyphs of Noto Sans Symbols 2 (SIL OFL 1.1 licence, like Astraeos Symboles)
+of the dwarf planets it lacked:
 
-    U+2BF1 ⯱ Éris (forme deux)   U+2BF2 ⯲ Sedna
+    U+2BF1 ⯱ Eris (form two)     U+2BF2 ⯲ Sedna
     U+1F77B 🝻 Haumea            U+1F77C 🝼 Makemake
 
-Usage :
-    python scripts/add_font_symbols.py chemin/NotoSansSymbols2-Regular.ttf
+Usage:
+    python scripts/add_font_symbols.py path/NotoSansSymbols2-Regular.ttf
 
-(NotoSansSymbols2-Regular.ttf, version 2.008 : dépôt notofonts/notofonts.github.io,
-fonts/NotoSansSymbols2/hinted/ttf/.)
+(NotoSansSymbols2-Regular.ttf, version 2.008: repository
+notofonts/notofonts.github.io, fonts/NotoSansSymbols2/hinted/ttf/.)
 """
 import copy
 import os
@@ -30,7 +30,7 @@ SYMBOLS = (0x2BF1, 0x2BF2, 0x1F77B, 0x1F77C)
 def add_symbols(source_path, target_path=TARGET, codes=SYMBOLS):
     source, target = TTFont(source_path), TTFont(target_path)
     if source["head"].unitsPerEm != target["head"].unitsPerEm:
-        sys.exit("les deux polices n'ont pas la même grille (unitsPerEm)")
+        sys.exit("the two fonts do not share the same grid (unitsPerEm)")
     source_cmap = source.getBestCmap()
     mapping = dict(target.getBestCmap())
     glyf, hmtx = target["glyf"], target["hmtx"]
@@ -40,12 +40,12 @@ def add_symbols(source_path, target_path=TARGET, codes=SYMBOLS):
         name = source_cmap[code]
         glyph = copy.deepcopy(source["glyf"][name])
         if glyph.isComposite():
-            sys.exit(f"U+{code:04X} : glyphe composé, non pris en charge")
+            sys.exit(f"U+{code:04X}: composite glyph, not supported")
         glyf[name] = glyph
         hmtx[name] = source["hmtx"][name]
         mapping[code] = name
     target.setGlyphOrder(glyf.glyphOrder)
-    # tables Unicode : BMP (format 4) et, pour les symboles au-delà de U+FFFF, format 12
+    # Unicode tables: BMP (format 4) and, for the symbols beyond U+FFFF, format 12
     bmp = {c: g for c, g in mapping.items() if c <= 0xFFFF}
     tables = []
     for platform, encoding in ((0, 3), (3, 1)):
@@ -66,4 +66,4 @@ if __name__ == "__main__":
     if len(sys.argv) != 2:
         sys.exit(__doc__)
     codes = add_symbols(sys.argv[1])
-    print(f"{TARGET} : {len(codes)} symboles")
+    print(f"{TARGET}: {len(codes)} symbols")

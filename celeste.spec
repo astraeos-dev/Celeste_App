@@ -1,13 +1,13 @@
 # -*- mode: python ; coding: utf-8 -*-
 """
-celeste.spec — Céleste.exe pour Windows (PyInstaller)
-=====================================================
-À lancer par ``python scripts/build_exe.py``, qui prépare l'icône
-(build/icons/celeste.ico) avant d'appeler PyInstaller.
+celeste.spec — Céleste.exe for Windows (PyInstaller)
+====================================================
+Run by ``python scripts/build_exe.py``, which draws the icon
+(build/icons/celeste.ico) before calling PyInstaller.
 
-L'éphéméride JPL (32 Mo) n'est pas dans l'application : elle est téléchargée
-une fois pour toutes dans ~/.celeste au premier lancement, et les mises à
-jour ne la retéléchargent pas.
+The JPL ephemeris (32 MB) is not in the application: it is downloaded once
+and for all into ~/.celeste at the first launch, and updates do not download
+it again.
 """
 import os
 

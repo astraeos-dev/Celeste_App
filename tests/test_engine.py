@@ -756,7 +756,7 @@ class TestTonight:
         assert [p["best"] for p in night["planets"]] == sorted(p["best"] for p in night["planets"])
 
     def test_the_night_under_way(self, night):
-        """At 3 a.m., « tonight » is the night already begun."""
+        """At 3 a.m., "tonight" is the night already begun."""
         from zoneinfo import ZoneInfo
         later = AstroEngine.tonight(datetime(2026, 11, 2, 3, 0), self.LAT, self.LON, 0.0,
                                     ZoneInfo("Europe/Paris"))
@@ -911,7 +911,7 @@ class TestMeteorShowers:
         return {e["kind"]: e for e in AstroEngine.find_meteor_showers(datetime(2026, 1, 1), 365)}
 
     @pytest.mark.parametrize("code, expected, minutes", [
-        ("QUA", datetime(2026, 1, 3, 21, 0), 60),          # « close to 21h UT »
+        ("QUA", datetime(2026, 1, 3, 21, 0), 60),          # "close to 21h UT"
         ("LYR", datetime(2026, 4, 22, 19, 40), 10),        # 19h 40m UT
         ("PER", datetime(2026, 8, 13, 3, 0), 60),          # 02h to 04h UT
         ("DRA", datetime(2026, 10, 9, 1, 0), 30),          # 01h UT

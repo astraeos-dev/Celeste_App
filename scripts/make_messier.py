@@ -39,7 +39,7 @@ M102 = "NGC5866"
 # (http://www.messier.seds.org/data.html)
 SEDS_MAGNITUDES = {22: 5.1, 35: 5.3, 62: 6.5, 69: 7.6, 70: 7.9, 71: 8.2, 107: 7.9}
 # English common names where OpenNGC's differ from the usual ones (M11's is in
-# French, M24's abbreviated) or are missing; M99's « Coma Pinwheel » is little used
+# French, M24's abbreviated) or are missing; M99's "Coma Pinwheel" is little used
 NAMES = {11: "Wild Duck Cluster", 17: "Omega Nebula", 24: "Sagittarius Star Cloud", 42: "Orion Nebula",
          44: "Beehive Cluster", 76: "Little Dumbbell Nebula", 87: "Virgo A", 99: "",
          101: "Pinwheel Galaxy", 102: "Spindle Galaxy"}

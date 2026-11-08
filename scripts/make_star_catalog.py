@@ -1,9 +1,9 @@
 """
-scripts/make_star_catalog.py — Génère star_catalog.py depuis le Yale Bright Star Catalogue
+scripts/make_star_catalog.py — Generates star_catalog.py from the Yale Bright Star Catalogue
 
-Usage : python scripts/make_star_catalog.py bsc5.json . star_catalog.py
-(bsc5.json : catalogue complet au format JSON, par exemple celui du dépôt
-brettonw/YaleBrightStarCatalog ; le dossier donné contient constellations.py.)
+Usage: python scripts/make_star_catalog.py bsc5.json . star_catalog.py
+(bsc5.json: the full catalogue in JSON, for instance the one of the
+brettonw/YaleBrightStarCatalog repository; the folder given holds constellations.py.)
 """
 import json, math, re, sys
 bsc_path, stars_module_dir, out_path = sys.argv[1:4]

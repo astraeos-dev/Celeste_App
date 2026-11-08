@@ -1,14 +1,14 @@
 """
-places.py — Recherche d'un lieu par son nom, hors ligne
-=======================================================
-Les villes de plus de 15 000 habitants de GeoNames (CC BY 4.0,
-https://www.geonames.org), réduites par scripts/make_cities.py dans
-assets/cities.tsv.gz : nom, autres noms (Londres, Moscou…), pays, région,
-latitude, longitude, altitude, population.
+places.py — Search for a place by its name, offline
+====================================================
+The cities of more than 15,000 inhabitants of GeoNames (CC BY 4.0,
+https://www.geonames.org), reduced by scripts/make_cities.py into
+assets/cities.tsv.gz: name, other names (Londres, Moscou…), country, region,
+latitude, longitude, elevation, population.
 
-La recherche ignore les accents, la casse, les tirets et les apostrophes ;
-« Paris, US » ou « Paris US » restreint au pays (code ISO) ou à la région.
-Indépendant de l'interface (pas de Qt).
+The search ignores accents, case, hyphens and apostrophes; "Paris, US" or
+"Paris US" narrows it to a country (ISO code) or a region. Independent of the
+interface (no Qt).
 """
 import functools
 import gzip
@@ -21,7 +21,7 @@ CITIES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "cit
 
 
 def normalize(text):
-    """« Saint-Étienne » → « saint etienne » : sans accents, casse, tirets ni apostrophes."""
+    """"Saint-Étienne" → "saint etienne": without accents, case, hyphens or apostrophes."""
     text = unicodedata.normalize("NFKD", text or "")
     text = "".join(ch for ch in text if not unicodedata.combining(ch)).casefold()
     text = re.sub(r"[-'’`.,()/]", " ", text)
@@ -30,7 +30,7 @@ def normalize(text):
 
 @functools.lru_cache(maxsize=1)
 def _cities():
-    """[(fiche, noms normalisés)], des villes les plus peuplées aux moins peuplées."""
+    """[(record, normalized names)], from the most populated cities to the least."""
     with gzip.open(CITIES, "rt", encoding="utf-8") as f:
         rows = []
         for line in f:
@@ -43,16 +43,16 @@ def _cities():
 
 
 def _where(place, words):
-    """La ville est-elle dans ce pays (code ISO) ou cette région (début du nom) ?"""
+    """Is the city in this country (ISO code) or this region (start of its name)?"""
     region = normalize(place["region"])
     return all(w == place["country"].casefold() or region.startswith(w) for w in words)
 
 
 def search(query, limit=12):
     """
-    Villes dont un nom (ou l'un de ses mots) commence par *query* : d'abord
-    les noms exacts, puis les débuts de nom, puis les mots ; les plus
-    peuplées d'abord dans chaque groupe (« Pékin » : Beijing avant Pekin, Illinois).
+    Cities with a name (or a word of it) starting with *query*: exact names
+    first, then name beginnings, then words; the most populated first in
+    each group ("Pékin": Beijing before Pekin, Illinois).
 
     Returns:
         list[dict]: name, country, region, lat, lon, elevation (m), population.
@@ -60,7 +60,7 @@ def search(query, limit=12):
     city, _, where = (query or "").partition(",")
     key = normalize(city)
     words = normalize(where).split()
-    if not where:                                   # « Paris us » : le dernier mot est un pays ?
+    if not where:                                   # "Paris us": is the last word a country?
         parts = key.split()
         if len(parts) > 1 and len(parts[-1]) == 2:
             key, words = " ".join(parts[:-1]), [parts[-1]]
@@ -70,7 +70,7 @@ def search(query, limit=12):
     for place, names in _cities():
         if words and not _where(place, words):
             continue
-        rank = None                                 # 0 : un nom exact, 1 : son début, 2 : un mot
+        rank = None                                 # 0: an exact name, 1: its beginning, 2: a word
         for name in names:
             if name == key:
                 rank = 0
@@ -81,19 +81,19 @@ def search(query, limit=12):
                 rank = 2
         if rank is not None:
             found.append((rank, -place["population"], len(found), place))
-    if not found and words and not where:           # « Le Havre » n'a pas de pays « re »
+    if not found and words and not where:           # "Le Havre" has no country "re"
         return search(f"{query},", limit)
     found.sort(key=lambda r: r[:3])
     return [r[3] for r in found[:limit]]
 
 
 def label(place):
-    """« Cherbourg · Normandy · FR » : le nom, la région et le pays."""
+    """"Cherbourg · Normandy · FR": the name, the region and the country."""
     return " · ".join(p for p in (place["name"], place["region"], place["country"]) if p)
 
 
 def nearest(lat, lon, max_km=25.0):
-    """La ville la plus proche d'un point, à moins de *max_km* ; None sinon (en mer, au désert)."""
+    """The city nearest to a point, within *max_km*; None otherwise (at sea, in a desert)."""
     best, best_d = None, max_km
     cos_lat = math.cos(math.radians(lat))
     for place, _names in _cities():

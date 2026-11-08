@@ -1,15 +1,15 @@
 """
-updater.py — Mises à jour de Céleste
-=====================================
-La dernière version publiée (Release GitHub de astraeos-dev/Celeste_App) est
-comparée à APP_VERSION ; si elle est plus récente, son programme
-d'installation (Celeste-<version>-Setup.exe) est téléchargé, son empreinte
-SHA-256 vérifiée contre celle publiée avec lui (.sha256), puis il est lancé en
-mode silencieux : il installe la nouvelle version par-dessus l'ancienne (même
-AppId Inno Setup), en gardant réglages et favoris, et rouvre Céleste.
+updater.py — Updates of Céleste
+================================
+The latest published version (GitHub Release of astraeos-dev/Celeste_App) is
+compared with APP_VERSION; when it is newer, its installer
+(Celeste-<version>-Setup.exe) is downloaded, its SHA-256 checksum verified
+against the one published with it (.sha256), then it runs silently: it
+installs the new version over the old one (same Inno Setup AppId), keeping
+settings and favourites, and reopens Céleste.
 
-Les Releases sont créées par le workflow « Build — application Windows »
-quand APP_VERSION change sur master. Ce module ne dépend pas de Qt.
+The Releases are created by the "Build — Windows application" workflow when
+APP_VERSION changes on master. This module does not depend on Qt.
 """
 import hashlib
 import json
@@ -27,11 +27,11 @@ _SETUP = re.compile(r"^Celeste-(?P<version>[\d.]+)-Setup\.exe$")
 
 
 class UpdateError(RuntimeError):
-    """Vérification, téléchargement ou contrôle d'une mise à jour impossible."""
+    """An update could not be checked, downloaded or verified."""
 
 
 def parse_version(text):
-    """« v4.2.1 » → (4, 2, 1) ; « 4.2 » → (4, 2, 0)."""
+    """"v4.2.1" → (4, 2, 1); "4.2" → (4, 2, 0)."""
     numbers = [int(n) for n in re.findall(r"\d+", text or "")[:3]]
     if not numbers:
         raise ValueError(f"version illisible : {text!r}")
@@ -50,17 +50,17 @@ def _request(url):
 
 def latest_release(timeout=10):
     """
-    La dernière Release publiée (ni brouillon ni préversion).
+    The latest published Release (neither a draft nor a pre-release).
 
     Returns:
-        dict | None: version, tag, notes, page (adresse de la Release),
-        setup_url, setup_name, setup_size, sha256_url ; None sans programme
-        d'installation dans la Release.
+        dict | None: version, tag, notes, page (address of the Release),
+        setup_url, setup_name, setup_size, sha256_url; None when the Release
+        has no installer.
     """
     try:
         with urllib.request.urlopen(_request(LATEST_RELEASE_API), timeout=timeout) as resp:
             release = json.loads(resp.read().decode("utf-8"))
-    except Exception as exc:                                  # réseau, 404 sans Release, JSON
+    except Exception as exc:                                  # network, 404 without a Release, JSON
         raise UpdateError(str(exc)) from exc
     assets = {a.get("name", ""): a for a in release.get("assets", [])}
     setup = next((a for name, a in assets.items() if _SETUP.match(name)), None)
@@ -81,9 +81,9 @@ def latest_release(timeout=10):
 
 def plain_notes(markdown):
     """
-    Note de version (Markdown de la Release, tirée de CHANGELOG.md) en texte
-    simple pour la fenêtre de mise à jour : titres, gras, code et liens sans
-    leurs balises, puces « • », lignes de suite rattachées à leur puce.
+    A release note (the Release's Markdown, from CHANGELOG.md) as plain text
+    for the update window: headings, bold, code and links without their
+    markup, "•" bullets, continuation lines joined to their bullet.
     """
     lines = []
     for raw in (markdown or "").replace("\r\n", "\n").split("\n"):
@@ -102,8 +102,8 @@ def plain_notes(markdown):
 
 
 def can_self_update():
-    """Une application installée sous Windows (exécutable PyInstaller) se met à jour seule ;
-    depuis les sources, c'est git pull."""
+    """An application installed on Windows (PyInstaller executable) updates itself;
+    from the sources, it is git pull."""
     return bool(getattr(sys, "frozen", False)) and sys.platform == "win32"
 
 
@@ -116,7 +116,7 @@ def sha256_of(path):
 
 
 def expected_sha256(url, timeout=10):
-    """Empreinte publiée avec le programme d'installation (« <hex>  <nom> »)."""
+    """Checksum published with the installer ("<hex>  <name>")."""
     try:
         with urllib.request.urlopen(_request(url), timeout=timeout) as resp:
             text = resp.read(4096).decode("ascii", "replace")
@@ -124,23 +124,23 @@ def expected_sha256(url, timeout=10):
         raise UpdateError(str(exc)) from exc
     match = re.search(r"\b[0-9a-fA-F]{64}\b", text)
     if not match:
-        raise UpdateError("empreinte SHA-256 illisible")
+        raise UpdateError("unreadable SHA-256 checksum")
     return match.group(0).lower()
 
 
 def download(release, progress=None, cancelled=None, timeout=30):
     """
-    Télécharge et vérifie le programme d'installation de *release*.
+    Downloads and verifies the installer of *release*.
 
     Args:
-        progress: appelée avec (octets reçus, taille totale).
-        cancelled: renvoie True pour interrompre.
+        progress: called with (bytes received, total size).
+        cancelled: returns True to interrupt.
 
     Returns:
-        str: chemin du programme d'installation vérifié.
+        str: path of the verified installer.
     """
     if not release.get("sha256_url"):
-        raise UpdateError("pas d'empreinte SHA-256 publiée avec cette version")
+        raise UpdateError("no SHA-256 checksum published with this version")
     expected = expected_sha256(release["sha256_url"], timeout)
     folder = os.path.join(tempfile.gettempdir(), "Celeste-update")
     os.makedirs(folder, exist_ok=True)
@@ -152,7 +152,7 @@ def download(release, progress=None, cancelled=None, timeout=30):
             done = 0
             while True:
                 if cancelled is not None and cancelled():
-                    raise UpdateError("téléchargement interrompu")
+                    raise UpdateError("download interrupted")
                 block = resp.read(1 << 16)
                 if not block:
                     break
@@ -168,7 +168,7 @@ def download(release, progress=None, cancelled=None, timeout=30):
         raise UpdateError(str(exc)) from exc
     if sha256_of(path) != expected:
         _remove(path)
-        raise UpdateError("empreinte SHA-256 différente : fichier corrompu")
+        raise UpdateError("different SHA-256 checksum: corrupt file")
     return path
 
 
@@ -181,11 +181,11 @@ def _remove(path):
 
 def installer_command(setup_path, app_dir=None):
     """
-    Programme d'installation en mode silencieux : fenêtre de progression seule,
-    Céleste fermé puis rouvert ([Run] … skipifnotsilent de installer/celeste.iss),
-    dans le même mode qu'à la première installation (tous les utilisateurs si
-    Céleste est dans Program Files). Journal de l'installation : install.log, à
-    côté du programme d'installation (%TEMP%\\Celeste-update).
+    The installer in silent mode: a progress window only, Céleste closed then
+    reopened ([Run] … skipifnotsilent of installer/celeste.iss), in the same
+    mode as the first installation (all users when Céleste is in Program
+    Files). Installation log: install.log, next to the installer
+    (%TEMP%\\Celeste-update).
     """
     app_dir = os.path.normcase(os.path.abspath(app_dir or os.path.dirname(sys.executable)))
     program_files = [os.environ.get(k) for k in ("ProgramFiles", "ProgramFiles(x86)", "ProgramW6432")]
@@ -196,7 +196,7 @@ def installer_command(setup_path, app_dir=None):
 
 
 def launch_installer(setup_path):
-    """Lance le programme d'installation, détaché de Céleste qui va se fermer."""
+    """Runs the installer, detached from Céleste, which is about to close."""
     import subprocess
     flags = 0
     if sys.platform == "win32":

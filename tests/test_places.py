@@ -1,6 +1,6 @@
 """
-tests/test_places.py — Recherche d'un lieu par son nom (places.py, hors ligne)
-==============================================================================
+tests/test_places.py — Search for a place by its name (places.py, offline)
+===========================================================================
 """
 import os
 import sys
@@ -27,7 +27,7 @@ def test_accents_case_and_hyphens():
 
 
 def test_other_names():
-    """Londres, Moscou, Pékin : les noms français trouvent la ville, la plus peuplée d'abord."""
+    """Londres, Moscou, Pékin: the French names find the city, the most populated first."""
     assert _names("Londres", 1) == [("London", "GB")]
     assert _names("moscou", 1) == [("Moscow", "RU")]
     assert _names("Pékin", 1) == [("Beijing", "CN")]
@@ -42,7 +42,7 @@ def test_country_or_region():
     assert _names("Paris, US", 1) == [("Paris", "US")]
     assert _names("paris us", 1) == [("Paris", "US")]
     assert _names("Paris, Texas", 1) == [("Paris", "US")]
-    assert _names("Le Havre", 1) == [("Le Havre", "FR")]       # « re » n'est pas un pays
+    assert _names("Le Havre", 1) == [("Le Havre", "FR")]       # "re" is not a country
 
 
 def test_fields_and_label():
@@ -58,5 +58,5 @@ def test_nothing():
 
 def test_nearest():
     assert places.nearest(49.6333, -1.6167)["name"] == "Cherbourg"
-    assert places.nearest(48.0, -30.0) is None                  # en plein Atlantique
-    assert places.nearest(-36.85, 174.76)["name"] == "Auckland"  # de l'autre côté du méridien 180°
+    assert places.nearest(48.0, -30.0) is None                  # mid-Atlantic
+    assert places.nearest(-36.85, 174.76)["name"] == "Auckland"  # across the 180° meridian

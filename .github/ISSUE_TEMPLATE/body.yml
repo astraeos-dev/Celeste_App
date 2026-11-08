@@ -1,35 +1,35 @@
-name: Proposer un astre
-description: Un corps à ajouter aux coordonnées, aux planètes mineures, à la carte du ciel…
+name: Suggest a celestial body
+description: A body to add to the coordinates, the minor planets, the sky map…
 labels: ["enhancement"]
 body:
   - type: input
     id: body
     attributes:
-      label: Astre
-      description: Son nom et, s'il en a une, sa désignation (numéro de planète mineure, comète, catalogue…).
-      placeholder: "(10) Hygie, 12P/Pons-Brooks, M31…"
+      label: Body
+      description: Its name and, if it has one, its designation (minor planet number, comet, catalogue…).
+      placeholder: "(10) Hygiea, 12P/Pons-Brooks, M31…"
     validations:
       required: true
   - type: dropdown
     id: kind
     attributes:
-      label: Type
+      label: Kind
       options:
-        - Astéroïde ou planète naine
-        - Comète
-        - Satellite d'une planète
-        - Étoile
-        - Objet du ciel profond (galaxie, nébuleuse, amas)
-        - Autre
+        - Asteroid or dwarf planet
+        - Comet
+        - Moon of a planet
+        - Star
+        - Deep-sky object (galaxy, nebula, cluster)
+        - Other
     validations:
       required: true
   - type: textarea
     id: why
     attributes:
-      label: Où le voir dans Céleste, et pourquoi ?
-      description: Onglet Coordonnées, carte du ciel, évènements… et ce qu'il apporterait.
+      label: Where should it appear in Céleste, and why?
+      description: Coordinates tab, sky map, events… and what it would bring.
   - type: input
     id: version
     attributes:
-      label: Version de Céleste
+      label: Céleste version
       placeholder: "4.7"

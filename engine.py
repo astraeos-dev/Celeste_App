@@ -45,7 +45,7 @@ v4.3:
   • body_details() — the data window of a body: apparent diameter, phase
     angle, illuminated fraction, light time, distance to the Sun
   • Sedna among MINOR_PLANETS; MINOR_PLANET_NUMBERS, the Minor Planet
-    Center's numbers (« (136199) Éris »)
+    Center's numbers ("(136199) Eris")
 
 v4.7:
   • messier_catalog(), deep_sky_horizontal() — the 110 Messier objects (OpenNGC);
@@ -120,7 +120,7 @@ PLANETS = ("Mercury", "Venus", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune")
 # both) and Sedna, far beyond them. Pluto comes from DE440, the others from the
 # tables of JPL Horizons (assets/minor_planets.npz, scripts/make_minor_planets.py).
 MINOR_PLANETS = ("Ceres", "Pallas", "Juno", "Vesta", "Pluto", "Eris", "Haumea", "Makemake", "Sedna")
-# Their numbers in the Minor Planet Center's catalogue: « (1) Cérès »
+# Their numbers in the Minor Planet Center's catalogue: "(1) Ceres"
 MINOR_PLANET_NUMBERS = {"Ceres": 1, "Pallas": 2, "Juno": 3, "Vesta": 4, "Pluto": 134340,
                         "Eris": 136199, "Haumea": 136108, "Makemake": 136472, "Sedna": 90377}
 _MINOR_TABLE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "minor_planets.npz")
@@ -1987,7 +1987,7 @@ class AstroEngine:
         return cls.stars_horizontal(t, lat, lon, [o["ra"] for o in catalog], [o["dec"] for o in catalog],
                                     elevation_m)
 
-    # « Ce soir » : the deep-sky objects worth a look, at least 30° high in the
+    # "Tonight": the deep-sky objects worth a look, at least 30° high in the
     # dark (Sun 12° below the horizon or more), the brightest first
     _DEEP_SKY_ALTITUDE, _DEEP_SKY_COUNT = 30.0, 5
 
@@ -2086,7 +2086,7 @@ class AstroEngine:
         out.sort(key=lambda p: p["start"])
         return out
 
-    # « Ce soir » : planets seen when 5° high, the Sun 6° below the horizon
+    # "Tonight": planets seen when 5° high, the Sun 6° below the horizon
     # (12° for Uranus and Neptune, too faint in the twilight), and the comets
     # brighter than magnitude 10 (binoculars)
     _FAINT_PLANETS = ("Uranus", "Neptune")

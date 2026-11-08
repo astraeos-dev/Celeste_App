@@ -1,21 +1,21 @@
-name: Proposer une fonctionnalité
-description: Une idée pour Céleste
+name: Suggest a feature
+description: An idea for Céleste
 labels: ["enhancement"]
 body:
   - type: textarea
-    id: idee
+    id: idea
     attributes:
-      label: Votre idée
-      description: Ce que Céleste devrait faire, et pour quelle observation ou quel usage.
+      label: Your idea
+      description: What Céleste should do, and for which observation or use.
     validations:
       required: true
   - type: textarea
     id: details
     attributes:
-      label: Détails
-      description: Exemples, références, maquettes…
+      label: Details
+      description: Examples, references, mock-ups…
   - type: input
     id: version
     attributes:
-      label: Version de Céleste
+      label: Céleste version
       placeholder: "4.7"

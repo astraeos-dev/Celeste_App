@@ -1,25 +1,25 @@
-# Polices
+# Fonts
 
-Les polices du design system Astræos, livrées avec Céleste pour que l'interface
-ait le même rendu sur toutes les machines. `gui.py` les déclare au démarrage
-(`QFontDatabase.addApplicationFont`) et `charts.py` les donne à matplotlib.
+The fonts of the Astræos design system, shipped with Céleste so that the interface
+looks the same on every machine. `gui.py` registers them at startup
+(`QFontDatabase.addApplicationFont`) and `charts.py` gives them to matplotlib.
 
-| Fichier | Famille | Rôle |
+| File | Family | Role |
 |---|---|---|
-| `IBMPlexSans-Regular.ttf` | IBM Plex Sans 400 | Texte courant (`corps`, `legende`) |
-| `IBMPlexSans-SemiBold.ttf` | IBM Plex Sans 600 | Titres, boutons, onglets, libellés de champ |
-| `IBMPlexMono-Medium.ttf` | IBM Plex Mono 500 | Données (`donnee`, `cadran`) : chiffres à chasse fixe |
-| `AstraeosSymboles-Regular.ttf` | Astraeos Symboles | Symboles astronomiques (☉ ☽ ♀ ♂ ♃ ♄ ☌ ☍ ♈ …), après Plex dans chaque pile |
+| `IBMPlexSans-Regular.ttf` | IBM Plex Sans 400 | Body text (`corps`, `legende`) |
+| `IBMPlexSans-SemiBold.ttf` | IBM Plex Sans 600 | Titles, buttons, tabs, field labels |
+| `IBMPlexMono-Medium.ttf` | IBM Plex Mono 500 | Data (`donnee`, `cadran`): fixed-width figures |
+| `AstraeosSymboles-Regular.ttf` | Astraeos Symboles | Astronomical symbols (☉ ☽ ♀ ♂ ♃ ♄ ☌ ☍ ♈ …), after Plex in each stack |
 
-## Provenance et licences
+## Origin and licences
 
-- **IBM Plex Sans et IBM Plex Mono** : fichiers TTF du dépôt
-  [IBM/plex](https://github.com/IBM/plex) (`packages/plex-sans` et `packages/plex-mono`,
-  `fonts/complete/ttf/`), non modifiés. Licence SIL Open Font License 1.1, nom de police
-  réservé « Plex » : voir `OFL-IBM-Plex.txt`.
-- **Astraeos Symboles** : police du design system Astræos, sous-ensemble de Noto Sans
-  Symbols, Symbols 2 et Math (34 symboles). Fichier WOFF2 du design system converti en TTF
-  sans modification des glyphes ; les symboles d'Éris (U+2BF1), de Sedna (U+2BF2), de Haumea
-  (U+1F77B) et de Makemake (U+1F77C) y sont copiés, tels quels, de Noto Sans Symbols 2
-  (version 2.008) par `scripts/add_font_symbols.py`. Licence SIL Open Font License 1.1 : voir
+- **IBM Plex Sans and IBM Plex Mono**: TTF files of the
+  [IBM/plex](https://github.com/IBM/plex) repository (`packages/plex-sans` and `packages/plex-mono`,
+  `fonts/complete/ttf/`), unmodified. SIL Open Font License 1.1, reserved font name
+  "Plex": see `OFL-IBM-Plex.txt`.
+- **Astraeos Symboles**: font of the Astræos design system, a subset of Noto Sans
+  Symbols, Symbols 2 and Math (34 symbols). WOFF2 file of the design system converted to TTF
+  without changing the glyphs; the symbols of Eris (U+2BF1), Sedna (U+2BF2), Haumea
+  (U+1F77B) and Makemake (U+1F77C) are copied into it, as they are, from Noto Sans Symbols 2
+  (version 2.008) by `scripts/add_font_symbols.py`. SIL Open Font License 1.1: see
   `OFL-Astraeos-Symboles.txt`.

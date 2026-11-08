@@ -1,8 +1,8 @@
 """
-Fiche d'éphémérides haute précision pour une date et un lieu (export PDF).
+High-precision ephemeris sheet for one date and place (PDF export).
 
-Script annexe, indépendant de l'application : il utilise Skyfield et l'éphéméride JPL DE421,
-que Skyfield télécharge automatiquement au premier lancement (de421.bsp, ~17 Mo).
+A side script, independent of the application: it uses Skyfield and the JPL DE421 ephemeris,
+which Skyfield downloads by itself at the first run (de421.bsp, ~17 MB).
 
     pip install skyfield fpdf2
     python scripts/fiche_haute_precision.py
@@ -29,11 +29,11 @@ def format_dec(dec):
 
 def get_events(ts, eph, body, topos_wgs84, t0, t1):
     """
-    topos_wgs84 doit être l'objet wgs84.latlon pur pour l'almanac.
+    topos_wgs84 must be the bare wgs84.latlon object for the almanac.
     """
     t_rise, t_set, t_transit = "N/A", "N/A", "N/A"
     
-    # Levers et Couchers
+    # Rises and sets
     f_rs, edges_rs = almanac.find_discrete(t0, t1, almanac.risings_and_settings(eph, body, topos_wgs84))
     for t, is_rise in zip(f_rs, edges_rs):
         time_str = t.utc_strftime('%H:%M') + " UTC"
@@ -42,7 +42,7 @@ def get_events(ts, eph, body, topos_wgs84, t0, t1):
         else:
             t_set = time_str
 
-    # Culmination (Passage au méridien)
+    # Transit (meridian passage)
     f_tr, edges_tr = almanac.find_discrete(t0, t1, almanac.meridian_transits(eph, body, topos_wgs84))
     for t, is_transit in zip(f_tr, edges_tr):
         if is_transit == 1: 
@@ -51,83 +51,83 @@ def get_events(ts, eph, body, topos_wgs84, t0, t1):
     return t_rise, t_transit, t_set
 
 def generate_pro_pdf():
-    print("[*] Chargement du moteur céleste Skyfield (JPL DE421)...")
+    print("[*] Loading the Skyfield engine (JPL DE421)...")
     eph = load('de421.bsp')
     ts = load.timescale()
     
     earth, sun, moon = eph['earth'], eph['sun'], eph['moon']
     
-    # CORRECTION : Création propre du lieu pour l'almanac
+    # The place itself, for the almanac
     cherbourg_topos = wgs84.latlon(LATITUDE, LONGITUDE, elevation_m=ALTITUDE)
-    # Création du vecteur complet (Terre -> Cherbourg) pour l'observation
+    # The full vector (Earth -> Cherbourg), for the observation
     cherbourg_obs = earth + cherbourg_topos
     
-    # Dates de calcul (t0 à t1 pour les événements de la journée)
+    # Dates of the calculation (t0 to t1 for the events of the day)
     t0 = ts.utc(2026, 3, 23, 0, 0, 0)
     t1 = ts.utc(2026, 3, 24, 0, 0, 0)
-    # Date pour les valeurs physiques à midi
+    # Date of the physical values, at noon
     t_12h = ts.utc(2026, 3, 23, 12, 0, 0)
     
-    print("[*] Calcul des éphémérides topocentriques apparentes pour Cherbourg...")
+    print("[*] Computing the apparent topocentric ephemerides for Cherbourg...")
     
-    # --- SOLEIL ---
-    # On utilise cherbourg_obs pour la position
+    # --- SUN ---
+    # cherbourg_obs for the position
     sun_app = cherbourg_obs.at(t_12h).observe(sun).apparent()
     sun_ra, sun_dec, sun_dist = sun_app.radec(epoch='date')
-    # On utilise cherbourg_topos pour les événements (almanac)
+    # cherbourg_topos for the events (almanac)
     sun_rise, sun_transit, sun_set = get_events(ts, eph, sun, cherbourg_topos, t0, t1)
     sun_diam = (1392700 / sun_dist.km) * (180 / math.pi) * 60
     
-    # --- LUNE ---
+    # --- MOON ---
     moon_app = cherbourg_obs.at(t_12h).observe(moon).apparent()
     moon_ra, moon_dec, moon_dist = moon_app.radec(epoch='date')
     moon_rise, moon_transit, moon_set = get_events(ts, eph, moon, cherbourg_topos, t0, t1)
     moon_diam = (3474.8 / moon_dist.km) * (180 / math.pi) * 60
     moon_phase = almanac.phase_angle(eph, 'moon', t_12h).degrees
     
-    # --- CRÉATION DU CONTENU ASCII ---
+    # --- THE ASCII CONTENT ---
     ascii_content = f"""
 ======================================================================
-               * B U L L E T I N   A S T R O N O M I Q U E *
+              * A S T R O N O M I C A L   B U L L E T I N *
 ======================================================================
- Lieu observe : CHERBOURG-EN-COTENTIN (Lat: {LATITUDE} N, Lon: {abs(LONGITUDE)} W)
- Date du jour : {DATE_CALCUL}
- Ref. calcul  : Moteur Skyfield (Hors-ligne) - Apparent Topocentrique
+ Place        : CHERBOURG-EN-COTENTIN (Lat: {LATITUDE} N, Lon: {abs(LONGITUDE)} W)
+ Date         : {DATE_CALCUL}
+ Computation  : Skyfield engine (offline) - apparent topocentric
 ----------------------------------------------------------------------
 
- [ S O L E I L ]
-      \\ | /       * MOUVEMENT DIURNE
-    '- ( ) -'       Lever     : {sun_rise:<10} 
-      / | \\         Culminat. : {sun_transit:<10} 
-                    Coucher   : {sun_set:<10} 
+ [ S U N ]
+      \\ | /       * DAILY MOTION
+    '- ( ) -'       Rise      : {sun_rise:<10} 
+      / | \\         Transit   : {sun_transit:<10} 
+                    Set       : {sun_set:<10} 
                     
-                  * DONNEES PHYSIQUES (A 12h00 UTC)
-                    Ascension Droite : {format_ra(sun_ra)}
-                    Declinaison      : {format_dec(sun_dec)}
-                    Distance Terre   : {sun_dist.au:.16f} UA
-                    Diametre appar.  : {sun_diam:.1f}'
+                  * PHYSICAL DATA (AT 12:00 UTC)
+                    Right ascension  : {format_ra(sun_ra)}
+                    Declination      : {format_dec(sun_dec)}
+                    Distance (Earth) : {sun_dist.au:.16f} AU
+                    Apparent diam.   : {sun_diam:.1f}'
 
 ----------------------------------------------------------------------
 
- [ L U N E ]
-       _.._       * MOUVEMENT DIURNE
-     /   a \\        Lever     : {moon_rise:<10} 
-     \\  ~  /        Culminat. : {moon_transit:<10} 
-       \\._/         Coucher   : {moon_set:<10} 
+ [ M O O N ]
+       _.._       * DAILY MOTION
+     /   a \\        Rise      : {moon_rise:<10} 
+     \\  ~  /        Transit   : {moon_transit:<10} 
+       \\._/         Set       : {moon_set:<10} 
                     
-                  * DONNEES PHYSIQUES (A 12h00 UTC)
-                    Ascension Droite : {format_ra(moon_ra)}
-                    Declinaison      : {format_dec(moon_dec)}
-                    Distance Terre   : {moon_dist.au:.16f} UA
-                    Diametre appar.  : {moon_diam:.1f}'
-                    Angle de Phase   : {moon_phase:.1f} deg
+                  * PHYSICAL DATA (AT 12:00 UTC)
+                    Right ascension  : {format_ra(moon_ra)}
+                    Declination      : {format_dec(moon_dec)}
+                    Distance (Earth) : {moon_dist.au:.16f} AU
+                    Apparent diam.   : {moon_diam:.1f}'
+                    Phase angle      : {moon_phase:.1f} deg
 
 ======================================================================
- Generateur   : Celeste_App v_PRO (Hors-ligne & Haute Precision)
+ Generator    : Celeste_App v_PRO (offline & high precision)
 ======================================================================
 """
 
-    print("[*] Génération du fichier PDF...")
+    print("[*] Writing the PDF file...")
     pdf = FPDF(orientation='P', unit='mm', format='A4')
     pdf.add_page()
     pdf.set_font("Courier", size=10)
@@ -137,7 +137,7 @@ def generate_pro_pdf():
         
     filename = f"Ephemerides_Pro_Cherbourg_{DATE_CALCUL}.pdf"
     pdf.output(filename)
-    print(f"\n[SUCCÈS] Terminé ! Le PDF '{filename}' est prêt.")
+    print(f"\n[DONE] The PDF '{filename}' is ready.")
 
 if __name__ == "__main__":
     generate_pro_pdf()

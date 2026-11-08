@@ -35,7 +35,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError, available_timezones
 
 from PyQt6.QtCore import (
     QDate, QDateTime, QEvent, QLocale, QPointF, QRectF, QRegularExpression, QSize,
-    Qt, QTime, QTimer, QTimeZone, QUrl,
+    QStringListModel, Qt, QTime, QTimer, QTimeZone, QUrl,
 )
 from PyQt6.QtGui import (
     QBrush, QColor, QDesktopServices, QFont, QFontDatabase, QKeySequence,
@@ -58,12 +58,14 @@ from matplotlib.figure import Figure  # noqa: E402
 
 import charts  # noqa: E402
 import icons  # noqa: E402
+import places  # noqa: E402
 import settings as prefs  # noqa: E402
 import updater  # noqa: E402
 from config import APP_VERSION, FONT_MONO, FONT_SANS, THEME_NAMES, Config, mix  # noqa: E402
 from constellations import STAR_CONSTELLATION  # noqa: E402
 from engine import (  # noqa: E402
-    EPHEMERIS_YEARS, MINOR_PLANET_NUMBERS, MINOR_PLANETS, PLANETS, AstroEngine, constellation_names,
+    COMET_DESIGNATIONS, COMETS, EPHEMERIS_YEARS, MINOR_PLANET_NUMBERS, MINOR_PLANETS, PLANETS, AstroEngine,
+    constellation_names,
 )
 from i18n import (  # noqa: E402
     available_langs, get_lang, lang_name, resolve_lang, switch_lang, t, tf,
@@ -232,6 +234,16 @@ def _elev_text(metres):
 
 
 def _place_name(lat, lon):
+    """Nom de la commune d'un point (OpenStreetMap Nominatim) ; sans réponse, la ville
+    la plus proche de la liste hors ligne (à moins de 25 km), sinon « »."""
+    name = _nominatim_name(lat, lon)
+    if name:
+        return name
+    near = places.nearest(lat, lon)
+    return near["name"] if near else ""
+
+
+def _nominatim_name(lat, lon):
     """Nom de la commune d'un point (OpenStreetMap Nominatim) ; « » sans réponse."""
     url = ("https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=10"
            f"&lat={lat:.5f}&lon={lon:.5f}&accept-language={get_lang()}")
@@ -267,12 +279,35 @@ def _clean_place(name):
     return (name or "").replace("\U0001f4cd", "").strip()
 
 
+# Comètes : leur désignation courte (tableaux, « Ce soir ») ; la complète avec *numbered*
+_COMET_SHORT = {"Panstarrs": "C/2026 O1", "Honda": "45P/Honda", "Tsuchinshan": "C/2026 C1",
+                "Borrelly": "19P/Borrelly"}
+
+
 def _planet_name(name, symbol=False, numbered=False):
-    """Nom d'une planète ; *numbered* : avec le numéro d'une planète mineure, « (1) Cérès »."""
+    """Nom d'une planète ; *numbered* : avec le numéro d'une planète mineure, « (1) Cérès » ;
+    une comète : sa désignation, la même dans toutes les langues (complète avec *numbered*)."""
+    if name in COMET_DESIGNATIONS:
+        text = COMET_DESIGNATIONS[name] if numbered else _COMET_SHORT.get(name, COMET_DESIGNATIONS[name])
+        return f"{SYMBOL[name]} {text}" if symbol else text
     text = t(f"planets.{name.lower()}")
     if numbered and name in MINOR_PLANET_NUMBERS:
         text = f"({MINOR_PLANET_NUMBERS[name]}) {text}"
     return f"{SYMBOL[name]} {text}" if symbol else text
+
+
+_TONIGHT_CACHE = {}
+
+
+def _tonight_and_upcoming(key, dte, lat, lon, elev, zone):
+    """« Ce soir » et les trois prochains évènements visibles (0,3 s), gardés pour la nuit et
+    le lieu *key* : un changement de thème ou de langue ne les recalcule pas."""
+    if key not in _TONIGHT_CACHE:
+        if len(_TONIGHT_CACHE) >= 8:
+            _TONIGHT_CACHE.pop(next(iter(_TONIGHT_CACHE)))
+        _TONIGHT_CACHE[key] = (AstroEngine.tonight(dte, lat, lon, elev, zone),
+                               AstroEngine.upcoming_events(dte, lat, lon, elev, zone))
+    return _TONIGHT_CACHE[key]
 
 
 def _plural_key(base, n):
@@ -321,7 +356,7 @@ def _ics_calendar(items, stamp):
 # Groupes d'astres de l'onglet Planètes, dans leur ordre : un nouveau groupe
 # (comètes, ciel profond…) s'ajoute ici avec ses noms, et une clé
 # planets.group_<clé> dans les traductions
-_BODY_GROUPS = (("planets", PLANETS), ("minor", MINOR_PLANETS))
+_BODY_GROUPS = (("planets", PLANETS), ("minor", MINOR_PLANETS), ("comets", COMETS))
 _SORT_ROLE = Qt.ItemDataRole.UserRole          # valeur numérique du tri d'une cellule
 _NAME_ROLE = Qt.ItemDataRole.UserRole + 1      # nom de l'astre d'une ligne
 
@@ -1032,7 +1067,7 @@ class AstroApp(QMainWindow):
         root = QHBoxLayout(central)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
-        root.addWidget(self._build_sidebar())
+        root.addWidget(self._scrolling_sidebar(self._build_sidebar()))
 
         main = QWidget()
         main.setObjectName("central")
@@ -1064,10 +1099,9 @@ class AstroApp(QMainWindow):
     def _build_sidebar(self):
         side = QFrame()
         side.setObjectName("sidebar")
-        side.setFixedWidth(312)
         lay = QVBoxLayout(side)
         lay.setContentsMargins(24, 24, 24, 16)
-        lay.setSpacing(16)
+        lay.setSpacing(12)
 
         # En-tête : le symbole Astræos, puis le nom de l'application
         head = QHBoxLayout()
@@ -1102,7 +1136,22 @@ class AstroApp(QMainWindow):
         self.btn_now.clicked.connect(self.set_now)
         lay.addLayout(self._with_button(self.field_date, self.btn_now))
 
-        # Lieu
+        # Lieu : une ville cherchée par son nom (GeoNames, hors ligne), ou ses coordonnées
+        self.entry_place = QLineEdit()
+        self.entry_place.setPlaceholderText(t("side.place_placeholder"))
+        self.entry_place.setToolTip(t("side.place_tip"))
+        self.entry_place.setClearButtonEnabled(True)
+        self._place_model = QStringListModel(self)
+        self._place_found = {}
+        self._place_completer = QCompleter(self._place_model, self)
+        self._place_completer.setCompletionMode(QCompleter.CompletionMode.UnfilteredPopupCompletion)
+        self._place_completer.setMaxVisibleItems(10)
+        self._place_completer.activated.connect(self._on_place_chosen)
+        self.entry_place.setCompleter(self._place_completer)
+        self.entry_place.textEdited.connect(self._on_place_typed)
+        self.entry_place.returnPressed.connect(self._on_place_return)
+        lay.addWidget(ChampSaisie(t("side.place"), self.entry_place))
+
         validator = QRegularExpressionValidator(QRegularExpression(_COORD_REGEX))
         self.entry_lat = QLineEdit(_coord_text(_pref_float("default_lat", 49.6333)))
         self.entry_lon = QLineEdit(_coord_text(_pref_float("default_lon", -1.6167)))
@@ -1173,6 +1222,25 @@ class AstroApp(QMainWindow):
         return side
 
     @staticmethod
+    def _scrolling_sidebar(side):
+        """La barre latérale, qui défile quand la fenêtre est plus basse qu'elle
+        (écrans de 768 pixels de haut)."""
+        side.setMinimumWidth(280)          # sinon la largeur naturelle (337) déborderait de 312
+        scroll = QScrollArea()
+        scroll.setObjectName("sidebarScroll")
+        scroll.setWidget(side)
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        bar = scroll.verticalScrollBar()
+
+        def fit(_low=0, high=0):            # la barre de défilement s'ajoute aux 312 pixels
+            scroll.setFixedWidth(312 + (bar.sizeHint().width() if high > 0 else 0))
+        bar.rangeChanged.connect(fit)
+        fit()
+        return scroll
+
+    @staticmethod
     def _with_button(field, *buttons):
         """Un champ et des boutons ronds alignés sur sa boîte de saisie."""
         row = QHBoxLayout()
@@ -1199,6 +1267,24 @@ class AstroApp(QMainWindow):
             cards.addWidget(card, stretch=1)
         lay.addLayout(cards)
 
+        # Ce soir : la nuit, la Lune, les planètes visibles et les prochains évènements
+        card = _card()
+        card.setObjectName("card")
+        outer = QVBoxLayout(card)
+        outer.setContentsMargins(16, 16, 16, 16)
+        outer.setSpacing(6)
+        head = QHBoxLayout()
+        head.setSpacing(8)
+        head.addWidget(_label(SYMBOL["star"], "symbole", tone="or"))
+        head.addWidget(_label(t("tonight.title"), "sous-titre"))
+        head.addStretch()
+        outer.addLayout(head)
+        self._tonight_box = QVBoxLayout()
+        self._tonight_box.setSpacing(6)
+        outer.addLayout(self._tonight_box)
+        self._tonight_key = None
+        lay.addWidget(card)
+
         row = QHBoxLayout()
         row.setSpacing(16)
 
@@ -1221,6 +1307,10 @@ class AstroApp(QMainWindow):
 
         # Lune
         card, body, self._lbl_moon_state = self._body_card(SYMBOL["Moon"], "lune", t("moon.title"))
+        btn_calendar = _bouton(t("calendar.button"), "calendar", "secondaire", compact=True)
+        btn_calendar.setToolTip(t("calendar.button_tip"))
+        btn_calendar.clicked.connect(lambda _=False: self._show_moon_calendar())
+        card.layout().itemAt(0).layout().insertWidget(3, btn_calendar)
         self.moon_labels = {}
         r = self._section_rows(body, 0, t("moon.section_position"), [
             ("ra", "moon.ra"), ("dec", "moon.dec"), ("alt", "moon.alt"),
@@ -1448,6 +1538,8 @@ class AstroApp(QMainWindow):
         # la dernière colonne s'étire : jamais de défilement horizontal pour quelques pixels
         table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._planet_alt = {}
+        self._planet_empty = _label("", "legende", tone="attenuee", wrap=True)
+        self._planet_empty.hide()
         # clic sur un en-tête : tri croissant puis décroissant ; « Planète » : ordre naturel.
         # La colonne triée a son en-tête en or (la flèche de Qt élargirait toutes les colonnes)
         table.setSortingEnabled(True)
@@ -1456,10 +1548,43 @@ class AstroApp(QMainWindow):
         header.sortIndicatorChanged.connect(self._on_planet_sort)
         self._show_planet_group()
         lay.addWidget(table)
+        lay.addWidget(self._planet_empty)
 
         card = _card()
         card_l = QVBoxLayout(card)
         card_l.setContentsMargins(8, 8, 8, 8)
+        # animation : le planétaire avance de jour en jour à partir de la date choisie
+        bar = QHBoxLayout()
+        bar.setContentsMargins(8, 4, 8, 0)
+        bar.setSpacing(4)
+        back = _bouton_icone("step_back", t("planets.orrery_back"), compact=True)
+        back.clicked.connect(lambda: self._orrery_step(-1))
+        self._orrery_play = _bouton_icone("play", t("planets.orrery_play"), compact=True)
+        self._orrery_play.clicked.connect(self._toggle_orrery)
+        forward = _bouton_icone("step_forward", t("planets.orrery_forward"), compact=True)
+        forward.clicked.connect(lambda: self._orrery_step(+1))
+        self._orrery_speed = QComboBox()
+        for key, days in (("day", 1.0), ("week", 7.0), ("month", 30.0), ("year", 365.25)):
+            self._orrery_speed.addItem(t(f"planets.orrery_speed_{key}"), days)
+        self._orrery_speed.setCurrentIndex(1)
+        self._orrery_speed.setToolTip(t("planets.orrery_speed_tip"))
+        self._orrery_date = _label("", "donnee")
+        reset = _bouton(t("planets.orrery_reset"), "reset", "discret", compact=True)
+        reset.setToolTip(t("planets.orrery_reset_tip"))
+        reset.clicked.connect(self._reset_orrery)
+        for widget in (back, self._orrery_play, forward, self._orrery_speed):
+            bar.addWidget(widget)
+        bar.addSpacing(12)
+        bar.addWidget(self._orrery_date)
+        bar.addStretch()
+        bar.addWidget(reset)
+        card_l.addLayout(bar)
+        if getattr(self, "_orrery_timer", None) is None:
+            self._orrery_timer = QTimer(self)
+            self._orrery_timer.setInterval(80)
+            self._orrery_timer.timeout.connect(lambda: self._orrery_step(+1))
+            self._orrery_offset = 0.0                     # jours depuis la date choisie
+        self._orrery_timer.stop()
         self.fig_orrery = Figure(facecolor=Config.CIEL_100)
         self.canvas_orrery = FigureCanvasQTAgg(self.fig_orrery)
         card_l.addWidget(self.canvas_orrery)
@@ -1597,10 +1722,18 @@ class AstroApp(QMainWindow):
         for r in range(table.rowCount()):
             name = table.item(r, 0).data(_NAME_ROLE)
             hide = bool((group is not None and name not in group) or (
-                visible_only and float(self._planet_alt.get(name, 0.0)) <= 0.0))
+                visible_only and float(self._planet_alt.get(name, 0.0)) <= 0.0)
+                or (name in COMETS and name not in getattr(self, "_comets_now", ())))
             table.setRowHidden(r, hide)
             shown += not hide
         table.resizeColumnsToContents()
+        self._planet_empty.setVisible(shown == 0)
+        if self._planet_group == "comets":
+            first, last = AstroEngine.comet_years()
+            self._planet_empty.setText(tf("planets.no_comet", first=first, last=last,
+                                          comets=", ".join(_COMET_SHORT.get(c, c) for c in COMETS)))
+        else:
+            self._planet_empty.setText(t("planets.none_visible"))
         header = table.horizontalHeader()
         rows = max(1, min(shown, self._PLANET_ROWS_MAX))
         table.setFixedHeight(40 * rows + header.sizeHint().height() + 4)
@@ -2131,6 +2264,43 @@ class AstroApp(QMainWindow):
         self.location_name = name
         self.calculate()
 
+    def _on_place_typed(self, text):
+        """Suggestions de villes à chaque lettre (deux au moins)."""
+        found = places.search(text) if len(text.strip()) >= 2 else []
+        self._place_found = {}
+        for place in found:
+            self._place_found.setdefault(places.label(place), place)
+        self._place_model.setStringList(list(self._place_found))
+        if self._place_found:
+            self._place_completer.complete()
+
+    def _on_place_chosen(self, text):
+        place = self._place_found.get(text)
+        if place:
+            self._apply_place(place)
+
+    def _on_place_return(self):
+        """Entrée sans choisir : la première suggestion."""
+        text = self.entry_place.text()
+        if not text.strip() or text in self._place_found:
+            return                                        # vide, ou déjà traité par le choix
+        found = places.search(text, limit=1)
+        if found:
+            self._apply_place(found[0])
+        else:
+            self.statusBar().showMessage(tf("side.place_unknown", name=text.strip()), 5000)
+
+    def _apply_place(self, place):
+        """Ville choisie : coordonnées, altitude et nom, puis calcul."""
+        self._place_completer.popup().hide()
+        self.entry_lat.setText(_coord_text(place["lat"]))
+        self.entry_lon.setText(_coord_text(place["lon"]))
+        self.entry_elev.setText(_elev_text(place["elevation"]))
+        self.location_name = place["name"]
+        self.combo_fav.setCurrentIndex(-1)
+        QTimer.singleShot(0, self.entry_place.clear)
+        self.calculate()
+
     def _on_coords_edited(self, _text):
         """Coordonnées tapées à la main : ce n'est plus un lieu nommé."""
         self.location_name = ""
@@ -2457,25 +2627,28 @@ class AstroApp(QMainWindow):
             self.sun_events  = AstroEngine.find_events(dte, lat, lon, "sun", self._zone, elev)
             self.moon_events = AstroEngine.find_events(dte, lat, lon, "moon", self._zone, elev)
             self.planet_events = {name: AstroEngine.find_events(dte, lat, lon, name, self._zone, elev)
-                                  for name in _PLANETS + MINOR_PLANETS}
+                                  for name in _PLANETS + MINOR_PLANETS + AstroEngine.comets_at(tc)}
             self.hours, self.sun_altitudes, self.moon_altitudes = \
                 charts.sample_day(dte, lat, lon, elevation_m=elev, tz=self._zone)
             self._day_start = AstroEngine._local_day(dte, self._zone)[0]
             self.last_cache_key = key
 
         self.planets, self.minor_planets = [], []
-        magnitudes = AstroEngine.observations(tc, _PLANETS + MINOR_PLANETS)
-        for name in _PLANETS + MINOR_PLANETS:
+        self._comets_now = AstroEngine.comets_at(tc)                  # dans leurs tables (2025–2031)
+        bodies = _PLANETS + MINOR_PLANETS + self._comets_now
+        magnitudes = AstroEngine.observations(tc, bodies)
+        for name in bodies:
             ra, dec, dist = AstroEngine.planet_position(tc, name)
             alt, az = AstroEngine.horizontal(tc, lat, lon, name, elev)
-            minor = name in MINOR_PLANETS
+            minor = name not in _PLANETS
             (self.minor_planets if minor else self.planets).append({
                 "name": name, "ra": ra, "dec": dec, "dist": dist, "alt": alt, "az": az,
                 "elong": AstroEngine.angular_separation(ra, dec, s_ra, s_dec),
                 "east": (ra - s_ra) % 24 < 12, "mag": magnitudes[name]["mag"], "minor": minor,
+                "comet": name in COMETS,
             })
 
-        # sur la carte, les planètes mineures assez brillantes pour la limite choisie
+        # sur la carte, les planètes mineures et les comètes assez brillantes pour la limite choisie
         bright = [m for m in self.minor_planets if m["mag"] <= self._mag_limit()]
         self._sky_scene = charts.sky_scene(jd, lat, lon, self._mag_limit(),
                                            self.sun_data, self.moon_data, self.planets + bright)
@@ -2484,6 +2657,7 @@ class AstroApp(QMainWindow):
         self.visible_planets_map = [p["name"] for p in self.planets if p["alt"] > 0]
 
         self._update_data_cards()
+        self._update_tonight(dte, lat, lon, elev)
         self._update_sun_card()
         self._update_moon_card()
         self._update_planet_table()
@@ -2541,6 +2715,176 @@ class AstroApp(QMainWindow):
         phase = self._sun_phase()
         _set_pastille(self._lbl_sun_state, t(f"sun.state_{phase}"),
                       "info" if phase == "day" else "neutre")
+
+    def _update_tonight(self, dte, lat, lon, elev):
+        """Résumé « Ce soir », recalculé quand la nuit, le lieu ou le fuseau changent."""
+        start = AstroEngine._local_day(dte - timedelta(hours=12), self._zone)[0]
+        key = (f"{start:%Y-%m-%d %H}", round(lat, 4), round(lon, 4),
+               getattr(self._zone, "key", "UTC"), elev)
+        if key == self._tonight_key:
+            return
+        self._tonight_key = key
+        self._tonight, self._upcoming = _tonight_and_upcoming(key, dte, lat, lon, elev, self._zone)
+        while self._tonight_box.count():
+            item = self._tonight_box.takeAt(0)
+            if item.widget():
+                item.widget().hide()                  # deleteLater() n'agit qu'au tour suivant
+                item.widget().deleteLater()
+        for text, tone in self._tonight_lines():
+            self._tonight_box.addWidget(_label(text, "corps" if tone is None else "legende",
+                                               tone=tone or None, wrap=True))
+
+    def _tonight_lines(self):
+        """[(texte, ton)] du résumé : la nuit, la Lune, une ligne par planète visible, la suite."""
+        n, clock = self._tonight, self._clock
+        lines = []
+        if n["dark"] is None:
+            lines.append((t("tonight.no_night"), None))
+        else:
+            lines.append((tf(f"tonight.dark_{n['dark']}", start=clock(n["dusk"]), end=clock(n["dawn"])), None))
+        moon = n["moon"]
+        rise, sets = moon["rise"], moon["set"]
+        if rise and sets:
+            when = (tf("tonight.moon_rises_sets", rise=clock(rise), set=clock(sets)) if rise < sets
+                    else tf("tonight.moon_sets_rises", rise=clock(rise), set=clock(sets)))
+        elif rise:
+            when = tf("tonight.moon_rises", time=clock(rise))
+        elif sets:
+            when = tf("tonight.moon_sets", time=clock(sets))
+        else:
+            when = t("tonight.moon_up" if moon["up"] > 0.5 else "tonight.moon_down")
+        lines.append((f"{SYMBOL['Moon']} " + tf("tonight.moon", pct=_num(100.0 * moon["fraction"]), when=when),
+                      None))
+        if not n["planets"]:
+            lines.append((t("tonight.no_planet"), "attenuee"))
+        for planet in n["planets"]:
+            seen = self._visibility_text(planet)
+            text = f"{_planet_name(planet['name'], symbol=True)} · {seen[:1].lower()}{seen[1:]}"
+            mag = tf("events.magnitude", value=_num(planet["mag"], 1))
+            text += f" · {mag[:1].lower()}{mag[1:]}"
+            if planet["rise"]:
+                text += " · " + tf("tonight.rises", time=clock(planet["rise"]))
+            if planet["set"]:
+                text += " · " + tf("tonight.sets", time=clock(planet["set"]))
+            lines.append((text, None))
+        if self._upcoming:
+            items = []
+            for ev in self._upcoming:
+                best = self._local(ev["visibility"]["best"])
+                items.append(tf("tonight.event", date=f"{best:%d/%m}", title=self._event_title(ev, symbol=False),
+                                when=t(f"tonight.period_{ev['visibility']['period']}")))
+            lines.append((tf("tonight.upcoming", events=" · ".join(items)), "attenuee"))
+        else:
+            lines.append((t("tonight.no_upcoming"), "attenuee"))
+        return lines
+
+    # ── Calendrier lunaire ────────────────────────────────────────────────────
+
+    def _show_moon_calendar(self, year=None, month=None):
+        """Fenêtre (non bloquante) : la Lune jour par jour sur un mois, vue d'ici."""
+        if not self._check_inputs():
+            self._warn_invalid_coords()
+            return
+        local = self._local(self._dte or _utc_now())
+        dlg = getattr(self, "_calendar_dialog", None)
+        if dlg is None:
+            dlg = QDialog(self)
+            dlg.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+            dlg.setWindowTitle(t("calendar.window_title"))
+            dlg.resize(980, 720)
+            lay = QVBoxLayout(dlg)
+            lay.setContentsMargins(24, 24, 24, 16)
+            lay.setSpacing(12)
+            head = QHBoxLayout()
+            prev = _bouton_icone("previous", t("calendar.previous"))
+            nxt = _bouton_icone("next", t("calendar.next"))
+            prev.clicked.connect(lambda: self._fill_moon_calendar(-1))
+            nxt.clicked.connect(lambda: self._fill_moon_calendar(+1))
+            dlg._title = _label("", "sous-titre")
+            head.addWidget(prev)
+            head.addWidget(dlg._title)
+            head.addWidget(nxt)
+            head.addStretch()
+            lay.addLayout(head)
+            dlg._grid = QGridLayout()
+            dlg._grid.setSpacing(6)
+            lay.addLayout(dlg._grid, stretch=1)
+            dlg._note = _label("", "legende", tone="attenuee", wrap=True)
+            lay.addWidget(dlg._note)
+            buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+            buttons.rejected.connect(dlg.reject)
+            lay.addWidget(buttons)
+            dlg.destroyed.connect(lambda *_: setattr(self, "_calendar_dialog", None))
+            self._calendar_dialog = dlg
+        dlg._month = (year or local.year, month or local.month)
+        self._fill_moon_calendar(0)
+        dlg.show()
+        dlg.raise_()
+
+    def _fill_moon_calendar(self, step):
+        """Remplit la grille du mois affiché, décalé de *step* mois."""
+        dlg = self._calendar_dialog
+        year, month = dlg._month
+        month += step
+        year, month = year + (month - 1) // 12, (month - 1) % 12 + 1
+        dlg._month = (year, month)
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            days = AstroEngine.moon_calendar(year, month, self._lat, self._lon, self._elevation(), self._zone)
+        finally:
+            QApplication.restoreOverrideCursor()
+        grid = dlg._grid
+        while grid.count():
+            item = grid.takeAt(0)
+            if item.widget():
+                item.widget().hide()
+                item.widget().deleteLater()
+        loc = _locale()
+        name = loc.standaloneMonthName(month, QLocale.FormatType.LongFormat)
+        dlg._title.setText(f"{name[:1].upper()}{name[1:]} {year}")
+        first = loc.firstDayOfWeek().value                # 1 lundi … 7 dimanche
+        for col in range(7):
+            day = (first - 1 + col) % 7 + 1
+            head = _label(loc.standaloneDayName(day, QLocale.FormatType.ShortFormat), "legende",
+                          tone="attenuee")
+            head.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            grid.addWidget(head, 0, col)
+        offset = (days[0]["date"].isoweekday() - first) % 7
+        today = self._local(self._dte).date() if self._dte else None
+        southern = (self._lat or 0) < 0
+        for i, d in enumerate(days):
+            cell = _card()
+            cell.setProperty("calendarDay", True)
+            box = QVBoxLayout(cell)
+            box.setContentsMargins(8, 6, 8, 6)
+            box.setSpacing(2)
+            top = QHBoxLayout()
+            top.addWidget(_label(str(d["date"].day), "corps", tone="or" if d["date"] == today else None,
+                                 strong=True))
+            top.addStretch()
+            disc = PhaseLune(26)
+            disc.set_phase(d["phase"], southern=southern)
+            top.addWidget(disc)
+            box.addLayout(top)
+            box.addWidget(_label(f"{_num(100.0 * d['fraction'])} %", "legende"))
+            rise = self._clock(d["rise"]) if d["rise"] else "—"
+            sets = self._clock(d["set"]) if d["set"] else "—"
+            times = _label(f"↑ {rise}   ↓ {sets}", "legende", tone="attenuee")
+            times.setToolTip(t("calendar.rise_set_tip"))
+            box.addWidget(times)
+            if d["event"]:
+                ev = d["event"]
+                box.addWidget(_label(f"{t('phases.' + ev['kind'])} {self._clock(ev['time'])}", "legende",
+                                     tone="lune", strong=True))
+            box.addStretch()
+            grid.addWidget(cell, 1 + (offset + i) // 7, (offset + i) % 7)
+        for row in range(1, 7):
+            grid.setRowStretch(row, 1)
+        for col in range(7):
+            grid.setColumnStretch(col, 1)
+            grid.setColumnMinimumWidth(col, 110)
+        dlg._note.setText(tf("calendar.note", zone=getattr(self._zone, "key", "UTC"),
+                             place=self.location_name or f"{_fmt_lat(self._lat)}, {_fmt_lon(self._lon)}"))
 
     def _update_moon_card(self):
         md, lb, ev = self.moon_data, self.moon_labels, self.moon_events
@@ -2617,6 +2961,9 @@ class AstroApp(QMainWindow):
     # ──────────────────────────────────────────────────────────────────────────
 
     def _on_tab_changed(self, _index):
+        timer = getattr(self, "_orrery_timer", None)
+        if timer is not None and timer.isActive() and self._chart_tabs.get(self.tabs.currentWidget()) != "orrery":
+            self._toggle_orrery()                         # l'animation cachée ne tourne pas
         self._draw_visible_chart()
         self._refresh_coordinates()
 
@@ -2660,7 +3007,7 @@ class AstroApp(QMainWindow):
             "horizon": t("skymap.horizon"),
             "cardinals": [t(f"skymap.cardinal_{c}")
                           for c in ("n", "ne", "e", "se", "s", "sw", "w", "nw")],
-            "planets": {n: _planet_name(n) for n in _PLANETS + MINOR_PLANETS},
+            "planets": {n: _planet_name(n) for n in _PLANETS + MINOR_PLANETS + COMETS},
         }
         self._sky_ax, tip = charts.draw_sky_map(self.fig_sky, self._sky_scene, labels)
         self._sky_tip.attach(tip)
@@ -2677,9 +3024,59 @@ class AstroApp(QMainWindow):
             "vernal": t("planets.orrery_vernal"),
             "planets": {n: _planet_name(n) for n in _PLANETS},
         }
-        tc = AstroEngine.julian_century_j2000(self._dte)
-        charts.draw_orrery(self.fig_orrery, charts.orrery_scene(tc), labels)
+        charts.draw_orrery(self.fig_orrery, charts.orrery_scene(self._orrery_tc()), labels)
         self.canvas_orrery.draw_idle()
+        self._show_orrery_date()
+
+    # ── Planétaire animé ─────────────────────────────────────────────────────
+
+    def _orrery_tc(self):
+        """Siècles juliens du planétaire : la date choisie, plus le décalage de l'animation,
+        bornés aux années de l'éphéméride."""
+        first, last = (AstroEngine.julian_day(datetime(y, m, d)) for y, m, d in
+                       ((EPHEMERIS_YEARS[0], 1, 2), (EPHEMERIS_YEARS[1], 12, 30)))
+        jd = AstroEngine.julian_day(self._dte) + self._orrery_offset
+        if not first <= jd <= last:
+            jd = min(max(jd, first), last)
+            self._orrery_offset = jd - AstroEngine.julian_day(self._dte)
+            self._orrery_timer.stop()
+            self._orrery_play.setIcon(_icon("play", Config.ENCRE, 16))
+        return (jd - 2451545.0) / 36525.0
+
+    def _show_orrery_date(self):
+        when = self._dte + timedelta(seconds=round(self._orrery_offset * 86400.0))
+        self._orrery_date.setText(when.strftime("%d/%m/%Y"))
+        self._orrery_date.setProperty("tone", "or" if abs(self._orrery_offset) >= 0.5 else None)
+        self._orrery_date.style().polish(self._orrery_date)
+
+    def _orrery_step(self, sign):
+        """Une image : le planétaire avance (ou recule) du pas choisi."""
+        if self._dte is None:
+            return
+        self._orrery_offset += sign * self._orrery_speed.currentData()
+        scene = charts.orrery_scene(self._orrery_tc())
+        if charts.move_orrery(self.fig_orrery, scene):
+            self.canvas_orrery.draw_idle()
+            self._show_orrery_date()
+        else:
+            self._draw_orrery()
+
+    def _toggle_orrery(self):
+        running = not self._orrery_timer.isActive()
+        if running:
+            self._orrery_timer.start()
+        else:
+            self._orrery_timer.stop()
+        self._orrery_play.setIcon(_icon("pause" if running else "play", Config.ENCRE, 16))
+        self._orrery_play.setToolTip(t("planets.orrery_pause" if running else "planets.orrery_play"))
+
+    def _reset_orrery(self):
+        """Retour à la date choisie dans la barre latérale."""
+        if self._orrery_timer.isActive():
+            self._toggle_orrery()
+        self._orrery_offset = 0.0
+        if self._dte is not None:
+            self._draw_orrery()
 
     # ── Survol et clic ───────────────────────────────────────────────────────
 
@@ -2780,7 +3177,8 @@ class AstroApp(QMainWindow):
         elif kind == "planet":
             title = f"{sym[obj['name']]} {_planet_name(obj['name'], numbered=full)}"
             side = t("coords.east") if obj.get("east") else t("coords.west")
-            rows.append((t("detail.type"), t("detail.type_minor_planet" if obj.get("minor")
+            rows.append((t("detail.type"), t("detail.type_comet" if obj.get("comet") else
+                                             "detail.type_minor_planet" if obj.get("minor")
                                              else "detail.type_planet")))
             if obj.get("mag") is not None:
                 rows.append((t("detail.mag"), _num(obj["mag"], 1)))
@@ -3129,7 +3527,7 @@ class AstroApp(QMainWindow):
 
     # ── Évènements de l'année : planètes, planètes mineures, Lune, saisons ─────
 
-    _EVENT_GROUPS = ("planets", "minor", "moon", "seasons", "meteors")
+    _EVENT_GROUPS = ("planets", "minor", "comets", "moon", "seasons", "meteors")
     _WINDS = ("n", "ne", "e", "se", "s", "sw", "w", "nw")
 
     def _body_name(self, name, symbol=False):
@@ -3148,6 +3546,8 @@ class AstroApp(QMainWindow):
             return t(f"events.{ev['kind']}")
         if kind == "meteor_shower":
             return tf("meteors.title", name=t(f"meteors.name_{ev['kind']}"))
+        if kind.startswith("comet_"):
+            return tf(f"events.{kind}", comet=_planet_name(ev["bodies"][0], symbol=symbol, numbered=True))
         if kind in ("perihelion", "aphelion", "perigee", "apogee"):
             return t(f"events.{kind}")
         a = ev["bodies"][0]
@@ -3214,7 +3614,8 @@ class AstroApp(QMainWindow):
             events = (AstroEngine.find_conjunctions(dte, num_days=365)
                       + AstroEngine.find_moon_events(dte, num_days=365)
                       + AstroEngine.find_seasons(dte, num_days=365)
-                      + AstroEngine.find_meteor_showers(dte, num_days=365))
+                      + AstroEngine.find_meteor_showers(dte, num_days=365)
+                      + AstroEngine.find_comet_events(dte, num_days=365))
             events.sort(key=lambda e: e["date"])
             if self._lat is not None:
                 AstroEngine.event_visibility(events, self._lat, self._lon, self._elevation(), self._zone)
@@ -3258,6 +3659,12 @@ class AstroApp(QMainWindow):
             (m1, d1), (m2, d2) = ev["activity"]
             details += [tf("meteors.zhr", value=ev["zhr"]), tf("meteors.speed", value=ev["velocity"]),
                         tf("meteors.activity", start=f"{d1:02d}/{m1:02d}", end=f"{d2:02d}/{m2:02d}")]
+        elif kind.startswith("comet_"):
+            symbole = SYMBOL[a]
+            if kind != "comet_brightest":
+                key = "events.distance_au" if kind == "comet_perihelion" else "events.distance_earth"
+                details.append(tf(key, value=_num(ev["distance_au"], 3)))
+            details.append(tf("events.magnitude", value=_num(ev["mag"], 1)))
         elif kind in ("perihelion", "aphelion"):
             symbole = SYMBOL["Earth"]
             details.append(tf("events.distance_au", value=_num(ev["distance_au"], 5)))

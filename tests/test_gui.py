@@ -124,6 +124,16 @@ class TestCalculation:
         shown = [r for r in range(window.planet_table.rowCount()) if not window.planet_table.isRowHidden(r)]
         assert len(shown) == 7                                             # Mercure à Neptune
 
+    def test_tonight(self, window):
+        """« Ce soir » (heures en TU dans ces tests) : la nuit, la Lune, les planètes, la suite."""
+        lines = [text for text, _tone in window._tonight_lines()]
+        assert lines[0] == "Nuit noire de 18:33 à 05:08"
+        assert lines[1].endswith("Lune éclairée à 49 %, se lève à 22:42")
+        assert any("Jupiter · visible le matin" in x and "magnitude −2,0" in x for x in lines)
+        assert lines[-1].startswith("À venir : 03/11 Lune et Mars, le matin")
+        shown = [w.text() for w in window.findChildren(QLabel) if w.isVisible()]
+        assert "Nuit noire de 18:33 à 05:08" in shown
+
     def test_minor_planets_of_the_planet_table(self, window):
         """Le choix « Planètes mineures » montre Cérès … Makemake, magnitude comprise."""
         window._planet_selector.buttons["minor"].click()
@@ -145,12 +155,13 @@ class TestCalculation:
                 if not table.isRowHidden(r)]
 
     def test_all_bodies_and_visible_only(self, window):
-        """Issue #21 : tous les astres, ou seulement ceux au-dessus de l'horizon."""
+        """Issue #21 : tous les astres, ou seulement ceux au-dessus de l'horizon ; en 2026,
+        7 planètes, 9 planètes mineures et les 4 comètes suivies."""
         window._planet_selector.buttons["all"].click()
-        assert len(self._shown(window)) == 16
+        assert len(self._shown(window)) == 20
         window._planet_visible.setChecked(True)
         up = self._shown(window)
-        assert 0 < len(up) < 16
+        assert 0 < len(up) < 20
         assert all(window._planet_alt[name] > 0 for name in up)
         window._planet_visible.setChecked(False)
         window._planet_selector.buttons["planets"].click()
@@ -544,7 +555,8 @@ class TestLiveAndExport:
 # ──────────────────────────────────────────────────────────────────────
 
 # Symboles astronomiques admis (police Astraeos Symboles), point des pastilles
-_ALLOWED = set("☉☽☾♀♂♃♄⊕♈★●○☌☍☄")
+# symboles astronomiques de la police Astraeos Symboles (présentation texte, U+FE0E)
+_ALLOWED = set("☉☽☾☿♀♂♃♄♅♆♇⊕♈★●○☌☍☄⚳⚴⚵⚶\u2bf1\u2bf2\U0001f77b\U0001f77c")
 
 
 def _is_emoji(ch):
@@ -630,6 +642,163 @@ class _FakeResponse(io.BytesIO):
 
     def __exit__(self, *exc):
         return False
+
+
+class TestMoonCalendar:
+    def _cells(self, dlg):
+        return [w for w in dlg.findChildren(QFrame) if w.property("calendarDay") and w.isVisibleTo(dlg)]
+
+    def test_month_and_navigation(self, window, qapp):
+        """Novembre 2026 (heures en TU ici), puis décembre, puis retour à travers l'année."""
+        window._show_moon_calendar()
+        _pump(qapp)
+        dlg = window._calendar_dialog
+        assert dlg._title.text() == "Novembre 2026" and len(self._cells(dlg)) == 30
+        texts = [" ".join(l.text() for l in c.findChildren(QLabel)) for c in self._cells(dlg)]
+        assert "Pleine lune 14:54" in texts[23] and texts[23].startswith("24 100 %")   # 14:53:34
+        assert "↑ —" in texts[1]                                  # pas de lever le 2
+        window._fill_moon_calendar(+1)
+        _pump(qapp)                                   # les nouvelles cases s'affichent au tour suivant
+        assert dlg._title.text() == "Décembre 2026" and len(self._cells(dlg)) == 31
+        window._fill_moon_calendar(-12)
+        assert dlg._title.text() == "Décembre 2025"
+        dlg.close()
+        qapp.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        assert window._calendar_dialog is None
+
+    def test_first_day_of_the_week(self, window, qapp):
+        """En français, la semaine commence le lundi : le 1er novembre 2026, un dimanche, est en 7e colonne."""
+        window._show_moon_calendar(2026, 11)
+        dlg = window._calendar_dialog
+        first = self._cells(dlg)[0]
+        assert dlg._grid.getItemPosition(dlg._grid.indexOf(first))[:2] == (1, 6)
+        dlg.close()
+
+
+class TestOrreryAnimation:
+    def _planets_tab(self, window, qapp):
+        window.tabs.setCurrentWidget(next(p for p, n in window._chart_tabs.items() if n == "orrery"))
+        _pump(qapp)
+
+    def test_steps_move_the_planets(self, window, qapp):
+        self._planets_tab(window, qapp)
+        assert window._orrery_date.text() == "01/11/2026"
+        mars = next(m for name, m, _l in window.fig_orrery._orrery_moving if name == "Mars")
+        before = mars.get_xydata().copy()
+        window._orrery_speed.setCurrentIndex(2)                       # 1 mois par pas
+        window._orrery_step(+1)
+        assert window._orrery_offset == 30.0 and window._orrery_date.text() == "01/12/2026"
+        assert window._orrery_date.property("tone") == "or"
+        assert (mars.get_xydata() != before).any()
+        window._orrery_step(-1)
+        assert window._orrery_offset == 0.0 and window._orrery_date.property("tone") is None
+
+    def test_play_pause_and_leaving_the_tab(self, window, qapp):
+        self._planets_tab(window, qapp)
+        window._orrery_play.click()
+        assert window._orrery_timer.isActive()
+        window.tabs.setCurrentIndex(0)
+        assert not window._orrery_timer.isActive()
+
+    def test_back_to_the_date(self, window, qapp):
+        self._planets_tab(window, qapp)
+        window._orrery_speed.setCurrentIndex(3)                       # 1 an par pas
+        window._orrery_step(+1)
+        window._reset_orrery()
+        assert window._orrery_offset == 0.0 and window._orrery_date.text() == "01/11/2026"
+
+    def test_stops_at_the_end_of_the_ephemeris(self, window, qapp):
+        self._planets_tab(window, qapp)
+        window._toggle_orrery()
+        window._orrery_offset = 200 * 365.25
+        window._orrery_step(+1)
+        assert window._orrery_date.text() == "30/12/2149" and not window._orrery_timer.isActive()
+
+
+class TestComets:
+    def _at(self, window, qapp, when, lat=None, lon=None):
+        if lat is not None:
+            window.entry_lat.setText(str(lat).replace(".", ","))
+            window.entry_lon.setText(str(lon).replace(".", ","))
+        window._set_datetime(when)
+        window.calculate()
+        _pump(qapp)
+
+    def test_planet_table_group(self, window, qapp):
+        self._at(window, qapp, datetime(2027, 8, 25, 3))
+        window._on_planet_group("comets")
+        rows = {name: items for name, items in window._planet_items.items()
+                if not window.planet_table.isRowHidden(items["col_planet"].row())}
+        assert set(rows) == {"Panstarrs", "Honda", "Tsuchinshan", "Borrelly"}
+        honda = rows["Honda"]["col_planet"]
+        assert honda.text() == "\u2604\ufe0e 45P/Honda" and honda.toolTip().startswith("45P/Honda-Mrkos-Pajdušáková")
+        assert rows["Honda"]["col_mag"].text() == "8,2"
+        assert window._planet_empty.isHidden()
+
+    def test_not_shown_outside_their_tables(self, window, qapp):
+        self._at(window, qapp, datetime(2035, 6, 1))
+        window._on_planet_group("comets")
+        assert all(window.planet_table.isRowHidden(window._planet_items[n]["col_planet"].row())
+                   for n in ("Panstarrs", "Honda", "Tsuchinshan", "Borrelly"))
+        assert not window._planet_empty.isHidden() and "C/2026 C1" in window._planet_empty.text()
+        window._on_planet_group("planets")
+
+    def test_data_window_and_events(self, window, qapp):
+        self._at(window, qapp, datetime(2027, 8, 25, 3))
+        window._show_body_detail("Honda")
+        texts = [lbl.text() for lbl in window._detail_dialog.findChildren(QLabel)]
+        assert "☄\ufe0e 45P/Honda-Mrkos-Pajdušáková" in texts and "Comète" in texts
+        window._detail_dialog.close()
+        window._search_conjunctions_gui()
+        for key, box in window._evt_filters.items():
+            box.setChecked(key == "comets")
+        cards = [" ".join(l.text() for l in c.findChildren(QLabel)) for c in _event_cards(window)]
+        assert any("45P/Honda-Mrkos-Pajdušáková au périhélie" in c and "0,559 UA" in c for c in cards)
+        for box in window._evt_filters.values():
+            box.setChecked(box is not window._evt_filters["visible"])
+
+    def test_on_the_sky_map(self, window, qapp, monkeypatch):
+        """C/2026 C1 (magnitude 6,6) seen from Santiago, limit 7 : sur la carte du ciel."""
+        monkeypatch.setattr(window, "_mag_limit", lambda: 7.0)
+        self._at(window, qapp, datetime(2028, 11, 11, 3), -33.45, -70.67)
+        assert "Tsuchinshan" in [o.get("name") for o in window._sky_objects]
+        window.tabs.setCurrentWidget(next(p for p, n in window._chart_tabs.items() if n == "sky"))
+        _pump(qapp)                                       # la carte se dessine, nom compris
+
+
+class TestPlaceSearch:
+    def test_suggestions_then_choice(self, window, qapp):
+        """« londres » propose London ; la choisir remplit lieu, altitude et nom."""
+        window._on_place_typed("londres")
+        assert window._place_model.stringList() == ["London · England · GB"]
+        window._on_place_chosen("London · England · GB")
+        _pump(qapp)
+        assert window.entry_lat.text() == "51,5085" and window.entry_lon.text() == "−0,1257"
+        assert window.location_name == "London" and window.entry_place.text() == ""
+        assert window._lbl_pos.text().startswith("London · 51,5085° N")
+        assert window.combo_fav.currentIndex() == -1
+
+    def test_return_takes_the_first(self, window, qapp):
+        window.entry_place.setText("tokyo")
+        window._on_place_return()
+        _pump(qapp)
+        assert window.location_name == "Tokyo" and window.entry_lat.text().startswith("35,6")
+
+    def test_unknown_place(self, window):
+        window.entry_place.setText("zzzqqq")
+        window._on_place_return()
+        assert "zzzqqq" in window.statusBar().currentMessage()
+
+    def test_one_letter_is_not_enough(self, window):
+        window._on_place_typed("p")
+        assert window._place_model.stringList() == []
+
+    def test_name_without_network(self, monkeypatch):
+        """Sans Nominatim, la ville la plus proche de la liste hors ligne nomme le point."""
+        import gui
+        monkeypatch.setattr(gui, "_nominatim_name", lambda lat, lon: "")
+        assert gui._place_name(49.6333, -1.6167) == "Cherbourg"
+        assert gui._place_name(48.0, -30.0) == ""
 
 
 class TestGeolocation:

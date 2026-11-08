@@ -12,7 +12,7 @@ comment vérifier le résultat.
 | [Architecture](Architecture.md) | se repérer : quel fichier fait quoi, d'où viennent les données |
 | [Textes et infobulles](Textes-et-infobulles.md) | changer un libellé, une infobulle, un message ; ajouter un texte |
 | [Ajouter une planète mineure](Ajouter-une-planete-mineure.md) | ajouter un astéroïde ou une planète naine (Hygie, Quaoar…) |
-| [Ajouter une comète](Ajouter-une-comete.md) | ce qu'il faut pour suivre une comète (pas encore pris en charge) |
+| [Ajouter une comète](Ajouter-une-comete.md) | suivre une comète de plus pendant son passage (tables JPL Horizons) |
 | [Ajouter une étoile](Ajouter-une-etoile.md) | une étoile pour les rapprochements de la Lune, ou nommée sur la carte |
 | [Ajouter une pluie d'étoiles filantes](Ajouter-une-pluie-d-etoiles-filantes.md) | une pluie de plus parmi les évènements (calendrier de l'IMO) |
 | [Ajouter une langue](Ajouter-une-langue.md) | traduire l'interface dans une cinquième langue |

@@ -7,6 +7,17 @@ jour montre aux utilisateurs. Écrivez pour eux : des phrases courtes, en tirets
 versions 4.4 et antérieures les afficherait tels quels), en 800 caractères environ (la suite est coupée dans la
 fenêtre, pas sur GitHub). Voir la fiche du wiki « Publier une version ».
 
+## 4.6
+
+- Recherche de lieu : tapez le nom d'une ville (34 000 villes, sans connexion) ; latitude, longitude et altitude
+  se remplissent.
+- « Ce soir », en tête des éphémérides : la nuit noire, la Lune, les planètes visibles et les trois prochains
+  évènements visibles de chez vous.
+- Calendrier lunaire du mois : la phase, le lever et le coucher de la Lune chaque jour.
+- Le planétaire de l'onglet Planètes s'anime, d'un jour à un an par pas.
+- Comètes : C/2026 O1, 45P, C/2026 C1 et 19P, de 2025 à 2031, dans les planètes, la carte du ciel et les
+  évènements.
+
 ## 4.5
 
 - Étoiles filantes dans l'onglet Évènements : les maxima des 13 grandes pluies de l'année (Quadrantides, Lyrides,

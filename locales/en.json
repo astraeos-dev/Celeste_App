@@ -13,6 +13,10 @@
     "datetime": "Date and time (UT)",
     "datetime_tip": "Date and time in Universal Time; the arrow opens the calendar",
     "now_tip": "Back to the current time",
+    "place": "Search for a place",
+    "place_placeholder": "City: Paris, Tokyo…",
+    "place_tip": "Type the name of a city and pick it: latitude, longitude and elevation are filled in (cities over 15,000 inhabitants, GeoNames, offline). \"Paris, US\" for a country.",
+    "place_unknown": "No known city is called \"{name}\"",
     "latitude": "Latitude",
     "latitude_tip": "Decimal degrees, positive north (48.85 for Paris)",
     "longitude": "Longitude",
@@ -227,6 +231,8 @@
     "group_planets_tip": "Mercury to Neptune",
     "group_minor": "Minor planets",
     "group_minor_tip": "Ceres, Pallas, Juno, Vesta, the dwarf planets Pluto, Eris, Haumea and Makemake, and Sedna (JPL positions)",
+    "group_comets": "Comets",
+    "group_comets_tip": "The comets Céleste follows during their passage (2025–2031)",
     "group_legend": "Bodies shown",
     "group_all": "All",
     "group_all_tip": "Planets and minor planets",
@@ -234,7 +240,20 @@
     "visible_only_tip": "Only the bodies above the horizon at the computed instant; click a header to sort",
     "sorted_ascending": "Sorted in ascending order (click to reverse)",
     "sorted_descending": "Sorted in descending order (click to reverse)",
-    "sedna": "Sedna"
+    "sedna": "Sedna",
+    "orrery_back": "Step back",
+    "orrery_play": "Animate the orrery",
+    "orrery_pause": "Stop the animation",
+    "orrery_forward": "Step forward",
+    "orrery_speed_day": "1 day per step",
+    "orrery_speed_week": "1 week per step",
+    "orrery_speed_month": "1 month per step",
+    "orrery_speed_year": "1 year per step",
+    "orrery_speed_tip": "Length of a step of the animation",
+    "orrery_reset": "Back to the date",
+    "orrery_reset_tip": "Back to the date of the side panel",
+    "no_comet": "No comet followed on this date: Céleste follows {comets} from {first} to {last}.",
+    "none_visible": "No body of this group above the horizon"
   },
   "chart": {
     "trajectory_title": "Altitude of the Sun and the Moon — {date}",
@@ -294,7 +313,8 @@
     "rise": "Rise",
     "transit": "Transit",
     "set": "Set",
-    "click_tip": "Click a body to open its data window"
+    "click_tip": "Click a body to open its data window",
+    "type_comet": "Comet"
   },
   "events": {
     "search_eclipses": "Search eclipses (12 months)",
@@ -350,6 +370,7 @@
     "export_error": "Export failed: {detail}",
     "filter_planets": "Planets",
     "filter_minor": "Minor planets",
+    "filter_comets": "Comets",
     "filter_moon": "Moon",
     "filter_seasons": "Seasons",
     "filter_meteors": "Meteor showers",
@@ -400,7 +421,43 @@
     "local_sun_down": "Here: the Sun is down during the whole eclipse",
     "sun_down": "Sun down",
     "local_moon_down": "Here: the Moon is down during the whole eclipse",
-    "local_moon_partly": "Moon up during part of the eclipse only"
+    "local_moon_partly": "Moon up during part of the eclipse only",
+    "comet_perihelion": "{comet} at perihelion",
+    "comet_closest": "{comet} closest to the Earth",
+    "comet_brightest": "{comet} at its brightest",
+    "distance_earth": "Distance to the Earth {value} AU"
+  },
+  "tonight": {
+    "title": "Tonight",
+    "dark_astro": "Dark night from {start} to {end}",
+    "dark_naut": "No dark night: nautical night from {start} to {end}",
+    "dark_civil": "No dark night: civil twilight from {start} to {end}",
+    "no_night": "No night: the Sun does not go 6° below the horizon",
+    "moon": "Moon {pct}% lit, {when}",
+    "moon_rises": "rises at {time}",
+    "moon_sets": "sets at {time}",
+    "moon_rises_sets": "rises at {rise} and sets at {set}",
+    "moon_sets_rises": "sets at {set} and rises again at {rise}",
+    "moon_up": "up all night",
+    "moon_down": "down all night",
+    "rises": "rises at {time}",
+    "sets": "sets at {time}",
+    "no_planet": "No planet visible tonight",
+    "upcoming": "Coming up: {events}",
+    "event": "{date} {title}, {when}",
+    "period_evening": "in the evening",
+    "period_morning": "in the morning",
+    "period_night": "all night",
+    "no_upcoming": "Nothing visible from here in the next 30 days"
+  },
+  "calendar": {
+    "button": "Calendar",
+    "button_tip": "Lunar calendar of the month: phase, illuminated fraction, rise and set of each day",
+    "window_title": "Lunar calendar",
+    "previous": "Previous month",
+    "next": "Next month",
+    "rise_set_tip": "↑ moonrise and ↓ moonset, local time (—: not that day)",
+    "note": "{place} · local time ({zone}). Phase and illuminated fraction at noon; rise ↑ and set ↓ of the upper limb; new moon, quarters and full moon to the minute."
   },
   "meteors": {
     "title": "Peak of the {name}",
@@ -481,7 +538,7 @@
     "theme_hint": "Choose the theme at the bottom of the sidebar: Night, Day or Observation (red on black, for observing outdoors at night).",
     "reset_hint": "Restores the theme, language, time format, startup location and live mode to their original values. Favourites are kept.",
     "about_section": "About",
-    "credits": "Astræos design. IBM Plex Sans and IBM Plex Mono fonts (OFL licence), Astraeos Symboles after Noto Sans Symbols (OFL licence). Material Design Icons (Apache 2.0 licence)."
+    "credits": "Astræos design. IBM Plex Sans and IBM Plex Mono fonts (OFL licence), Astraeos Symboles after Noto Sans Symbols (OFL licence). Material Design Icons (Apache 2.0 licence). Cities of the place search: GeoNames (CC BY 4.0 licence)."
   },
   "constellations": {
     "Orion": "Orion",

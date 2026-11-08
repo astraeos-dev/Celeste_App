@@ -10,6 +10,7 @@ Le projet suit le modèle **modèle-vue-contrôleur** : le moteur calcule, l'int
 | [`locales/`](https://github.com/astraeos-dev/Celeste_App/tree/master/locales) | Textes de l'interface : `fr.json` (référence), `en.json`, `es.json`, `de.json` |
 | [`i18n.py`](https://github.com/astraeos-dev/Celeste_App/blob/master/i18n.py) | `t("clé")`, `tf("clé", valeur=…)`, choix de la langue |
 | [`updater.py`](https://github.com/astraeos-dev/Celeste_App/blob/master/updater.py) | Mises à jour : dernière Release GitHub, téléchargement vérifié (SHA-256), installation silencieuse |
+| [`places.py`](https://github.com/astraeos-dev/Celeste_App/blob/master/places.py) | Recherche de lieu hors ligne : villes de GeoNames (`assets/cities.tsv.gz`), ville la plus proche d'un point |
 | [`settings.py`](https://github.com/astraeos-dev/Celeste_App/blob/master/settings.py) | Préférences enregistrées (`~/.celeste/settings.json`) et leurs valeurs par défaut |
 | [`config.py`](https://github.com/astraeos-dev/Celeste_App/blob/master/config.py) | Couleurs des thèmes Astræos, polices, **`APP_VERSION`** |
 | [`star_catalog.py`](https://github.com/astraeos-dev/Celeste_App/blob/master/star_catalog.py) | 513 étoiles brillantes (généré par `scripts/make_star_catalog.py`) |
@@ -27,6 +28,8 @@ Le projet suit le modèle **modèle-vue-contrôleur** : le moteur calcule, l'int
   vérifiée par sa taille et son SHA-256). Elle n'est pas dans le programme d'installation, pour alléger les mises à jour.
 - **Planètes mineures** (Cérès … Sedna) : table de JPL Horizons, position et vitesse tous les 10 ou 60 jours,
   interpolées par Hermite (`_TabulatedOrbit` dans `engine.py`).
+- **Comètes** (C/2026 O1, 45P, C/2026 C1, 19P) : table de JPL Horizons tous les 2 jours, de 2025 à 2031 seulement
+  (`assets/comets.npz`) ; hors de ces années, elles n'apparaissent pas ([fiche](Ajouter-une-comete.md)).
 - **Étoiles** : Yale Bright Star Catalogue, ramenées à la date (mouvement propre, précession, nutation, aberration).
 - **Étoiles filantes** : liste de travail de l'IMO (`METEOR_SHOWERS`) ; le maximum est l'instant où le Soleil atteint
   la longitude de la table, chaque année ([fiche](Ajouter-une-pluie-d-etoiles-filantes.md)).

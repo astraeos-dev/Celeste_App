@@ -32,10 +32,16 @@ Jour et Observation), avec des graphiques interactifs et une carte du ciel.
 
 **Fonctionnalités principales :**
 
+- **Ce soir** — en tête des éphémérides : la nuit noire, la Lune, les planètes (et comètes) visibles avec leur meilleur
+  moment, et les trois prochains évènements visibles d'ici
 - **Positions instantanées** — ascension droite, déclinaison, hauteur, azimut, distance
 - **Événements du jour** — lever, coucher, culmination, durée du jour ; crépuscules civil (−6°), nautique (−12°) et astronomique (−18°)
 - **Phase de la Lune** — nom de la phase, fraction éclairée, âge et distance de la Lune
+- **Calendrier lunaire** — bouton « Calendrier » de la carte de la Lune : le mois jour par jour, phase dessinée,
+  lever et coucher, nouvelle lune, quartiers et pleine lune à la minute
 - **Mode temps réel** — mise à jour automatique toutes les 2 s (réglable)
+- **Recherche de lieu** — le nom d'une ville (34 205 villes de GeoNames, hors ligne ; « Paris, US » pour un pays)
+  remplit latitude, longitude et altitude
 - **Géolocalisation** — position de l'appareil par le service de localisation du système (GPS, Wi-Fi), nom de la
   commune par OpenStreetMap ; à défaut, sa dernière position connue, puis la position approximative de l'adresse IP
   (ip-api.com), signalée comme telle : une fenêtre dit alors pourquoi (accès refusé par Windows, service désactivé,
@@ -76,6 +82,10 @@ Jour et Observation), avec des graphiques interactifs et une carte du ciel.
   Antarès, occultations vues d'ici ; périgées, apogées et super lunes ; équinoxes, solstices, périhélie et aphélie
 - **Étoiles filantes** — maxima des 13 grandes pluies de l'année (calendrier de l'IMO) ; la nuit du maximum vue d'ici :
   meilleur moment, hauteur et direction du radiant, météores par heure sous un ciel noir, gêne due à la Lune
+- **Comètes** — C/2026 O1 (PANSTARRS), 45P/Honda-Mrkos-Pajdušáková, C/2026 C1 (Tsuchinshan) et 19P/Borrelly pendant
+  leur passage (2025–2031, tables JPL Horizons) : position, magnitude prévue, carte du ciel, périhélie, plus grand
+  rapprochement et plus grand éclat parmi les évènements
+- **Planétaire animé** — onglet Planètes : le Système solaire vu de dessus, qui avance d'un jour à un an par pas
 - **Visibilité d'ici** — pour chaque évènement, la nuit où le voir (le soir, le matin ou toute la nuit), avec la
   hauteur, la direction et l'heure ; filtres par groupe et « Visibles d'ici seulement » ; export vers un agenda (.ics)
 - **Équation du temps** — écart entre temps solaire vrai et temps solaire moyen
@@ -274,6 +284,10 @@ est téléchargée depuis le serveur JPL/NAIF au premier lancement, puis vérifi
 | `find_conjunctions(dte_start, num_days, max_separation)` | Conjonctions (inférieure, supérieure, transit ; nord ou sud), oppositions et plus grandes élongations, à la minute |
 | `find_moon_events(dte_start, num_days, max_separation)` | Conjonctions de la Lune avec les planètes et les étoiles brillantes de son chemin, périgées, apogées, super lunes |
 | `find_seasons(dte_start, num_days)` | Équinoxes, solstices, périhélie et aphélie de la Terre |
+| `tonight(dte, lat, lon, elevation_m, tz)` | La nuit vue du lieu : nuit noire, Lune, planètes et comètes visibles (meilleur moment, lever, coucher) |
+| `upcoming_events(dte, lat, lon, elevation_m, tz)` | Les trois prochains évènements visibles d'ici dans les 30 jours |
+| `moon_calendar(year, month, lat, lon, elevation_m, tz)` | La Lune jour par jour sur un mois : phase, fraction, lever, coucher, phases principales |
+| `comets_at(t)` / `find_comet_events(dte_start, num_days)` | Comètes dans leurs tables à une date ; leur périhélie, plus grand rapprochement et plus grand éclat |
 | `find_meteor_showers(dte_start, num_days)` | Maxima des grandes pluies d'étoiles filantes (`METEOR_SHOWERS`, calendrier de l'IMO), à la longitude du Soleil de leur maximum |
 | `meteor_visibility(event, lat, lon, elevation_m, tz)` | Nuit du maximum vue du lieu : meilleur moment, radiant, taux horaire sous un ciel noir, Lune |
 | `event_visibility(events, lat, lon, elevation_m, tz)` | Visibilité de chaque évènement depuis le lieu, la nuit venue (soir, matin, toute la nuit), occultations |
@@ -307,6 +321,8 @@ affiché est redessiné ; les autres le sont quand on les ouvre.
 - **Natural Earth** (naturalearthdata.com), terres au 1/110 000 000 — fond de carte des éclipses (domaine public)
 - **International Meteor Organization**, *Meteor Shower Calendar 2026* (J. Rendtel), table 5 — pluies d'étoiles
   filantes : activité, longitude du Soleil au maximum, radiant, vitesse, ZHR
+- **GeoNames** (www.geonames.org), villes de plus de 15 000 habitants, licence CC BY 4.0 — recherche de lieu
+- **JPL Small-Body Database** — paramètres de magnitude M1, K1 des comètes ; **JPL Horizons** — leurs positions
 - **E. Bowell et al.** (1989), *Application of photometric models to asteroids*, Asteroids II — magnitudes H, G des
   planètes mineures (paramètres de la JPL Small-Body Database)
 
@@ -376,7 +392,7 @@ avec le projet (`fonts/`, `assets/`) : rien à installer.
 - [x] **Étoiles filantes** — maxima des grandes pluies, radiant et Lune la nuit du maximum
 - [x] **Précision** — éphéméride JPL DE440 (Skyfield) à la place des séries de Meeus ; levers et couchers à la seconde
 - [x] **Équation du temps**
-- [ ] **Planétaire 2D** — orbites animées
+- [x] **Planétaire 2D** — orbites animées
 - [x] **Éclipses de Lune** — type (totale, partielle, pénombrale), magnitudes, durée des phases, heure du maximum
 
 ### Interface et visualisation
@@ -396,8 +412,8 @@ avec le projet (`fonts/`, `assets/`) : rien à installer.
 - [x] **Interface multilingue** — FR / EN / ES / DE
 - [x] **Réglages persistants** — langue, thème, lieu, intervalle temps réel (`~/.celeste/settings.json`)
 - [ ] **Historique des calculs** — derniers calculs rechargeables en un clic
-- [ ] **Recherche de lieu** — géocodage par nom de ville
-- [ ] **Calendrier lunaire mensuel** — vue du mois avec la phase de chaque jour
+- [x] **Recherche de lieu** — géocodage par nom de ville
+- [x] **Calendrier lunaire mensuel** — vue du mois avec la phase de chaque jour
 
 ### Technique et qualité
 

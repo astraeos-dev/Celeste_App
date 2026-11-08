@@ -13,6 +13,10 @@
     "datetime": "Date et heure (TU)",
     "datetime_tip": "Date et heure en temps universel ; la flèche ouvre le calendrier",
     "now_tip": "Revenir à l'instant présent",
+    "place": "Rechercher un lieu",
+    "place_placeholder": "Ville : Paris, Tokyo…",
+    "place_tip": "Tapez le nom d'une ville et choisissez-la : latitude, longitude et altitude sont remplies (villes de plus de 15 000 habitants, GeoNames, hors ligne). « Paris, US » pour un pays.",
+    "place_unknown": "Aucune ville connue ne s'appelle « {name} »",
     "latitude": "Latitude",
     "latitude_tip": "Degrés décimaux, positifs au nord (48.85 pour Paris)",
     "longitude": "Longitude",
@@ -227,6 +231,8 @@
     "group_planets_tip": "Mercure à Neptune",
     "group_minor": "Planètes mineures",
     "group_minor_tip": "Cérès, Pallas, Junon, Vesta, les planètes naines Pluton, Éris, Hauméa et Makémaké, et Sedna (positions JPL)",
+    "group_comets": "Comètes",
+    "group_comets_tip": "Les comètes que Céleste suit pendant leur passage (2025–2031)",
     "group_legend": "Astres affichés",
     "group_all": "Tous",
     "group_all_tip": "Planètes et planètes mineures",
@@ -234,7 +240,20 @@
     "visible_only_tip": "Seulement les astres au-dessus de l'horizon à l'instant calculé ; cliquez sur un en-tête pour trier",
     "sorted_ascending": "Trié par ordre croissant (cliquez pour inverser)",
     "sorted_descending": "Trié par ordre décroissant (cliquez pour inverser)",
-    "sedna": "Sedna"
+    "sedna": "Sedna",
+    "orrery_back": "Reculer d'un pas",
+    "orrery_play": "Animer le planétaire",
+    "orrery_pause": "Arrêter l'animation",
+    "orrery_forward": "Avancer d'un pas",
+    "orrery_speed_day": "1 jour par pas",
+    "orrery_speed_week": "1 semaine par pas",
+    "orrery_speed_month": "1 mois par pas",
+    "orrery_speed_year": "1 an par pas",
+    "orrery_speed_tip": "Durée d'un pas de l'animation",
+    "orrery_reset": "Revenir à la date",
+    "orrery_reset_tip": "Revenir à la date de la barre latérale",
+    "no_comet": "Aucune comète suivie à cette date : Céleste suit {comets} de {first} à {last}.",
+    "none_visible": "Aucun astre de ce groupe au-dessus de l'horizon"
   },
   "chart": {
     "trajectory_title": "Hauteur du Soleil et de la Lune — {date}",
@@ -294,7 +313,8 @@
     "rise": "Lever",
     "transit": "Culmination",
     "set": "Coucher",
-    "click_tip": "Cliquez sur un astre pour ouvrir sa fenêtre de données"
+    "click_tip": "Cliquez sur un astre pour ouvrir sa fenêtre de données",
+    "type_comet": "Comète"
   },
   "events": {
     "search_eclipses": "Rechercher les éclipses (12 mois)",
@@ -350,6 +370,7 @@
     "export_error": "Export impossible : {detail}",
     "filter_planets": "Planètes",
     "filter_minor": "Planètes mineures",
+    "filter_comets": "Comètes",
     "filter_moon": "Lune",
     "filter_seasons": "Saisons",
     "filter_meteors": "Étoiles filantes",
@@ -400,7 +421,43 @@
     "local_sun_down": "Ici : Soleil couché pendant toute l'éclipse",
     "sun_down": "Soleil couché",
     "local_moon_down": "Ici : Lune couchée pendant toute l'éclipse",
-    "local_moon_partly": "Lune levée pendant une partie de l'éclipse seulement"
+    "local_moon_partly": "Lune levée pendant une partie de l'éclipse seulement",
+    "comet_perihelion": "{comet} au périhélie",
+    "comet_closest": "{comet} au plus près de la Terre",
+    "comet_brightest": "{comet} à son plus brillant",
+    "distance_earth": "Distance à la Terre {value} UA"
+  },
+  "tonight": {
+    "title": "Ce soir",
+    "dark_astro": "Nuit noire de {start} à {end}",
+    "dark_naut": "Pas de nuit noire : nuit nautique de {start} à {end}",
+    "dark_civil": "Pas de nuit noire : crépuscule civil de {start} à {end}",
+    "no_night": "Pas de nuit : le Soleil ne descend pas à 6° sous l'horizon",
+    "moon": "Lune éclairée à {pct} %, {when}",
+    "moon_rises": "se lève à {time}",
+    "moon_sets": "se couche à {time}",
+    "moon_rises_sets": "se lève à {rise} et se couche à {set}",
+    "moon_sets_rises": "se couche à {set} et se relève à {rise}",
+    "moon_up": "levée toute la nuit",
+    "moon_down": "couchée toute la nuit",
+    "rises": "se lève à {time}",
+    "sets": "se couche à {time}",
+    "no_planet": "Aucune planète visible cette nuit",
+    "upcoming": "À venir : {events}",
+    "event": "{date} {title}, {when}",
+    "period_evening": "le soir",
+    "period_morning": "le matin",
+    "period_night": "toute la nuit",
+    "no_upcoming": "Rien de visible d'ici dans les 30 prochains jours"
+  },
+  "calendar": {
+    "button": "Calendrier",
+    "button_tip": "Calendrier lunaire du mois : phase, fraction éclairée, lever et coucher de chaque jour",
+    "window_title": "Calendrier lunaire",
+    "previous": "Mois précédent",
+    "next": "Mois suivant",
+    "rise_set_tip": "↑ lever et ↓ coucher de la Lune, à l'heure du lieu (— : pas ce jour-là)",
+    "note": "{place} · heure locale ({zone}). Phase et fraction éclairée à midi ; lever ↑ et coucher ↓ du bord supérieur ; nouvelle lune, quartiers et pleine lune à la minute."
   },
   "meteors": {
     "title": "Maximum des {name}",
@@ -481,7 +538,7 @@
     "theme_hint": "Le thème se choisit en bas de la barre latérale : Nuit, Jour ou Observation (rouge sur noir, pour observer dehors la nuit).",
     "reset_hint": "Remet le thème, la langue, le format de l'heure, le lieu de démarrage et le temps réel à leurs valeurs d'origine. Les favoris sont conservés.",
     "about_section": "À propos",
-    "credits": "Design Astræos. Polices IBM Plex Sans et IBM Plex Mono (licence OFL), Astraeos Symboles d'après Noto Sans Symbols (licence OFL). Icônes Material Design Icons (licence Apache 2.0)."
+    "credits": "Design Astræos. Polices IBM Plex Sans et IBM Plex Mono (licence OFL), Astraeos Symboles d'après Noto Sans Symbols (licence OFL). Icônes Material Design Icons (licence Apache 2.0). Villes de la recherche de lieu : GeoNames (licence CC BY 4.0)."
   },
   "constellations": {
     "Orion": "Orion",

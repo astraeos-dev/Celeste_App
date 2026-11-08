@@ -1,0 +1,111 @@
+M;id;type;ra;dec;const;mag;major;minor;name
+1;NGC 1952;supernova_remnant;83.63321;22.01447;Tau;8.4;8.00;4.00;Crab Nebula
+2;NGC 7089;globular_cluster;323.36254;-0.82331;Aqr;6.2;8.40;;
+3;NGC 5272;globular_cluster;205.54679;28.37544;CVn;6.4;16.20;;
+4;NGC 6121;globular_cluster;245.89750;-26.52553;Sco;5.4;28.20;;
+5;NGC 5904;globular_cluster;229.64063;2.08269;Se1;6.0;15.00;;
+6;NGC 6405;open_cluster;265.08646;-32.25417;Sco;4.2;15.60;;Butterfly Cluster
+7;NGC 6475;open_cluster;268.46325;-34.79283;Sco;3.3;22.20;;Ptolemy's Cluster
+8;NGC 6523;nebula;270.92196;-24.38017;Sgr;5.8;45.00;30.00;Lagoon Nebula
+9;NGC 6333;globular_cluster;259.79908;-18.51625;Oph;8.4;6.90;;
+10;NGC 6254;globular_cluster;254.28746;-4.09933;Oph;5.0;9.30;;
+11;NGC 6705;open_cluster;282.77496;-6.27003;Sct;5.8;9.00;;Wild Duck Cluster
+12;NGC 6218;globular_cluster;251.81050;-1.94783;Oph;6.1;11.10;;
+13;NGC 6205;globular_cluster;250.42346;36.46131;Her;5.8;16.50;;Hercules Globular Cluster
+14;NGC 6402;globular_cluster;264.40067;-3.24592;Oph;5.7;9.9;;
+15;NGC 7078;globular_cluster;322.49325;12.16683;Peg;6.3;11.10;;
+16;NGC 6611;nebula;274.70071;-13.80722;Se2;6.0;120.00;25.00;Eagle Nebula
+17;NGC 6618;nebula;275.19629;-16.17153;Sgr;7.0;12.60;;Omega Nebula
+18;NGC 6613;open_cluster;274.99371;-17.10197;Sgr;6.9;6.00;;
+19;NGC 6273;globular_cluster;255.65700;-26.26794;Oph;5.6;7.50;;
+20;NGC 6514;nebula;270.67546;-22.97189;Sgr;8.5;28.00;28.00;Trifid Nebula
+21;NGC 6531;open_cluster;271.05604;-22.49006;Sgr;5.9;6.00;;
+22;NGC 6656;globular_cluster;279.10083;-23.90342;Sgr;5.1;12.60;;
+23;NGC 6494;open_cluster;269.26988;-18.98533;Sgr;5.5;16.80;;
+24;IC 4715;star_cloud;274.23383;-18.51456;Sgr;4.5;120.00;60.00;Sagittarius Star Cloud
+25;IC 4725;open_cluster;277.94488;-19.11494;Sgr;4.6;14.10;;
+26;NGC 6694;open_cluster;281.32775;-9.38361;Sct;8.9;6.00;;
+27;NGC 6853;planetary_nebula;299.90158;22.72103;Vul;7.4;6.70;;Dumbbell Nebula
+28;NGC 6626;globular_cluster;276.13704;-24.86983;Sgr;6.9;5.10;;
+29;NGC 6913;open_cluster;305.99071;38.50767;Cyg;6.6;3.60;;
+30;NGC 7099;globular_cluster;325.09175;-23.17908;Cap;7.1;9.00;;
+31;NGC 224;galaxy;10.68479;41.26906;And;3.4;177.83;69.66;Andromeda Galaxy
+32;NGC 221;galaxy;10.67429;40.86528;And;8.1;7.74;4.86;
+33;NGC 598;galaxy;23.46204;30.66022;Tri;5.8;62.09;36.73;Triangulum Galaxy
+34;NGC 1039;open_cluster;40.53083;42.74614;Per;5.2;22.50;;
+35;NGC 2168;open_cluster;92.27108;24.33864;Gem;5.3;24.00;;
+36;NGC 1960;open_cluster;84.07392;34.14075;Aur;6.0;7.20;;
+37;NGC 2099;open_cluster;88.07646;32.55300;Aur;5.6;11.40;;
+38;NGC 1912;open_cluster;82.17704;35.85492;Aur;6.4;9.60;;
+39;NGC 7092;open_cluster;322.95133;48.43817;Cyg;4.6;19.50;;
+40;M 40;double_star;185.56708;58.08444;UMa;8.0;;;
+41;NGC 2287;open_cluster;101.49975;-20.75422;CMa;4.5;12.00;;
+42;NGC 1976;nebula;83.81867;-5.38967;Ori;4.0;90.00;60.00;Orion Nebula
+43;NGC 1982;nebula;83.88075;-5.26747;Ori;9.0;20.00;15.00;Mairan's Nebula
+44;NGC 2632;open_cluster;130.09250;19.67206;Cnc;3.1;108.60;;Beehive Cluster
+45;Mel 22;open_cluster;56.86917;24.10528;Tau;1.2;150.00;150.00;Pleiades
+46;NGC 2437;open_cluster;115.44508;-14.81000;Pup;6.1;21.00;;
+47;NGC 2422;open_cluster;114.14592;-14.48261;Pup;4.4;19.80;;
+48;NGC 2548;open_cluster;123.42992;-5.75044;Hya;5.8;28.20;;
+49;NGC 4472;galaxy;187.44483;8.00047;Vir;8.3;10.21;8.38;
+50;NGC 2323;open_cluster;105.66863;-8.36403;Mon;5.9;14.10;;
+51;NGC 5194;galaxy;202.46962;47.19517;CVn;8.4;13.71;11.67;Whirlpool Galaxy
+52;NGC 7654;open_cluster;351.20167;61.59317;Cas;6.9;9.90;;
+53;NGC 5024;globular_cluster;198.23012;18.16911;Com;7.8;9.00;;
+54;NGC 6715;globular_cluster;283.76363;-30.47850;Sgr;7.7;5.10;;
+55;NGC 6809;globular_cluster;294.99750;-30.96208;Sgr;6.5;12.00;;
+56;NGC 6779;globular_cluster;289.14796;30.18450;Lyr;8.4;5.80;;
+57;NGC 6720;planetary_nebula;283.39587;33.02858;Lyr;8.8;1.27;;Ring Nebula
+58;NGC 4579;galaxy;189.43133;11.81819;Vir;10.3;5.01;3.84;
+59;NGC 4621;galaxy;190.50933;11.64703;Vir;9.6;4.55;3.21;
+60;NGC 4649;galaxy;190.91658;11.55269;Vir;8.8;6.78;5.45;
+61;NGC 4303;galaxy;185.47875;4.47364;Vir;10.2;6.89;6.56;
+62;NGC 6266;globular_cluster;255.30250;-30.11236;Oph;6.5;7.80;;
+63;NGC 5055;galaxy;198.95554;42.02928;CVn;8.6;11.83;7.16;Sunflower Galaxy
+64;NGC 4826;galaxy;194.18183;21.68297;Com;8.5;10.52;5.33;Black Eye Galaxy
+65;NGC 3623;galaxy;169.73300;13.09236;Leo;9.3;7.64;1.97;
+66;NGC 3627;galaxy;170.06233;12.99153;Leo;8.9;10.28;4.61;
+67;NGC 2682;open_cluster;132.83388;11.81194;Cnc;6.9;33.00;;
+68;NGC 4590;globular_cluster;189.86671;-26.74303;Hya;8.0;6.60;;
+69;NGC 6637;globular_cluster;277.84679;-32.34797;Sgr;7.6;5.70;;
+70;NGC 6681;globular_cluster;280.80267;-32.29189;Sgr;7.9;6.60;;
+71;NGC 6838;globular_cluster;298.44212;18.77839;Sge;8.2;6.90;;
+72;NGC 6981;globular_cluster;313.36629;-12.53706;Aqr;9.0;4.50;;
+73;NGC 6994;asterism;314.73321;-12.63550;Aqr;8.9;;;
+74;NGC 628;galaxy;24.17396;15.78367;Psc;9.3;9.89;9.33;
+75;NGC 6864;globular_cluster;301.52017;-21.92222;Sgr;8.3;3.60;;
+76;NGC 650;planetary_nebula;25.58204;51.57547;Per;10.1;1.12;;Little Dumbbell Nebula
+77;NGC 1068;galaxy;40.66963;-0.01328;Cet;9.3;6.11;5.61;
+78;NGC 2068;nebula;86.69092;0.07931;Ori;8.0;4.50;;
+79;NGC 1904;globular_cluster;81.04413;-24.52422;Lep;8.2;7.20;;
+80;NGC 6093;globular_cluster;244.26046;-22.97511;Sco;7.3;5.70;;
+81;NGC 3031;galaxy;148.88821;69.06531;UMa;6.9;21.63;11.25;Bode's Galaxy
+82;NGC 3034;galaxy;148.96971;69.67939;UMa;8.3;10.99;5.11;Cigar Galaxy
+83;NGC 5236;galaxy;204.25396;-29.86542;Hya;7.2;13.61;13.21;Southern Pinwheel Galaxy
+84;NGC 4374;galaxy;186.26558;12.88697;Vir;9.8;7.41;6.44;
+85;NGC 4382;galaxy;186.35046;18.19150;Com;9.1;6.95;5.35;
+86;NGC 4406;galaxy;186.54892;12.94622;Vir;8.9;11.53;8.43;
+87;NGC 4486;galaxy;187.70592;12.39111;Vir;9.0;7.11;6.67;Virgo A
+88;NGC 4501;galaxy;187.99650;14.42039;Com;10.3;8.65;4.38;
+89;NGC 4552;galaxy;188.91587;12.55633;Vir;10.1;8.13;8.00;
+90;NGC 4569;galaxy;189.20746;13.16294;Vir;9.5;9.12;3.82;
+91;NGC 4548;galaxy;188.86021;14.49633;Com;11.0;5.55;4.52;
+92;NGC 6341;globular_cluster;259.28029;43.13653;Her;6.5;14.40;;
+93;NGC 2447;open_cluster;116.12179;-23.85308;Pup;6.2;15.00;;
+94;NGC 4736;galaxy;192.72108;41.12044;CVn;8.2;7.74;6.68;
+95;NGC 3351;galaxy;160.99042;11.70381;Leo;9.8;7.23;4.45;
+96;NGC 3368;galaxy;161.69058;11.81994;Leo;9.2;8.26;5.51;
+97;NGC 3587;planetary_nebula;168.69879;55.01903;UMa;9.9;3.58;;Owl Nebula
+98;NGC 4192;galaxy;183.45121;14.90033;Com;10.8;11.04;2.66;
+99;NGC 4254;galaxy;184.70667;14.41650;Com;9.8;5.04;4.74;
+100;NGC 4321;galaxy;185.72846;15.82181;Com;9.5;6.10;5.62;
+101;NGC 5457;galaxy;210.80225;54.34894;UMa;7.9;23.99;23.07;Pinwheel Galaxy
+102;NGC 5866;galaxy;226.62292;55.76322;Dra;9.9;6.31;2.72;Spindle Galaxy
+103;NGC 581;open_cluster;23.34088;60.65800;Cas;7.4;4.50;;
+104;NGC 4594;galaxy;189.99762;-11.62306;Vir;8.6;8.45;4.91;Sombrero Galaxy
+105;NGC 3379;galaxy;161.95663;12.58161;Leo;9.3;4.89;4.25;
+106;NGC 4258;galaxy;184.73958;47.30397;CVn;9.3;16.98;7.24;
+107;NGC 6171;globular_cluster;248.13300;-13.05364;Oph;7.9;7.80;;
+108;NGC 3556;galaxy;167.87904;55.67411;UMa;10.1;3.98;1.66;
+109;NGC 3992;galaxy;179.39992;53.37453;UMa;9.9;8.07;5.64;
+110;NGC 205;galaxy;10.09200;41.68531;And;8.2;16.22;9.59;

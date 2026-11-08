@@ -284,7 +284,9 @@
     "cardinal_s": "S",
     "cardinal_sw": "SW",
     "cardinal_w": "W",
-    "cardinal_nw": "NW"
+    "cardinal_nw": "NW",
+    "messier": "Messier objects",
+    "messier_tip": "The 110 nebulae, clusters and galaxies of the Messier catalogue above the horizon; the brightest ones carry their number"
   },
   "detail": {
     "title": "Details — {name}",
@@ -314,7 +316,8 @@
     "transit": "Transit",
     "set": "Set",
     "click_tip": "Click a body to open its data window",
-    "type_comet": "Comet"
+    "type_comet": "Comet",
+    "size": "Apparent size"
   },
   "events": {
     "search_eclipses": "Search eclipses (12 months)",
@@ -448,7 +451,9 @@
     "period_evening": "in the evening",
     "period_morning": "in the morning",
     "period_night": "all night",
-    "no_upcoming": "Nothing visible from here in the next 30 days"
+    "no_upcoming": "Nothing visible from here in the next 30 days",
+    "deep_sky": "Deep sky: {objects}",
+    "deep_sky_item": "{name} ({alt}°, {time})"
   },
   "calendar": {
     "button": "Calendar",
@@ -483,6 +488,47 @@
     "name_LEO": "Leonids",
     "name_GEM": "Geminids",
     "name_URS": "Ursids"
+  },
+  "messier": {
+    "type_galaxy": "Galaxy",
+    "type_globular_cluster": "Globular cluster",
+    "type_open_cluster": "Open cluster",
+    "type_nebula": "Nebula",
+    "type_planetary_nebula": "Planetary nebula",
+    "type_supernova_remnant": "Supernova remnant",
+    "type_star_cloud": "Star cloud",
+    "type_asterism": "Asterism",
+    "type_double_star": "Double star",
+    "name_1": "Crab Nebula",
+    "name_6": "Butterfly Cluster",
+    "name_7": "Ptolemy's Cluster",
+    "name_8": "Lagoon Nebula",
+    "name_11": "Wild Duck Cluster",
+    "name_13": "Hercules Globular Cluster",
+    "name_16": "Eagle Nebula",
+    "name_17": "Omega Nebula",
+    "name_20": "Trifid Nebula",
+    "name_24": "Sagittarius Star Cloud",
+    "name_27": "Dumbbell Nebula",
+    "name_31": "Andromeda Galaxy",
+    "name_33": "Triangulum Galaxy",
+    "name_42": "Orion Nebula",
+    "name_43": "Mairan's Nebula",
+    "name_44": "Beehive Cluster",
+    "name_45": "Pleiades",
+    "name_51": "Whirlpool Galaxy",
+    "name_57": "Ring Nebula",
+    "name_63": "Sunflower Galaxy",
+    "name_64": "Black Eye Galaxy",
+    "name_76": "Little Dumbbell Nebula",
+    "name_81": "Bode's Galaxy",
+    "name_82": "Cigar Galaxy",
+    "name_83": "Southern Pinwheel Galaxy",
+    "name_87": "Virgo A",
+    "name_97": "Owl Nebula",
+    "name_101": "Pinwheel Galaxy",
+    "name_102": "Spindle Galaxy",
+    "name_104": "Sombrero Galaxy"
   },
   "favs": {
     "save_title": "Add to favourites",
@@ -538,7 +584,7 @@
     "theme_hint": "Choose the theme at the bottom of the sidebar: Night, Day or Observation (red on black, for observing outdoors at night).",
     "reset_hint": "Restores the theme, language, time format, startup location and live mode to their original values. Favourites are kept.",
     "about_section": "About",
-    "credits": "Astræos design. IBM Plex Sans and IBM Plex Mono fonts (OFL licence), Astraeos Symboles after Noto Sans Symbols (OFL licence). Material Design Icons (Apache 2.0 licence). Cities of the place search: GeoNames (CC BY 4.0 licence)."
+    "credits": "Astræos design. IBM Plex Sans and IBM Plex Mono fonts (OFL licence), Astraeos Symboles after Noto Sans Symbols (OFL licence). Material Design Icons (Apache 2.0 licence). Cities of the place search: GeoNames (CC BY 4.0 licence). Messier objects: OpenNGC (CC BY-SA 4.0 licence)."
   },
   "constellations": {
     "Orion": "Orion",

@@ -284,7 +284,9 @@
     "cardinal_s": "S",
     "cardinal_sw": "SO",
     "cardinal_w": "O",
-    "cardinal_nw": "NO"
+    "cardinal_nw": "NO",
+    "messier": "Objets de Messier",
+    "messier_tip": "Les 110 nébuleuses, amas et galaxies du catalogue de Messier au-dessus de l'horizon ; les plus brillants portent leur numéro"
   },
   "detail": {
     "title": "Fiche — {name}",
@@ -314,7 +316,8 @@
     "transit": "Culmination",
     "set": "Coucher",
     "click_tip": "Cliquez sur un astre pour ouvrir sa fenêtre de données",
-    "type_comet": "Comète"
+    "type_comet": "Comète",
+    "size": "Taille apparente"
   },
   "events": {
     "search_eclipses": "Rechercher les éclipses (12 mois)",
@@ -448,7 +451,9 @@
     "period_evening": "le soir",
     "period_morning": "le matin",
     "period_night": "toute la nuit",
-    "no_upcoming": "Rien de visible d'ici dans les 30 prochains jours"
+    "no_upcoming": "Rien de visible d'ici dans les 30 prochains jours",
+    "deep_sky": "Ciel profond : {objects}",
+    "deep_sky_item": "{name} ({alt}°, {time})"
   },
   "calendar": {
     "button": "Calendrier",
@@ -483,6 +488,47 @@
     "name_LEO": "Léonides",
     "name_GEM": "Géminides",
     "name_URS": "Ursides"
+  },
+  "messier": {
+    "type_galaxy": "Galaxie",
+    "type_globular_cluster": "Amas globulaire",
+    "type_open_cluster": "Amas ouvert",
+    "type_nebula": "Nébuleuse",
+    "type_planetary_nebula": "Nébuleuse planétaire",
+    "type_supernova_remnant": "Rémanent de supernova",
+    "type_star_cloud": "Nuage d'étoiles",
+    "type_asterism": "Astérisme",
+    "type_double_star": "Étoile double",
+    "name_1": "Nébuleuse du Crabe",
+    "name_6": "Amas du Papillon",
+    "name_7": "Amas de Ptolémée",
+    "name_8": "Nébuleuse de la Lagune",
+    "name_11": "Amas du Canard sauvage",
+    "name_13": "Grand amas d'Hercule",
+    "name_16": "Nébuleuse de l'Aigle",
+    "name_17": "Nébuleuse Oméga",
+    "name_20": "Nébuleuse Trifide",
+    "name_24": "Nuage stellaire du Sagittaire",
+    "name_27": "Nébuleuse de l'Haltère",
+    "name_31": "Galaxie d'Andromède",
+    "name_33": "Galaxie du Triangle",
+    "name_42": "Nébuleuse d'Orion",
+    "name_43": "Nébuleuse de De Mairan",
+    "name_44": "Amas de la Crèche",
+    "name_45": "Pléiades",
+    "name_51": "Galaxie du Tourbillon",
+    "name_57": "Nébuleuse de l'Anneau",
+    "name_63": "Galaxie du Tournesol",
+    "name_64": "Galaxie de l'Œil noir",
+    "name_76": "Petite Haltère",
+    "name_81": "Galaxie de Bode",
+    "name_82": "Galaxie du Cigare",
+    "name_83": "Galaxie du Moulinet austral",
+    "name_87": "Virgo A",
+    "name_97": "Nébuleuse du Hibou",
+    "name_101": "Galaxie du Moulinet",
+    "name_102": "Galaxie du Fuseau",
+    "name_104": "Galaxie du Sombrero"
   },
   "favs": {
     "save_title": "Ajouter aux favoris",
@@ -538,7 +584,7 @@
     "theme_hint": "Le thème se choisit en bas de la barre latérale : Nuit, Jour ou Observation (rouge sur noir, pour observer dehors la nuit).",
     "reset_hint": "Remet le thème, la langue, le format de l'heure, le lieu de démarrage et le temps réel à leurs valeurs d'origine. Les favoris sont conservés.",
     "about_section": "À propos",
-    "credits": "Design Astræos. Polices IBM Plex Sans et IBM Plex Mono (licence OFL), Astraeos Symboles d'après Noto Sans Symbols (licence OFL). Icônes Material Design Icons (licence Apache 2.0). Villes de la recherche de lieu : GeoNames (licence CC BY 4.0)."
+    "credits": "Design Astræos. Polices IBM Plex Sans et IBM Plex Mono (licence OFL), Astraeos Symboles d'après Noto Sans Symbols (licence OFL). Icônes Material Design Icons (licence Apache 2.0). Villes de la recherche de lieu : GeoNames (licence CC BY 4.0). Objets de Messier : OpenNGC (licence CC BY-SA 4.0)."
   },
   "constellations": {
     "Orion": "Orion",

@@ -715,6 +715,36 @@ class TestOrreryAnimation:
         assert window._orrery_date.text() == "30/12/2149" and not window._orrery_timer.isActive()
 
 
+class TestDeepSky:
+    def test_on_the_sky_map(self, window, qapp):
+        window.tabs.setCurrentWidget(next(p for p, n in window._chart_tabs.items() if n == "sky"))
+        _pump(qapp)
+        dso = [o for o in window._sky_objects if o["kind"] == "deep_sky"]
+        assert 30 < len(dso) < 110 and all(o["alt"] > 0 for o in dso)
+        m31 = next(o for o in dso if o["m"] == 31)
+        title, rows = window._object_details(m31)
+        assert title == "M31 Galaxie d'Andromède"
+        assert ("Type", "Galaxie") in rows and ("Désignation", "NGC 224") in rows
+        assert ("Taille apparente", "178′ × 70′") in rows
+        window._messier_box.setChecked(False)
+        assert not [o for o in window._sky_objects if o["kind"] == "deep_sky"]
+        window._messier_box.setChecked(True)
+
+    def test_tonight_line(self, window):
+        line = next(text for text, _tone in window._tonight_lines() if text.startswith("Ciel profond"))
+        assert "M31 Galaxie d'Andromède (82°, 22:05)" in line and line.count("·") == 4
+
+    def test_every_common_name_is_translated(self):
+        import json
+        from engine import messier_catalog
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        for lang in ("fr", "en", "es", "de"):
+            with open(os.path.join(root, "locales", f"{lang}.json"), encoding="utf-8") as f:
+                names = json.load(f)["messier"]
+            missing = [o["m"] for o in messier_catalog() if o["name"] and f"name_{o['m']}" not in names]
+            assert not missing, (lang, missing)
+
+
 class TestComets:
     def _at(self, window, qapp, when, lat=None, lon=None):
         if lat is not None:

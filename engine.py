@@ -127,6 +127,33 @@ COMET_DESIGNATIONS = {"Panstarrs": "C/2026 O1 (PANSTARRS)", "Honda": "45P/Honda-
                       "Tsuchinshan": "C/2026 C1 (Tsuchinshan)", "Borrelly": "19P/Borrelly"}
 _COMET_TABLE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "comets.npz")
 
+# The Messier catalogue: 110 nebulae, clusters and galaxies (assets/messier.csv,
+# from OpenNGC, CC BY-SA 4.0; scripts/make_messier.py)
+_MESSIER_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "messier.csv")
+MESSIER_TYPES = ("galaxy", "globular_cluster", "open_cluster", "nebula", "planetary_nebula",
+                 "supernova_remnant", "star_cloud", "asterism", "double_star")
+
+
+@functools.lru_cache(maxsize=1)
+def messier_catalog():
+    """
+    The 110 Messier objects, in order.
+
+    Returns:
+        tuple[dict]: m (number), id (NGC/IC designation), type (MESSIER_TYPES),
+        ra (J2000, hours), dec (J2000, °), const (IAU abbreviation), mag
+        (visual), major, minor (apparent size, arcminutes, or None), name
+        (English common name, or "").
+    """
+    import csv
+    with open(_MESSIER_FILE, encoding="utf-8") as f:
+        rows = list(csv.DictReader(f, delimiter=";"))
+    return tuple({"m": int(r["M"]), "id": r["id"], "type": r["type"], "ra": float(r["ra"]) / 15.0,
+                  "dec": float(r["dec"]), "const": r["const"], "mag": float(r["mag"]),
+                  "major": float(r["major"]) if r["major"] else None,
+                  "minor": float(r["minor"]) if r["minor"] else None, "name": r["name"]}
+                 for r in rows)
+
 # Eclipse projected on the ground: WGS84 ellipsoid, radii of the Sun and the Moon (km)
 _WGS84_A  = 6378.137
 _WGS84_B  = _WGS84_A * (1.0 - 1.0 / 298.257223563)
@@ -1946,6 +1973,51 @@ class AstroEngine:
                         "event": principal.get(i)})
         return out
 
+    @classmethod
+    def deep_sky_horizontal(cls, t, lat, lon, elevation_m=0.0):
+        """Altitudes and azimuths (°) of the Messier objects at t (Julian centuries of UT
+        since J2000.0), brought to the date like the stars of the sky map."""
+        catalog = messier_catalog()
+        return cls.stars_horizontal(t, lat, lon, [o["ra"] for o in catalog], [o["dec"] for o in catalog],
+                                    elevation_m)
+
+    # « Ce soir » : the deep-sky objects worth a look, at least 30° high in the
+    # dark (Sun 12° below the horizon or more), the brightest first
+    _DEEP_SKY_ALTITUDE, _DEEP_SKY_COUNT = 30.0, 5
+
+    @classmethod
+    def _tonight_deep_sky(cls, jds, sun, here, lat, lon, start):
+        """The brightest Messier objects of the night, each at its highest in the dark
+        (10-minute samples; hour angles from the coordinates of the night's middle)."""
+        dark = sun < (-18.0 if (sun < -18.0).any() else cls._DARKER_SUN)
+        if not dark.any():
+            return []
+        catalog = messier_catalog()
+        middle = _fast_time(float(jds[int(np.argmin(sun))]))
+        stars = Star(ra_hours=np.array([o["ra"] for o in catalog]),
+                     dec_degrees=np.array([o["dec"] for o in catalog]))
+        ra, dec, _ = here.at(middle).observe(stars).apparent().radec(epoch="date")
+        idx = np.flatnonzero(dark)[::2]
+        times = _fast_time(jds[idx])
+        lat = math.radians(lat)
+        lst = (times.gast + lon / 15.0) * 15.0
+        hour_angle = np.radians(lst[:, None] - ra._degrees[None, :])
+        d = dec.radians[None, :]
+        sin_alt = math.sin(lat) * np.sin(d) + math.cos(lat) * np.cos(d) * np.cos(hour_angle)
+        alt = np.degrees(np.arcsin(np.clip(sin_alt, -1.0, 1.0)))
+        az = np.degrees(np.arctan2(-np.cos(d) * np.sin(hour_angle),
+                                   math.cos(lat) * np.sin(d) - math.sin(lat) * np.cos(d) * np.cos(hour_angle))) % 360.0
+        best = np.argmax(alt, axis=0)
+        found = []
+        for k, obj in enumerate(catalog):
+            i = int(best[k])
+            if alt[i, k] >= cls._DEEP_SKY_ALTITUDE:
+                found.append({"m": obj["m"], "alt": float(alt[i, k]), "az": float(az[i, k]),
+                              "best": cls._jd_to_datetime(float(jds[idx[i]]), start),
+                              "mag": obj["mag"]})
+        found.sort(key=lambda o: o["mag"])
+        return found[:cls._DEEP_SKY_COUNT]
+
     # « Ce soir » : planets seen when 5° high, the Sun 6° below the horizon
     # (12° for Uranus and Neptune, too faint in the twilight), and the comets
     # brighter than magnitude 10 (binoculars)
@@ -1968,7 +2040,8 @@ class AstroEngine:
             Moon up); planets: the visible ones, with the comets brighter
             than magnitude 10 (dicts name, period 'evening' | 'morning' |
             'night', best, alt, az, mag, rise and set during the night or
-            None), by best time.
+            None), by best time; deep_sky: the five brightest Messier objects
+            at least 30° high in the dark (dicts m, alt, az, best, mag).
         """
         sky = _sky()
         here = sky["earth"] + wgs84.latlon(lat, lon, elevation_m=elevation_m)
@@ -2039,7 +2112,8 @@ class AstroEngine:
                             "set": when(crossing(alt, -0.57, False, lo, hi))})
         planets.sort(key=lambda p: p["best"])
         return {"start": start, "end": when(jds[-1]), "dark": dark, "dusk": when(dusk), "dawn": when(dawn),
-                "moon": moon, "planets": planets}
+                "moon": moon, "planets": planets,
+                "deep_sky": cls._tonight_deep_sky(jds, sun, here, lat, lon, start)}
 
     @classmethod
     def upcoming_events(cls, dte, lat, lon, elevation_m=0.0, tz=0, num_days=30, count=3):

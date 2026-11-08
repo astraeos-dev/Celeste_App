@@ -65,7 +65,7 @@ from config import APP_VERSION, FONT_MONO, FONT_SANS, THEME_NAMES, Config, mix  
 from constellations import STAR_CONSTELLATION  # noqa: E402
 from engine import (  # noqa: E402
     COMET_DESIGNATIONS, COMETS, EPHEMERIS_YEARS, MINOR_PLANET_NUMBERS, MINOR_PLANETS, PLANETS, AstroEngine,
-    constellation_names,
+    constellation_names, messier_catalog,
 )
 from i18n import (  # noqa: E402
     available_langs, get_lang, lang_name, resolve_lang, switch_lang, t, tf,
@@ -308,6 +308,14 @@ def _tonight_and_upcoming(key, dte, lat, lon, elev, zone):
         _TONIGHT_CACHE[key] = (AstroEngine.tonight(dte, lat, lon, elev, zone),
                                AstroEngine.upcoming_events(dte, lat, lon, elev, zone))
     return _TONIGHT_CACHE[key]
+
+
+def _messier_label(obj, named=True):
+    """« M31 Galaxie d'Andromède » (the common name in the active language, if it has
+    one), or « M13 » with *named* False."""
+    if named and obj.get("name"):
+        return f"M{obj['m']} {t(f'messier.name_{obj['m']}')}"
+    return f"M{obj['m']}"
 
 
 def _plural_key(base, n):
@@ -1447,6 +1455,12 @@ class AstroApp(QMainWindow):
         self._mag_slider.valueChanged.connect(self._on_mag_changed)
         bar.addWidget(self._mag_slider)
         bar.addWidget(self._mag_lbl)
+        bar.addSpacing(24)
+        self._messier_box = QCheckBox(t("skymap.messier"))
+        self._messier_box.setToolTip(t("skymap.messier_tip"))
+        self._messier_box.setChecked(bool(prefs.get("show_messier")))
+        self._messier_box.toggled.connect(self._on_messier_toggled)
+        bar.addWidget(self._messier_box)
         bar.addStretch()
 
         page, self.fig_sky, self.canvas_sky = self._chart_page(
@@ -2163,6 +2177,11 @@ class AstroApp(QMainWindow):
         prefs.set("angle_format", self._anglefmt_combo.itemData(index))
         self.calculate()
 
+    def _on_messier_toggled(self, checked):
+        prefs.set("show_messier", bool(checked))
+        if self._dte is not None:
+            self.calculate()
+
     def _mag_limit(self):
         return _pref_float("mag_limit", 6.0)
 
@@ -2650,8 +2669,13 @@ class AstroApp(QMainWindow):
 
         # sur la carte, les planètes mineures et les comètes assez brillantes pour la limite choisie
         bright = [m for m in self.minor_planets if m["mag"] <= self._mag_limit()]
+        deep_sky = []
+        if prefs.get("show_messier"):
+            alts, azs = AstroEngine.deep_sky_horizontal(tc, lat, lon, elev)
+            deep_sky = [{**obj, "alt": float(alt), "az": float(az)}
+                        for obj, alt, az in zip(messier_catalog(), alts, azs) if alt > 0]
         self._sky_scene = charts.sky_scene(jd, lat, lon, self._mag_limit(),
-                                           self.sun_data, self.moon_data, self.planets + bright)
+                                           self.sun_data, self.moon_data, self.planets + bright, deep_sky)
         self._sky_objects = charts.visible_objects(self._sky_scene)
         self.visible_stars = [s["name"] for s in self._sky_scene["stars"]]
         self.visible_planets_map = [p["name"] for p in self.planets if p["alt"] > 0]
@@ -2767,6 +2791,11 @@ class AstroApp(QMainWindow):
             if planet["set"]:
                 text += " · " + tf("tonight.sets", time=clock(planet["set"]))
             lines.append((text, None))
+        if n.get("deep_sky"):
+            catalog = messier_catalog()
+            items = [tf("tonight.deep_sky_item", name=_messier_label(catalog[o["m"] - 1]), alt=_num(o["alt"]),
+                        time=clock(o["best"])) for o in n["deep_sky"]]
+            lines.append((tf("tonight.deep_sky", objects=" · ".join(items)), None))
         if self._upcoming:
             items = []
             for ev in self._upcoming:
@@ -3131,8 +3160,8 @@ class AstroApp(QMainWindow):
         title, _rows = self._object_details(obj, symbols=False)
         line = (f"{t('detail.alt')} {_deg(obj['alt'], 1)}  ·  "
                 f"{t('detail.az')} {_deg(obj['az'], 1)}")
-        if obj["kind"] == "star":
-            line += f"  ·  {t('detail.mag')} {_num(obj['mag'], 2)}"
+        if obj["kind"] in ("star", "deep_sky"):
+            line += f"  ·  {t('detail.mag')} {_num(obj['mag'], 2 if obj['kind'] == 'star' else 1)}"
         tip.set_text(f"{title}\n{line}")
         tip.xy = (obj["x"], obj["y"])
         right = obj["x"] > 0.35
@@ -3184,6 +3213,19 @@ class AstroApp(QMainWindow):
                 rows.append((t("detail.mag"), _num(obj["mag"], 1)))
             rows.append((t("detail.distance"), tf("units.au", value=_num(obj["dist"], 4))))
             rows.append((t("detail.elongation"), f"{_deg(obj['elong'], 1)} {side}"))
+        elif kind == "deep_sky":
+            title = _messier_label(obj)
+            rows.append((t("detail.type"), t(f"messier.type_{obj['type']}")))
+            rows.append((t("detail.designation"), obj["id"]))
+            latin = constellation_names().get(obj["const"])
+            if latin:
+                rows.append((t("detail.constellation"), latin))
+            rows.append((t("detail.mag"), _num(obj["mag"], 1)))
+            if obj.get("major"):
+                size = f"{_num(obj['major'], 0)}′"
+                if obj.get("minor"):
+                    size += f" × {_num(obj['minor'], 0)}′"
+                rows.append((t("detail.size"), size))
         elif kind == "sun":
             title = f"{sym['Sun']} {t('chart.sun')}"
             rows.append((t("detail.type"), t("detail.type_sun")))

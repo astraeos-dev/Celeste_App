@@ -53,6 +53,7 @@ _DEFAULTS = {
     # Affichage
     "live_interval":  2000,         # ms entre rafraîchissements temps réel
     "mag_limit":      6.0,          # magnitude limite pour les étoiles
+    "show_messier":   True,         # sky map: the Messier objects
 
     # Coordonnées
     "angle_format":   "dms",        # dms (dd° mm′ ss″) | dm (dd° mm,mm′) | dd (dd,ddddd°)

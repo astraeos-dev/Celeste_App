@@ -36,3 +36,11 @@ population. Elles servent à la recherche de lieu par son nom (`places.py`) et �
 `comets.npz` : positions et vitesses héliocentriques (ICRF, UA, TDB) des comètes suivies, tous les 2 jours de 2025 à
 2031, et leurs paramètres de magnitude M1, K1 ; tirées de **JPL Horizons** et de la Small-Body Database par
 `scripts/make_comets.py`. Voir la fiche du wiki « Ajouter une comète ».
+
+## Messier catalogue
+
+`messier.csv`: the 110 Messier objects (type, J2000 coordinates, visual magnitude, apparent size, English common
+name), extracted by `scripts/make_messier.py` from **OpenNGC** (github.com/mattiaverga/OpenNGC, fixed commit),
+© Mattia Verga, licence [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). This file is shared under
+the same licence. Seven magnitudes OpenNGC lacks (M22, M35, M62, M69, M70, M71, M107) come from the SEDS Messier
+database (messier.seds.org); M102 is taken to be NGC 5866.

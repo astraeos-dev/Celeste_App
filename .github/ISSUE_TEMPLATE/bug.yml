@@ -1,30 +1,30 @@
-name: Signaler un problème
-description: Un calcul faux, un affichage cassé, un plantage…
+name: Report a problem
+description: A wrong calculation, a broken display, a crash…
 labels: ["bug"]
 body:
   - type: textarea
-    id: probleme
+    id: problem
     attributes:
-      label: Que se passe-t-il ?
-      description: Ce que vous avez vu, et ce que vous attendiez.
+      label: What happens?
+      description: What you saw, and what you expected.
     validations:
       required: true
   - type: textarea
-    id: etapes
+    id: steps
     attributes:
-      label: Comment le reproduire ?
-      description: Date, lieu, onglet, boutons… Une capture d'écran aide beaucoup.
+      label: How to reproduce it?
+      description: Date, place, tab, buttons… A screenshot helps a lot.
       placeholder: |
-        1. Lieu : Paris, 01/11/2026 21:30 TU
-        2. Onglet Planètes
+        1. Place: Paris, 01/11/2026 21:30 UT
+        2. Planets tab
         3. …
   - type: input
     id: version
     attributes:
-      label: Version de Céleste
-      placeholder: "4.6"
+      label: Céleste version
+      placeholder: "4.7"
   - type: input
     id: system
     attributes:
-      label: Système
+      label: System
       placeholder: Windows 11

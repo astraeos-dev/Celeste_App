@@ -1,15 +1,15 @@
-﻿; installer/celeste.iss — programme d'installation de Céleste pour Windows (Inno Setup 6)
+﻿; installer/celeste.iss — the Windows installer of Céleste (Inno Setup 6)
 ;
-; Construit par scripts/build_exe.py après PyInstaller (dist/Celeste/) :
-;   ISCC.exe /DAppVersion=4.2 installer\celeste.iss
-; donne dist\Celeste-4.2-Setup.exe. Le fichier est en UTF-8 avec BOM (accents).
+; Built by scripts/build_exe.py after PyInstaller (dist/Celeste/):
+;   ISCC.exe /DAppVersion=4.7 installer\celeste.iss
+; gives dist\Celeste-4.7-Setup.exe. The file is UTF-8 with a BOM (accents).
 
 #ifndef AppVersion
   #define AppVersion "dev"
 #endif
 
 [Setup]
-; identifiant fixe : ne pas le changer, il relie les versions successives
+; fixed identifier: never change it, it links the successive versions
 AppId={{0AF9FB2B-F885-482E-B583-14CBECBFE32F}
 AppName=Céleste
 AppVersion={#AppVersion}
@@ -31,11 +31,11 @@ SolidCompression=yes
 WizardStyle=modern
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
-; sans droits d'administrateur, ou pour tous les utilisateurs si on le choisit ;
-; la mise à jour automatique (updater.py) reprend le même mode par /CURRENTUSER ou /ALLUSERS
+; without administrator rights, or for all users when chosen;
+; the automatic update (updater.py) keeps the same mode with /CURRENTUSER or /ALLUSERS
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=commandline dialog
-; Céleste ouvert pendant une mise à jour : fermé, puis rouvert ([Run])
+; Céleste open during an update: closed, then reopened ([Run])
 CloseApplications=yes
 RestartApplications=no
 
@@ -58,5 +58,5 @@ Name: "{autodesktop}\Céleste"; Filename: "{app}\Celeste.exe"; IconFilename: "{a
 
 [Run]
 Filename: "{app}\Celeste.exe"; Description: "{cm:LaunchProgram,Céleste}"; Flags: nowait postinstall skipifsilent
-; mise à jour automatique (installation silencieuse) : Céleste se rouvre
+; automatic update (silent installation): Céleste reopens
 Filename: "{app}\Celeste.exe"; Flags: nowait skipifnotsilent

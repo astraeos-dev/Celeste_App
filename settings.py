@@ -1,86 +1,87 @@
 """
-settings.py — Gestionnaire de préférences persistantes de Céleste
-==================================================================
-Charge et sauvegarde les préférences utilisateur dans ``settings.json``, rangé
-dans le dossier de l'utilisateur (``~/.celeste``, ou ``$CELESTE_DATA``) et non
-dans le dépôt : changer de branche ou mettre à jour Céleste n'y touche pas.
-Un ``settings.json`` laissé dans le dossier de l'application par une version
-précédente est repris au premier lancement.
+settings.py — Persistent preferences of Céleste
+================================================
+Loads and saves the user's preferences in ``settings.json``, kept in the
+user's folder (``~/.celeste``, or ``$CELESTE_DATA``) and not in the
+repository: switching branches or updating Céleste leaves it alone. A
+``settings.json`` left in the application folder by an earlier version is
+taken over at the first launch.
 
-Chaque préférence a une valeur par défaut définie dans ``_DEFAULTS``.
-Au chargement, les clés manquantes sont complétées par les défauts.
+Each preference has a default value in ``_DEFAULTS``. On loading, the missing
+keys are filled with the defaults.
 
-API publique
-------------
-- ``load()``          → charge settings.json (appelé au démarrage)
-- ``save()``          → écrit settings.json
-- ``get(key)``        → valeur d'une préférence
-- ``set(key, value)`` → modifie + sauvegarde automatiquement
-- ``reset()``         → restaure tous les défauts
-- ``all()``           → dict complet des préférences
+Public API
+----------
+- ``load()``          → loads settings.json (called at startup)
+- ``save()``          → writes settings.json
+- ``get(key)``        → value of a preference
+- ``set(key, value)`` → changes it and saves at once
+- ``reset()``         → restores all the defaults
+- ``all()``           → full dict of the preferences
 """
 
 import json
 import os
 
-# Dossier des données de l'utilisateur, partagé avec l'éphéméride (engine.py)
+# Folder of the user's data, shared with the ephemeris (engine.py)
 USER_DIR = os.environ.get("CELESTE_DATA") or os.path.join(os.path.expanduser("~"), ".celeste")
 
 _SETTINGS_FILE = os.path.join(USER_DIR, "settings.json")
-# Emplacement des versions ≤ 4.1, dans le dossier de l'application
+# Where versions 4.1 and earlier kept it, in the application folder
 _LEGACY_SETTINGS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "settings.json")
 
-# ── Valeurs par défaut ─────────────────────────────────────────────────────────
+# ── Default values ─────────────────────────────────────────────────────────────
 
 _DEFAULTS = {
-    # Apparence
-    "theme":          "nuit",       # nuit | jour | observation (thèmes Astræos)
-    "lang":           "auto",       # auto (langue du système) | fr | en | es | de
+    # Appearance
+    "theme":          "nuit",       # nuit | jour | observation (Astræos themes)
+    "lang":           "auto",       # auto (system language) | fr | en | es | de
     "time_format":    "24h",        # 24h | 12h
 
-    # Lieu par défaut
+    # Default place
     "default_place":  "Cherbourg-en-Cotentin",
-    "default_lat":    49.6333,      # latitude par défaut
-    "default_lon":    -1.6167,      # longitude par défaut
-    "default_tz":     "auto",       # fuseau IANA (Europe/Paris…) ou auto (selon le lieu)
-    "default_elevation": 0,         # altitude de l'observateur, m
-    "auto_geoloc":    False,        # géoloc auto au lancement
+    "default_lat":    49.6333,      # default latitude
+    "default_lon":    -1.6167,      # default longitude
+    "default_tz":     "auto",       # IANA time zone (Europe/Paris…) or auto (from the place)
+    "default_elevation": 0,         # observer's elevation, m
+    "auto_geoloc":    False,        # geolocation at launch
 
-    # Unités
+    # Units
     "temp_unit":      "C",          # C | F
     "dist_unit":      "km",         # km | miles
 
-    # Affichage
-    "live_interval":  2000,         # ms entre rafraîchissements temps réel
-    "mag_limit":      6.0,          # magnitude limite pour les étoiles
+    # Display
+    "live_interval":  2000,         # ms between real-time refreshes
+    "mag_limit":      6.0,          # limiting magnitude of the stars
+    "show_messier":   True,         # sky map: the Messier objects
 
-    # Coordonnées
+    # Coordinates
     "angle_format":   "dms",        # dms (dd° mm′ ss″) | dm (dd° mm,mm′) | dd (dd,ddddd°)
     "coord_cartesian": "heliocentric",   # x, y, z : heliocentric | geocentric | topocentric
     "coord_angular":   "equatorial",     # angles : ecliptic | equatorial | horizontal
-    "coord_ecliptic_from": "sun",        # angles écliptiques vus du : sun | earth
-    "coord_angle_format": "global",      # angles du tableau : global (paramètres) | dms | dm | dd
-    # Onglet Planètes
-    "planet_group":   "planets",    # astres du tableau : all | planets | minor
-    "planet_visible_only": False,   # seulement les astres au-dessus de l'horizon
-    # Mises à jour (updater.py)
-    "update_check":   True,         # chercher une nouvelle version au démarrage
-    "update_skipped": "",           # version que l'utilisateur a choisi d'ignorer
+    "coord_ecliptic_from": "sun",        # ecliptic angles seen from: sun | earth
+    "coord_angle_format": "global",      # angles of the table: global (settings) | dms | dm | dd
+    # Planets tab
+    "planet_group":   "planets",    # bodies of the table: all | planets | minor | comets
+    "planet_visible_only": False,   # only the bodies above the horizon
+    # Updates (updater.py)
+    "update_check":   True,         # look for a new version at startup
+    "update_skipped": "",           # version the user chose to skip
 }
 
-# ── État interne ───────────────────────────────────────────────────────────────
+# ── Internal state ─────────────────────────────────────────────────────────────
 
 _settings: dict = {}
 
-# ── API publique ───────────────────────────────────────────────────────────────
+# ── Public API ─────────────────────────────────────────────────────────────────
 
 def load() -> dict:
-    """Charge settings.json. Complète les clés manquantes avec les défauts."""
+    """Loads settings.json, filling the missing keys with the defaults."""
     global _settings
     _settings = dict(_DEFAULTS)
     path = _SETTINGS_FILE
     if not os.path.isfile(path) and os.path.isfile(_LEGACY_SETTINGS_FILE):
-        path = _LEGACY_SETTINGS_FILE          # reprise d'une version précédente
+        path = _LEGACY_SETTINGS_FILE          # taken over from an earlier version
     if os.path.isfile(path):
         try:
             with open(path, "r", encoding="utf-8") as f:
@@ -88,7 +89,7 @@ def load() -> dict:
             for k, v in user.items():
                 if k in _DEFAULTS:
                     _settings[k] = v
-            # ancien réglage UTC±N : zone IANA fixe équivalente (UTC+2 → Etc/GMT-2)
+            # old UTC±N setting: the equivalent fixed IANA zone (UTC+2 → Etc/GMT-2)
             offset = user.get("default_utc")
             if "default_tz" not in user and isinstance(offset, int) and offset:
                 _settings["default_tz"] = f"Etc/GMT{-offset:+d}"
@@ -98,21 +99,21 @@ def load() -> dict:
 
 
 def save() -> None:
-    """Écrit les préférences courantes dans settings.json (dossier de l'utilisateur)."""
+    """Writes the current preferences to settings.json (the user's folder)."""
     os.makedirs(os.path.dirname(_SETTINGS_FILE), exist_ok=True)
     with open(_SETTINGS_FILE, "w", encoding="utf-8") as f:
         json.dump(_settings, f, ensure_ascii=False, indent=2)
 
 
 def get(key: str):
-    """Retourne la valeur d'une préférence."""
+    """Value of a preference."""
     if not _settings:
         load()
     return _settings.get(key, _DEFAULTS.get(key))
 
 
 def set(key: str, value) -> None:
-    """Modifie une préférence et sauvegarde automatiquement."""
+    """Changes a preference and saves at once."""
     if not _settings:
         load()
     if key in _DEFAULTS:
@@ -121,7 +122,7 @@ def set(key: str, value) -> None:
 
 
 def reset() -> dict:
-    """Restaure toutes les préférences par défaut."""
+    """Restores all the default preferences."""
     global _settings
     _settings = dict(_DEFAULTS)
     save()
@@ -129,12 +130,12 @@ def reset() -> dict:
 
 
 def all() -> dict:
-    """Retourne une copie du dict complet des préférences."""
+    """A copy of the full dict of the preferences."""
     if not _settings:
         load()
     return dict(_settings)
 
 
 def defaults() -> dict:
-    """Retourne les valeurs par défaut (lecture seule)."""
+    """The default values (a copy)."""
     return dict(_DEFAULTS)

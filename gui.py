@@ -1,26 +1,26 @@
 """
-gui.py — Interface graphique de Céleste (PyQt6), design Astræos
-================================================================
-v3.3 — Interface au design system Astræos :
-  ★ Trois thèmes : Nuit (défaut), Jour, Observation (rouge sur noir, pour
-    garder la vision de nuit), choisis dans la barre latérale
-  ★ IBM Plex Sans pour le texte, IBM Plex Mono pour les données, symboles
-    astronomiques (☉ ☽ ♀ ♂ ♃ ♄ ☌ ☍) toujours accompagnés du nom de l'astre
-  ★ Aucun emoji : icônes au trait Material Design Icons
-  ★ Composants : Bouton, BoutonIcone, ChampSaisie, CarteDonnee, PastilleEtat,
-    Jauge, Onglets, SelecteurTheme ; une seule zone dorée par écran (le
-    bouton Calculer), filets plutôt qu'ombres
-  ★ Textes traduits (fr, en, es, de) ; nombres à la mode de la langue
-  ★ Raccourcis : F5 calculer, Ctrl+L temps réel
+gui.py — Graphical interface of Céleste (PyQt6), Astræos design
+=================================================================
+v3.3 — Interface following the Astræos design system:
+  ★ Three themes: Nuit (night, the default), Jour (day), Observation (red on
+    black, to keep night vision), chosen in the side panel
+  ★ IBM Plex Sans for the text, IBM Plex Mono for the data, astronomical
+    symbols (☉ ☽ ♀ ♂ ♃ ♄ ☌ ☍) always next to the name of the body
+  ★ No emoji: Material Design line icons
+  ★ Components: Bouton, BoutonIcone, ChampSaisie, CarteDonnee, PastilleEtat,
+    Jauge, Onglets, SelecteurTheme; a single gold area per screen (the
+    Calculate button), hairlines rather than shadows
+  ★ Translated texts (fr, en, es, de); numbers in the language's style
+  ★ Shortcuts: F5 calculate, Ctrl+L real time
 
-Architecture :
-  - Barre latérale  : date, lieu, fuseau, favoris, actions, thème
-  - Zone principale : onglets Éphémérides / Trajectoires / Carte du ciel /
-                      Planètes / Événements / Paramètres
-  - Barre d'état    : lieu, astres visibles, heure TU et heure locale
+Layout:
+  - Side panel     : date, place, time zone, favourites, actions, theme
+  - Main area      : tabs Ephemeris / Trajectories / Sky map / Planets /
+                     Coordinates / Events / Settings
+  - Status bar     : place, visible bodies, UT and local time
 
-Les calculs viennent de engine.py, les graphiques de charts.py, les couleurs
-de config.py (tokens Astræos), les icônes et le logo de icons.py.
+The calculations come from engine.py, the charts from charts.py, the colours
+from config.py (Astræos tokens), the icons and the logo from icons.py.
 """
 
 import json
@@ -59,13 +59,14 @@ from matplotlib.figure import Figure  # noqa: E402
 import charts  # noqa: E402
 import icons  # noqa: E402
 import places  # noqa: E402
+import satellites  # noqa: E402
 import settings as prefs  # noqa: E402
 import updater  # noqa: E402
 from config import APP_VERSION, FONT_MONO, FONT_SANS, THEME_NAMES, Config, mix  # noqa: E402
 from constellations import STAR_CONSTELLATION  # noqa: E402
 from engine import (  # noqa: E402
     COMET_DESIGNATIONS, COMETS, EPHEMERIS_YEARS, MINOR_PLANET_NUMBERS, MINOR_PLANETS, PLANETS, AstroEngine,
-    constellation_names,
+    constellation_names, messier_catalog,
 )
 from i18n import (  # noqa: E402
     available_langs, get_lang, lang_name, resolve_lang, switch_lang, t, tf,
@@ -75,43 +76,43 @@ from utils import Formatters  # noqa: E402
 # ── Constantes ────────────────────────────────────────────────────────────────
 
 
-# Favoris de l'utilisateur, hors du dépôt ; au premier lancement, ceux d'une
-# version précédente (dossier de l'application) ou la liste de départ
+# The user's favourites, outside the repository; at the first launch, those of an
+# earlier version (application folder) or the starting list
 _FAVORITES_FILE = os.path.join(prefs.USER_DIR, "favorites.json")
 _LEGACY_FAVORITES_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "favorites.json")
 _DEFAULT_FAVORITES_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                        "favorites_default.json")
 _FONTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts")
 
-_AUTO_ZONE = "auto"           # fuseau déduit du lieu (timezonefinder)
-_GEOLOC_TIMEOUT_MS = 15000    # attente du service de localisation de l'appareil
+_AUTO_ZONE = "auto"           # time zone from the place (timezonefinder)
+_GEOLOC_TIMEOUT_MS = 15000    # wait for the device's location service
 
 _ALL_POSITIONING_METHODS = QGeoPositionInfoSource.PositioningMethod.AllPositioningMethods
 
-# Liens : site, code source, soutien ; demandes sur GitHub (formulaires de .github/ISSUE_TEMPLATE)
+# Links: website, source code, support; requests on GitHub (forms of .github/ISSUE_TEMPLATE)
 _URL_SITE = "https://astraeos-dev.github.io/personnal-site/"
 _URL_REPO = "https://github.com/astraeos-dev/Celeste_App"
 _URL_COFFEE = "https://buymeacoffee.com/gregorychau"
 
-# Réglages de la localisation du système, ouverts quand l'accès est refusé
+# Location settings of the system, opened when access is denied
 _LOCATION_SETTINGS = {
     "win32": "ms-settings:privacy-location",
     "darwin": "x-apple.systempreferences:com.apple.preference.security?Privacy_LocationServices",
 }
-_PLANETS = PLANETS        # Mercure à Neptune (engine.PLANETS)
+_PLANETS = PLANETS        # Mercury to Neptune (engine.PLANETS)
 _QT_DATETIME_FORMAT = "dd/MM/yyyy HH:mm:ss"
 
-# Degrés décimaux, avec un point ou une virgule (49.6333 ou 49,6333)
+# Decimal degrees, with a point or a comma (49.6333 or 49,6333)
 _COORD_REGEX = r"^\s*[+\-−]?\d{0,3}(?:[.,]\d{0,8})?\s*$"
 
-# Symboles astronomiques, suivis de U+FE0E (présentation texte, jamais emoji)
+# Astronomical symbols, followed by U+FE0E (text presentation, never emoji)
 _VS15 = "︎"
 SYMBOL = {name: glyph + _VS15 for name, glyph in charts.SYMBOL.items()}
 SYMBOL.update({"star": "★" + _VS15, "conjunction": "☌" + _VS15,
                "opposition": "☍" + _VS15, "meteors": "☄" + _VS15, "dot": "●"})
 
-# Polices de secours si les fichiers de fonts/ manquent. Aucune police emoji :
-# placée dans une pile, elle dessinerait aussi les chiffres et les espaces.
+# Fallback fonts when the files of fonts/ are missing. No emoji font: placed
+# in a stack, it would also draw the digits and the spaces.
 _FALLBACK_SANS = ("Segoe UI", "Inter", "Helvetica Neue", "Noto Sans", "Ubuntu",
                   "Cantarell", "DejaVu Sans", "Arial")
 _FALLBACK_MONO = ("Cascadia Mono", "Consolas", "JetBrains Mono", "Menlo",
@@ -122,7 +123,7 @@ _fonts = {"sans": FONT_SANS, "mono": FONT_MONO}
 # ── Petites fonctions ─────────────────────────────────────────────────────────
 
 def _utc_now():
-    """Instant présent en temps universel, sans fuseau ni microsecondes."""
+    """The present instant in universal time, without time zone or microseconds."""
     return datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0)
 
 
@@ -131,7 +132,7 @@ def _utc_zone():
 
 
 def _pref_float(key, fallback):
-    """Préférence numérique ; *fallback* seulement si elle manque (0.0 est valide)."""
+    """Numeric preference; *fallback* only when it is missing (0.0 is valid)."""
     value = prefs.get(key)
     try:
         return float(value) if value is not None else fallback
@@ -140,7 +141,7 @@ def _pref_float(key, fallback):
 
 
 def _parse_coord(text, limit):
-    """Degrés décimaux saisis (point ou virgule) ; ValueError hors de ±limit."""
+    """Decimal degrees typed (point or comma); ValueError beyond ±limit."""
     value = float(text.strip().replace(",", ".").replace("−", "-"))
     if math.isnan(value) or not -limit <= value <= limit:
         raise ValueError(text)
@@ -152,7 +153,7 @@ def _locale():
 
 
 def _num(value, decimals=0, signed=False):
-    """Nombre à la mode de la langue active (« 12,4 » en français)."""
+    """A number in the active language's style ("12,4" in French)."""
     text = _locale().toString(float(value), "f", decimals)
     text = text.replace("-", "−")
     if signed and value >= 0:
@@ -165,30 +166,30 @@ def _deg(value, decimals=2, signed=False):
 
 
 def _angle_format():
-    """Format des angles choisi : « dms », « dm » ou « dd » (Formatters.ANGLE_FORMATS)."""
+    """The chosen angle format: "dms", "dm" or "dd" (Formatters.ANGLE_FORMATS)."""
     fmt = prefs.get("angle_format")
     return fmt if fmt in Formatters.ANGLE_FORMATS else "dms"
 
 
 def _localized(text):
-    """Séparateur décimal de la langue et vrai signe moins."""
+    """Decimal separator of the language and a true minus sign."""
     text = text.replace(".", _locale().decimalPoint())
     return "−" + text[1:] if text.startswith("-") else text
 
 
 def _ra(hours, fmt=None):
-    """Ascension droite « 14h 28m 19,0s », « 14h 28,317m » ou « 14,47194h »
-    (*fmt* : format imposé, sinon celui des paramètres)."""
+    """Right ascension "14h 28m 19,0s", "14h 28,317m" or "14,47194h"
+    (*fmt*: a forced format, else the one of the settings)."""
     return _localized(Formatters.angle(hours % 24.0, fmt or _angle_format(), hours=True))
 
 
 def _dec(degrees, fmt=None):
-    """Angle signé (déclinaison, latitude, hauteur) : « −14° 38′ 49″ », « +14° 38,82′ »…"""
+    """Signed angle (declination, latitude, altitude): "−14° 38′ 49″", "+14° 38,82′"…"""
     return _localized(Formatters.angle(degrees, fmt or _angle_format(), signed=True))
 
 
 def _az(degrees, fmt=None):
-    """Angle de 0 à 360° (azimut, longitude) dans le format choisi."""
+    """Angle from 0 to 360° (azimuth, longitude) in the chosen format."""
     return _localized(Formatters.angle(degrees % 360.0, fmt or _angle_format()))
 
 
@@ -197,7 +198,7 @@ def _fmt_offset(offset):
 
 
 def _zone_names():
-    """Fuseaux IANA proposés (base zoneinfo), UTC en tête."""
+    """IANA time zones offered (zoneinfo base), UTC first."""
     hidden = ("posix/", "right/", "SystemV/")
     return ["UTC"] + sorted(z for z in available_timezones()
                             if z != "UTC" and not z.startswith(hidden))
@@ -211,15 +212,15 @@ def _tz_finder():
 
 @functools.lru_cache(maxsize=256)
 def _zone_at(lat, lon):
-    """Fuseau IANA d'un lieu (timezonefinder, hors ligne) ; « UTC » s'il est inconnu."""
+    """IANA time zone of a place (timezonefinder, offline); "UTC" when unknown."""
     try:
         return _tz_finder().timezone_at(lat=lat, lng=lon) or "UTC"
-    except Exception:  # timezonefinder absent ou en échec : temps universel
+    except Exception:  # timezonefinder missing or failing: universal time
         return "UTC"
 
 
 def _zone(name, lat=None, lon=None):
-    """tzinfo d'un fuseau ; « auto » est celui du lieu (lat, lon)."""
+    """tzinfo of a time zone; "auto" is the place's (lat, lon)."""
     name = name or _AUTO_ZONE
     if name == _AUTO_ZONE:
         name = _zone_at(round(lat, 3), round(lon, 3)) if lat is not None else "UTC"
@@ -234,8 +235,8 @@ def _elev_text(metres):
 
 
 def _place_name(lat, lon):
-    """Nom de la commune d'un point (OpenStreetMap Nominatim) ; sans réponse, la ville
-    la plus proche de la liste hors ligne (à moins de 25 km), sinon « »."""
+    """Name of the town of a point (OpenStreetMap Nominatim); without an answer, the
+    nearest city of the offline list (within 25 km), else ""."""
     name = _nominatim_name(lat, lon)
     if name:
         return name
@@ -244,7 +245,7 @@ def _place_name(lat, lon):
 
 
 def _nominatim_name(lat, lon):
-    """Nom de la commune d'un point (OpenStreetMap Nominatim) ; « » sans réponse."""
+    """Name of the town of a point (OpenStreetMap Nominatim); "" without an answer."""
     url = ("https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=10"
            f"&lat={lat:.5f}&lon={lon:.5f}&accept-language={get_lang()}")
     try:
@@ -252,7 +253,7 @@ def _nominatim_name(lat, lon):
             "User-Agent": f"Celeste/{APP_VERSION} (+https://github.com/astraeos-dev/Celeste_App)"})
         with urllib.request.urlopen(req, timeout=5) as resp:
             data = json.loads(resp.read().decode("utf-8"))
-    except Exception:  # réseau, délai, JSON : les coordonnées suffisent
+    except Exception:  # network, delay, JSON: the coordinates are enough
         return ""
     address = data.get("address") or {}
     for key in ("city", "town", "village", "municipality", "hamlet"):
@@ -270,23 +271,23 @@ def _fmt_lon(lon):
 
 
 def _coord_text(value):
-    """Coordonnée affichée dans un champ (virgule décimale en français)."""
+    """A coordinate shown in a field (decimal comma in French)."""
     return _num(value, 4)
 
 
 def _clean_place(name):
-    """Nom de lieu sans l'épingle 📍 que contient l'ancienne valeur par défaut."""
+    """A place name without the 📍 pin of the old default value."""
     return (name or "").replace("\U0001f4cd", "").strip()
 
 
-# Comètes : leur désignation courte (tableaux, « Ce soir ») ; la complète avec *numbered*
+# Comets: their short designation (tables, "Tonight"); the full one with *numbered*
 _COMET_SHORT = {"Panstarrs": "C/2026 O1", "Honda": "45P/Honda", "Tsuchinshan": "C/2026 C1",
                 "Borrelly": "19P/Borrelly"}
 
 
 def _planet_name(name, symbol=False, numbered=False):
-    """Nom d'une planète ; *numbered* : avec le numéro d'une planète mineure, « (1) Cérès » ;
-    une comète : sa désignation, la même dans toutes les langues (complète avec *numbered*)."""
+    """Name of a planet; *numbered*: with the number of a minor planet, "(1) Ceres";
+    a comet: its designation, the same in every language (full with *numbered*)."""
     if name in COMET_DESIGNATIONS:
         text = COMET_DESIGNATIONS[name] if numbered else _COMET_SHORT.get(name, COMET_DESIGNATIONS[name])
         return f"{SYMBOL[name]} {text}" if symbol else text
@@ -300,30 +301,43 @@ _TONIGHT_CACHE = {}
 
 
 def _tonight_and_upcoming(key, dte, lat, lon, elev, zone):
-    """« Ce soir » et les trois prochains évènements visibles (0,3 s), gardés pour la nuit et
-    le lieu *key* : un changement de thème ou de langue ne les recalcule pas."""
+    """"Tonight" and the next three visible events (0.3 s), kept for the night and
+    the place *key*: a change of theme or language does not compute them again."""
+    key = (*key, satellites.cache_stamp())                      # new orbits: new passes
     if key not in _TONIGHT_CACHE:
         if len(_TONIGHT_CACHE) >= 8:
             _TONIGHT_CACHE.pop(next(iter(_TONIGHT_CACHE)))
-        _TONIGHT_CACHE[key] = (AstroEngine.tonight(dte, lat, lon, elev, zone),
-                               AstroEngine.upcoming_events(dte, lat, lon, elev, zone))
+        night = AstroEngine.tonight(dte, lat, lon, elev, zone)
+        elements = satellites.load()                     # no network here: the orbits on disk
+        if elements and satellites.epoch_age_days(elements) <= satellites.STALE_DAYS:
+            night["satellites"] = AstroEngine.satellite_passes(elements, night["start"], lat, lon, elev, 1)
+        _TONIGHT_CACHE[key] = (night, AstroEngine.upcoming_events(dte, lat, lon, elev, zone))
     return _TONIGHT_CACHE[key]
 
 
+def _messier_label(obj, named=True):
+    """"M31 Andromeda Galaxy" (the common name in the active language, if it has
+    one), or "M13" with *named* False."""
+    if named and obj.get("name"):
+        name = t(f"messier.name_{obj['m']}")
+        return f"M{obj['m']} {name}"
+    return f"M{obj['m']}"
+
+
 def _plural_key(base, n):
-    """Clé « _one » ou « _many » ; en français, 0 est singulier."""
+    """Key "_one" or "_many"; in French, 0 is singular."""
     one = n == 1 or (n == 0 and get_lang() == "fr")
     return f"{base}_{'one' if one else 'many'}"
 
 
 def _ics_text(text):
-    """Texte d'une propriété iCalendar : \\ ; , et retours à la ligne protégés."""
+    """Text of an iCalendar property: \\ ; , and line breaks escaped."""
     return (text.replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,")
             .replace("\n", "\\n"))
 
 
 def _ics_fold(line):
-    """Ligne iCalendar repliée à 75 octets (RFC 5545, 3.1)."""
+    """An iCalendar line folded at 75 octets (RFC 5545, 3.1)."""
     out, current = [], ""
     for char in line:
         if len((current + char).encode("utf-8")) > (75 if not out else 74):
@@ -336,8 +350,8 @@ def _ics_fold(line):
 
 def _ics_calendar(items, stamp):
     """
-    Agenda iCalendar des évènements *items* : (début, fin, titre, description),
-    instants en TU (naïfs ou avec fuseau) ; *stamp* : instant de l'export.
+    iCalendar calendar of the events *items*: (start, end, title, description),
+    times in UT (naive or with a time zone); *stamp*: time of the export.
     """
     def utc(dt):
         if dt.tzinfo is not None:
@@ -353,30 +367,30 @@ def _ics_calendar(items, stamp):
     return "".join(_ics_fold(line) + "\r\n" for line in lines)
 
 
-# Groupes d'astres de l'onglet Planètes, dans leur ordre : un nouveau groupe
-# (comètes, ciel profond…) s'ajoute ici avec ses noms, et une clé
-# planets.group_<clé> dans les traductions
+# Groups of bodies of the Planets tab, in their order: a new group (deep sky…)
+# is added here with its names, and a planets.group_<key> key in the
+# translations
 _BODY_GROUPS = (("planets", PLANETS), ("minor", MINOR_PLANETS), ("comets", COMETS))
-_SORT_ROLE = Qt.ItemDataRole.UserRole          # valeur numérique du tri d'une cellule
-_NAME_ROLE = Qt.ItemDataRole.UserRole + 1      # nom de l'astre d'une ligne
+_SORT_ROLE = Qt.ItemDataRole.UserRole          # numeric sort value of a cell
+_NAME_ROLE = Qt.ItemDataRole.UserRole + 1      # name of the body of a row
 
 
 class _SortItem(QTableWidgetItem):
-    """Cellule triée selon sa valeur numérique (_SORT_ROLE), pas selon son texte."""
+    """A cell sorted by its numeric value (_SORT_ROLE), not by its text."""
 
     def __lt__(self, other):
         mine, theirs = self.data(_SORT_ROLE), other.data(_SORT_ROLE)
         if mine is None or theirs is None:
-            return (mine is None) < (theirs is None)            # « — » à la fin
+            return (mine is None) < (theirs is None)            # "—" last
         return mine < theirs
 
 
-_BACKGROUND = set()          # minuteries des tâches de fond en cours (gardées en vie)
+_BACKGROUND = set()          # timers of the running background tasks (kept alive)
 
 
 def _run_in_background(func, on_done, on_error):
-    """Exécute func() dans un fil à part (réseau) ; on_done(résultat) ou
-    on_error(exception) ensuite, dans le fil de l'interface."""
+    """Runs func() in a separate thread (network); then on_done(result) or
+    on_error(exception), in the interface's thread."""
     from concurrent.futures import ThreadPoolExecutor
     executor = ThreadPoolExecutor(max_workers=1)
     future = executor.submit(func)
@@ -400,8 +414,8 @@ def _run_in_background(func, on_done, on_error):
 
 
 def _issue_url(template):
-    """Nouvelle demande sur GitHub, formulaire *template* (bug, feature, body) prérempli
-    avec la version de Céleste et le système."""
+    """A new request on GitHub, form *template* (bug, feature, body) filled with
+    the version of Céleste and the system."""
     import platform
     from urllib.parse import urlencode
     query = {"template": f"{template}.yml", "version": APP_VERSION,
@@ -414,7 +428,7 @@ def _open_url(url):
 
 
 def _duration(minutes):
-    """Durée « 58 min » ou « 3 h 27 »."""
+    """Duration "58 min" or "3 h 27"."""
     minutes = int(round(minutes))
     if minutes < 60:
         return tf("units.minutes", value=minutes)
@@ -422,7 +436,7 @@ def _duration(minutes):
 
 
 def _rgba(color, alpha):
-    """Couleur QSS avec transparence (alpha de 0 à 1)."""
+    """QSS colour with transparency (alpha from 0 to 1)."""
     c = QColor(color)
     return f"rgba({c.red()}, {c.green()}, {c.blue()}, {round(alpha * 255)})"
 
@@ -433,7 +447,7 @@ def _repolish(widget):
 
 
 def _set_prop(widget, name, value):
-    """Propriété lue par la feuille de style ; repolit seulement si elle change."""
+    """A property read by the style sheet; re-polished only when it changes."""
     if widget.property(name) != value:
         widget.setProperty(name, value)
         _repolish(widget)
@@ -444,7 +458,7 @@ def _set_invalid(widget, invalid):
 
 
 def _label(text="", style="corps", tone=None, strong=False, wrap=False, name=None):
-    """QLabel dans un style de texte Astræos (corps, legende, donnee, cadran…)."""
+    """QLabel in an Astræos text style (corps, legende, donnee, cadran…)."""
     lbl = QLabel(text)
     lbl.setProperty("textStyle", style)
     if tone:
@@ -473,8 +487,8 @@ def _icon(key, color=None, size=20, checked=False):
 
 def _bouton(text, icon_key=None, variante="secondaire", compact=False, checkable=False):
     """
-    Bouton Astræos : « principal » (aplat or, une fois par écran),
-    « secondaire » (filet), « discret » ou « danger » ; normal (40 px) ou compact.
+    Astræos button: "principal" (gold fill, once per screen), "secondaire"
+    (outline), "discret" or "danger"; normal (40 px) or compact.
     """
     btn = QPushButton(text)
     btn.setProperty("variante", variante)
@@ -482,7 +496,7 @@ def _bouton(text, icon_key=None, variante="secondaire", compact=False, checkable
         btn.setProperty("taille", "compact")
     btn.setFixedHeight(32 if compact else 40)
     btn.setCheckable(checkable)
-    btn.setFocusPolicy(Qt.FocusPolicy.TabFocus)     # anneau de focus au clavier seulement
+    btn.setFocusPolicy(Qt.FocusPolicy.TabFocus)     # focus ring from the keyboard only
     btn.setCursor(Qt.CursorShape.PointingHandCursor)
     if icon_key:
         if variante == "principal":
@@ -498,7 +512,7 @@ def _bouton(text, icon_key=None, variante="secondaire", compact=False, checkable
 
 
 def _bouton_icone(icon_key, libelle, variante="discret", compact=False, checkable=False):
-    """BoutonIcone Astræos : rond, icône seule, nommé par *libelle* (infobulle)."""
+    """Astræos BoutonIcone: round, an icon only, named by *libelle* (tooltip)."""
     btn = QToolButton()
     btn.setObjectName("boutonIcone")
     btn.setProperty("variante", variante)
@@ -518,7 +532,7 @@ def _bouton_icone(icon_key, libelle, variante="discret", compact=False, checkabl
 
 
 def _set_pastille(label, text, ton):
-    """PastilleEtat : un point et un ou deux mots ; ton neutre, info, ok ou alerte."""
+    """PastilleEtat: a dot and one or two words; neutral, info, ok or alert tone."""
     label.setText(f"{SYMBOL['dot']}  {text}")
     label.setFixedHeight(24)
     _set_prop(label, "pastille", ton)
@@ -531,7 +545,7 @@ def _pastille(text="", ton="neutre"):
 
 
 def _scroll_page():
-    """(QScrollArea, page intérieure, layout vertical de la page)."""
+    """(QScrollArea, inner page, vertical layout of the page)."""
     scroll = QScrollArea()
     scroll.setWidgetResizable(True)
     scroll.setFrameShape(QFrame.Shape.NoFrame)
@@ -548,10 +562,10 @@ def _scroll_page():
 
 class ChampSaisie(QWidget):
     """
-    Champ de saisie Astræos : libellé toujours visible au-dessus, boîte de
-    40 px (filet encre-attenuee, encre au survol, anneau or au focus), unité
-    à droite, aide ou erreur dessous. *widget* : QLineEdit (par défaut),
-    QComboBox ou QDateTimeEdit.
+    Astræos input field: a label always visible above, a 40 px box (encre-attenuee
+    outline, encre on hover, gold ring on focus), the unit on the right, help
+    or error below. *widget*: QLineEdit (the default), QComboBox or
+    QDateTimeEdit.
     """
 
     def __init__(self, libelle, widget=None, unite=None, numerique=False, aide=None):
@@ -600,7 +614,7 @@ class ChampSaisie(QWidget):
         return False
 
     def set_erreur(self, message):
-        """Affiche *message* (ce qui ne va pas et comment corriger), ou rien si None."""
+        """Shows *message* (what is wrong and how to fix it), or nothing with None."""
         _set_prop(self.boite, "erreur", bool(message))
         self.erreur.setText(message or "")
         self.erreur.setVisible(bool(message))
@@ -613,8 +627,8 @@ class ChampSaisie(QWidget):
 
 class CarteDonnee(QFrame):
     """
-    CarteDonnee Astræos, densité normale : symbole et libellé, la valeur en
-    style cadran (Plex Mono 32 px) avec son unité, une ligne de contexte.
+    Astræos CarteDonnee, normal density: symbol and label, the value in the
+    cadran style (Plex Mono 32 px) with its unit, a context line.
     """
 
     def __init__(self, libelle, symbole=None, accent=None):
@@ -649,7 +663,7 @@ class CarteDonnee(QFrame):
 
 
 class PhaseLune(QWidget):
-    """Disque de la Lune éclairé selon l'angle de phase, au trait de la couleur lune."""
+    """The Moon's disc lit by the phase angle, drawn in the LUNE colour token."""
 
     def __init__(self, diametre=56):
         super().__init__()
@@ -658,7 +672,7 @@ class PhaseLune(QWidget):
         self._mirror = False
 
     def set_phase(self, phase_angle, southern=False):
-        """*phase_angle* : longitude Lune − Soleil (0 nouvelle lune, 180 pleine lune)."""
+        """*phase_angle*: longitude Moon − Sun (0 new moon, 180 full moon)."""
         self._phase = phase_angle % 360.0
         self._mirror = southern
         self.update()
@@ -675,14 +689,14 @@ class PhaseLune(QWidget):
 
         waxing = self._phase < 180.0
         phi = self._phase if waxing else 360.0 - self._phase      # 0 … 180
-        e = r * math.cos(math.radians(phi))                       # demi-axe du terminateur
+        e = r * math.cos(math.radians(phi))                       # semi-axis of the terminator
         lit = QPainterPath()
         lit.moveTo(c.x(), c.y() - r)
-        lit.arcTo(disc, 90, -180)                                 # bord droit, éclairé
+        lit.arcTo(disc, 90, -180)                                 # right edge, lit
         ell = QRectF(c.x() - abs(e), c.y() - r, 2 * abs(e), 2 * r)
         lit.arcTo(ell, -90, 180 if e > 0 else -180)               # terminateur
         lit.closeSubpath()
-        if waxing == self._mirror:                                # décroissante : à gauche
+        if waxing == self._mirror:                                # waning: on the left
             p.translate(2 * c.x(), 0)
             p.scale(-1, 1)
         p.setBrush(QColor(Config.LUNE))
@@ -696,7 +710,7 @@ class PhaseLune(QWidget):
 
 class SelecteurTheme(QFrame):
     """SelecteurTheme Astræos : Nuit, Jour, Observation, l'option active en aplat encre ;
-    *options* (clé, libellé, infobulle) pour un autre choix exclusif."""
+    *options* (key, label, tooltip) for another exclusive choice."""
 
     def __init__(self, current, on_change, options=None, legend=None):
         super().__init__()
@@ -728,7 +742,7 @@ class SelecteurTheme(QFrame):
 # ── Style de l'application ────────────────────────────────────────────────────
 
 def _register_fonts():
-    """Déclare les polices de fonts/ ; False si IBM Plex n'a pas pu être chargée."""
+    """Registers the fonts of fonts/; False when IBM Plex could not be loaded."""
     if os.path.isdir(_FONTS_DIR):
         for name in sorted(os.listdir(_FONTS_DIR)):
             if name.endswith(".ttf"):
@@ -747,13 +761,13 @@ def _register_fonts():
 
 def init_style(app):
     """
-    Polices Astræos, style Fusion, palette et feuille de style de l'application.
-    À appeler une fois, après la création de QApplication.
+    Astræos fonts, Fusion style, palette and style sheet of the application.
+    To call once, after QApplication is created.
     """
     _register_fonts()
     font = QFont()
     font.setFamilies(list(_fonts["sans"]))
-    font.setPixelSize(15)                       # style « corps »
+    font.setPixelSize(15)                       # "corps" style
     app.setFont(font)
     app.setStyle("Fusion")
     app.setWindowIcon(icons.app_icon())
@@ -762,7 +776,7 @@ def init_style(app):
 
 
 def apply_theme(app):
-    """Palette et feuille de style du thème actif (``Config``)."""
+    """Palette and style sheet of the active theme (``Config``)."""
     app.setPalette(_build_palette())
     app.setStyleSheet(build_stylesheet())
 
@@ -793,11 +807,11 @@ def _qss_family(families):
 
 
 def build_stylesheet():
-    """Feuille de style Qt du thème actif, d'après les composants Astræos."""
+    """Qt style sheet of the active theme, after the Astræos components."""
     C = Config
     sans, mono = _qss_family(_fonts["sans"]), _qss_family(_fonts["mono"])
     or_hover, or_press = mix(C.OR, C.ENCRE, 0.85), mix(C.OR, C.ENCRE, 0.72)
-    off = mix(C.ENCRE, C.CIEL_100, 0.45)                       # opacité 45 %
+    off = mix(C.ENCRE, C.CIEL_100, 0.45)                       # 45 % opacity
     pressed_hover = mix(C.ENCRE, C.CIEL_000, 0.85)
     pills = "\n".join(
         f'QLabel[pastille="{ton}"] {{ color: {color}; border: 1px solid {_rgba(color, 0.45)}; }}'
@@ -890,9 +904,9 @@ QFrame#champBoite QLineEdit, QFrame#champBoite QComboBox, QFrame#champBoite QDat
 QLineEdit[numerique="true"], QDateTimeEdit {{ font-family: {mono}; font-weight: 500; }}
 QDateTimeEdit[readOnly="true"] {{ color: {C.ENCRE_ATTENUEE}; }}
 QLabel#champUnite {{ padding-right: 12px; }}
-/* Listes déroulantes en mode liste : hauteur ajustée au contenu, barre de
-   défilement seulement si la liste est longue (le mode « menu » de Qt
-   cachait des choix derrière des flèches de défilement). */
+/* Drop-down lists in list mode: height fitted to the content, a scroll bar
+   only when the list is long (Qt's "menu" mode hid choices behind scroll
+   arrows). */
 QComboBox {{ combobox-popup: 0; }}
 QComboBox QAbstractItemView {{
     background: {C.CIEL_100}; border: 1px solid {C.CIEL_200}; outline: 0;
@@ -956,12 +970,12 @@ QMenu::item:selected {{ background: {C.CIEL_200}; }}
 """
 
 
-# ── Info-bulles des graphiques ────────────────────────────────────────────────
+# ── Tooltips of the charts ────────────────────────────────────────────────────
 
 class _TooltipLayer:
     """
-    Info-bulle matplotlib redessinée par « blitting » : la survoler ne
-    redessine pas toute la figure, seulement l'info-bulle.
+    A matplotlib tooltip redrawn by blitting: hovering over it does not
+    redraw the whole figure, only the tooltip.
     """
 
     def __init__(self, canvas):
@@ -971,7 +985,7 @@ class _TooltipLayer:
         canvas.mpl_connect("draw_event", self._on_draw)
 
     def attach(self, artist):
-        """Nouvelle info-bulle, après un redessin complet de la figure."""
+        """A new tooltip, after a full redraw of the figure."""
         artist.set_animated(True)
         self.artist = artist
         self._background = None
@@ -1002,7 +1016,7 @@ class _TooltipLayer:
 # ── Classe principale ─────────────────────────────────────────────────────────
 
 class AstroApp(QMainWindow):
-    """Fenêtre principale de Céleste."""
+    """Main window of Céleste."""
 
     def __init__(self):
         super().__init__()
@@ -1010,7 +1024,7 @@ class AstroApp(QMainWindow):
         self.setMinimumSize(1120, 720)
         self.setWindowIcon(icons.app_icon())
 
-        # État
+        # State
         self.live_mode           = False
         self.tz_name             = prefs.get("default_tz") or _AUTO_ZONE
         self._zone               = _zone(self.tz_name, _pref_float("default_lat", 49.6333),
@@ -1027,8 +1041,8 @@ class AstroApp(QMainWindow):
         self.visible_stars       = []
         self.visible_planets_map = []
         self.hours               = []
-        self._day_start          = None      # minuit local du jour calculé, en TU
-        self._geo_source         = None      # requête au service de localisation en cours
+        self._day_start          = None      # local midnight of the computed day, in UT
+        self._geo_source         = None      # request to the location service under way
         self.sun_altitudes       = []
         self.moon_altitudes      = []
         self.last_cache_key      = ""
@@ -1039,14 +1053,14 @@ class AstroApp(QMainWindow):
         self._dirty              = set()
         self._last_search        = None
 
-        # Minuteries : temps réel et recalcul différé après une saisie
+        # Timers: real time and delayed recalculation after typing
         self._live_timer = QTimer(self)
         self._live_timer.timeout.connect(self._live_tick)
         self._recalc_timer = QTimer(self)
         self._recalc_timer.setSingleShot(True)
         self._recalc_timer.timeout.connect(self.calculate)
 
-        # Raccourcis, attachés à la fenêtre : ils survivent aux reconstructions
+        # Shortcuts, attached to the window: they survive the rebuilds
         for keys, slot in ((("F5", "Ctrl+Return"), self.calculate),
                            (("Ctrl+L",), lambda: self.btn_live.toggle())):
             for key in keys:
@@ -1060,7 +1074,7 @@ class AstroApp(QMainWindow):
     # ──────────────────────────────────────────────────────────────────────────
 
     def _build_ui(self):
-        """Construit (ou reconstruit) toute la fenêtre dans la langue et le thème actifs."""
+        """Builds (or rebuilds) the whole window in the active language and theme."""
         self.setWindowTitle(t("app.title"))
         central = QWidget()
         central.setObjectName("central")
@@ -1091,10 +1105,10 @@ class AstroApp(QMainWindow):
 
         self.setCentralWidget(central)
         self._build_status_bar()
-        # Sinon le champ de date reçoit le focus avec son jour sélectionné
+        # Otherwise the date field gets the focus with its day selected
         self.tabs.setFocus()
 
-    # ── Barre latérale ────────────────────────────────────────────────────────
+    # ── Side panel ────────────────────────────────────────────────────────────
 
     def _build_sidebar(self):
         side = QFrame()
@@ -1103,7 +1117,7 @@ class AstroApp(QMainWindow):
         lay.setContentsMargins(24, 24, 24, 16)
         lay.setSpacing(12)
 
-        # En-tête : le symbole Astræos, puis le nom de l'application
+        # Header: the Astræos symbol, then the application's name
         head = QHBoxLayout()
         head.setSpacing(12)
         mark = QLabel()
@@ -1117,7 +1131,7 @@ class AstroApp(QMainWindow):
         head.addLayout(titles, stretch=1)
         lay.addLayout(head)
 
-        # Date et heure TU
+        # Date and time (UT)
         self.dt_edit = QDateTimeEdit()
         if hasattr(self.dt_edit, "setTimeZone"):
             self.dt_edit.setTimeZone(_utc_zone())
@@ -1136,7 +1150,7 @@ class AstroApp(QMainWindow):
         self.btn_now.clicked.connect(self.set_now)
         lay.addLayout(self._with_button(self.field_date, self.btn_now))
 
-        # Lieu : une ville cherchée par son nom (GeoNames, hors ligne), ou ses coordonnées
+        # Place: a city searched by its name (GeoNames, offline), or its coordinates
         self.entry_place = QLineEdit()
         self.entry_place.setPlaceholderText(t("side.place_placeholder"))
         self.entry_place.setToolTip(t("side.place_tip"))
@@ -1175,7 +1189,7 @@ class AstroApp(QMainWindow):
         self.entry_elev.returnPressed.connect(self.calculate)
         lay.addWidget(ChampSaisie(t("side.elevation"), self.entry_elev, unite="m", numerique=True))
 
-        # Fuseau IANA (heure d'été comprise), à taper ou choisir ; « Automatique » suit le lieu
+        # IANA time zone (summer time included), typed or chosen; "Automatic" follows the place
         self.tz_menu = QComboBox()
         self.tz_menu.setEditable(True)
         self.tz_menu.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
@@ -1204,7 +1218,7 @@ class AstroApp(QMainWindow):
         lay.addLayout(self._with_button(ChampSaisie(t("side.favorites"), self.combo_fav),
                                         fav_add, fav_del))
 
-        # Actions : Calculer est la seule zone dorée de l'écran
+        # Actions: Calculate is the only gold area of the screen
         lay.addSpacing(4)
         self.btn_calc = _bouton(t("side.calculate"), "calculate", "principal")
         self.btn_calc.setToolTip(tf("side.calculate_tip", key="F5"))
@@ -1223,9 +1237,9 @@ class AstroApp(QMainWindow):
 
     @staticmethod
     def _scrolling_sidebar(side):
-        """La barre latérale, qui défile quand la fenêtre est plus basse qu'elle
-        (écrans de 768 pixels de haut)."""
-        side.setMinimumWidth(280)          # sinon la largeur naturelle (337) déborderait de 312
+        """The side panel, which scrolls when the window is lower than it
+        (screens 768 pixels high)."""
+        side.setMinimumWidth(280)          # otherwise its natural width (337) would overflow 312
         scroll = QScrollArea()
         scroll.setObjectName("sidebarScroll")
         scroll.setWidget(side)
@@ -1234,7 +1248,7 @@ class AstroApp(QMainWindow):
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         bar = scroll.verticalScrollBar()
 
-        def fit(_low=0, high=0):            # la barre de défilement s'ajoute aux 312 pixels
+        def fit(_low=0, high=0):            # the scroll bar adds to the 312 pixels
             scroll.setFixedWidth(312 + (bar.sizeHint().width() if high > 0 else 0))
         bar.rangeChanged.connect(fit)
         fit()
@@ -1242,7 +1256,7 @@ class AstroApp(QMainWindow):
 
     @staticmethod
     def _with_button(field, *buttons):
-        """Un champ et des boutons ronds alignés sur sa boîte de saisie."""
+        """A field and round buttons aligned on its input box."""
         row = QHBoxLayout()
         row.setSpacing(4)
         row.addWidget(field, stretch=1)
@@ -1250,12 +1264,12 @@ class AstroApp(QMainWindow):
             row.addWidget(btn, alignment=Qt.AlignmentFlag.AlignBottom)
         return row
 
-    # ── Onglet 1 : éphémérides ────────────────────────────────────────────────
+    # ── Tab 1: ephemeris ──────────────────────────────────────────────────────
 
     def _build_ephemeris_tab(self):
         scroll, _page, lay = _scroll_page()
 
-        # Les valeurs qui se lisent d'un coup d'œil
+        # The values read at a glance
         cards = QHBoxLayout()
         cards.setSpacing(16)
         self.card_sun_alt = CarteDonnee(t("cards.sun_alt"), SYMBOL["Sun"], "or")
@@ -1267,7 +1281,7 @@ class AstroApp(QMainWindow):
             cards.addWidget(card, stretch=1)
         lay.addLayout(cards)
 
-        # Ce soir : la nuit, la Lune, les planètes visibles et les prochains évènements
+        # Tonight: the night, the Moon, the visible planets and the next events
         card = _card()
         card.setObjectName("card")
         outer = QVBoxLayout(card)
@@ -1351,7 +1365,7 @@ class AstroApp(QMainWindow):
         self.tabs.addTab(scroll, t("tabs.ephemeris"))
 
     def _body_card(self, symbole, accent, title):
-        """Carte d'un astre : (carte, grille des données, pastille d'état)."""
+        """Card of a body: (card, data grid, state badge)."""
         card = _card()
         outer = QVBoxLayout(card)
         outer.setContentsMargins(16, 16, 16, 16)
@@ -1375,9 +1389,9 @@ class AstroApp(QMainWindow):
     @staticmethod
     def _section_rows(grid, row, title, fields, labels):
         """
-        Ajoute un intertitre (texte, QLabel ou None) puis une ligne « libellé …
-        valeur » par champ (CarteDonnee compacte) ; retourne la ligne suivante.
-        Champ : (clé, clé de traduction[, mise en avant]).
+        Adds a heading (text, QLabel or None), then a "label … value" line per
+        field (compact CarteDonnee); returns the next row.
+        Field: (key, translation key[, emphasised]).
         """
         if title is not None:
             if isinstance(title, str):
@@ -1399,10 +1413,10 @@ class AstroApp(QMainWindow):
             row += 1
         return row
 
-    # ── Onglets 2 et 3 : graphiques ───────────────────────────────────────────
+    # ── Tabs 2 and 3: charts ──────────────────────────────────────────────────
 
     def _chart_page(self, name, toolbar=None, hint=None):
-        """Page d'onglet : un graphique matplotlib dans une carte."""
+        """Tab page: a matplotlib chart in a card."""
         page = QWidget()
         page.setObjectName("page")
         lay = QVBoxLayout(page)
@@ -1447,6 +1461,12 @@ class AstroApp(QMainWindow):
         self._mag_slider.valueChanged.connect(self._on_mag_changed)
         bar.addWidget(self._mag_slider)
         bar.addWidget(self._mag_lbl)
+        bar.addSpacing(24)
+        self._messier_box = QCheckBox(t("skymap.messier"))
+        self._messier_box.setToolTip(t("skymap.messier_tip"))
+        self._messier_box.setChecked(bool(prefs.get("show_messier")))
+        self._messier_box.toggled.connect(self._on_messier_toggled)
+        bar.addWidget(self._messier_box)
         bar.addStretch()
 
         page, self.fig_sky, self.canvas_sky = self._chart_page(
@@ -1458,7 +1478,7 @@ class AstroApp(QMainWindow):
         self.canvas_sky.mpl_connect("figure_leave_event", self._on_sky_leave)
         self.tabs.addTab(page, t("tabs.skymap"))
 
-    # ── Onglet 4 : planètes ───────────────────────────────────────────────────
+    # ── Tab 4: planets ────────────────────────────────────────────────────────
 
     def _build_planets_tab(self):
         page = QWidget()
@@ -1467,7 +1487,7 @@ class AstroApp(QMainWindow):
         lay.setContentsMargins(0, 16, 0, 16)
         lay.setSpacing(16)
 
-        # tous les astres, ou un groupe ; seulement ceux au-dessus de l'horizon
+        # all the bodies, or a group; only those above the horizon
         self._planet_group = prefs.get("planet_group") or "planets"
         if self._planet_group not in ("all",) + tuple(k for k, _names in _BODY_GROUPS):
             self._planet_group = "planets"
@@ -1488,7 +1508,7 @@ class AstroApp(QMainWindow):
         bar.addStretch()
         lay.addLayout(bar)
 
-        # la visibilité se lit à la couleur du nom (vive au-dessus de l'horizon)
+        # visibility reads from the name's colour (bright above the horizon)
         columns = ["col_planet", "col_ra", "col_dec", "col_alt", "col_az", "col_dist",
                    "col_elong", "col_mag", "col_rise", "col_transit", "col_set"]
         bodies = tuple(name for _key, names in _BODY_GROUPS for name in names)
@@ -1527,21 +1547,21 @@ class AstroApp(QMainWindow):
                     item.setFont(mono)
                 table.setItem(r, c, item)
                 items[col] = item
-            items["col_planet"].setData(_SORT_ROLE, r)                # ordre du Système solaire
+            items["col_planet"].setData(_SORT_ROLE, r)                # order of the Solar System
             self._planet_items[name] = items
         self.planet_table = table
-        # un clic sur un astre ouvre sa fenêtre de données
+        # a click on a body opens its data window
         table.cellClicked.connect(
             lambda row, _col: self._show_body_detail(table.item(row, 0).data(_NAME_ROLE)))
         table.viewport().setCursor(Qt.CursorShape.PointingHandCursor)
         table.setToolTip(t("detail.click_tip"))
-        # la dernière colonne s'étire : jamais de défilement horizontal pour quelques pixels
+        # the last column stretches: never a horizontal scroll for a few pixels
         table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._planet_alt = {}
         self._planet_empty = _label("", "legende", tone="attenuee", wrap=True)
         self._planet_empty.hide()
-        # clic sur un en-tête : tri croissant puis décroissant ; « Planète » : ordre naturel.
-        # La colonne triée a son en-tête en or (la flèche de Qt élargirait toutes les colonnes)
+        # click on a header: ascending then descending; "Planet": natural order.
+        # The sorted column has a gold header (Qt's arrow would widen every column)
         table.setSortingEnabled(True)
         header.setSortIndicatorShown(False)
         table.sortItems(0, Qt.SortOrder.AscendingOrder)
@@ -1553,7 +1573,7 @@ class AstroApp(QMainWindow):
         card = _card()
         card_l = QVBoxLayout(card)
         card_l.setContentsMargins(8, 8, 8, 8)
-        # animation : le planétaire avance de jour en jour à partir de la date choisie
+        # animation: the orrery moves on from the chosen date
         bar = QHBoxLayout()
         bar.setContentsMargins(8, 4, 8, 0)
         bar.setSpacing(4)
@@ -1583,7 +1603,7 @@ class AstroApp(QMainWindow):
             self._orrery_timer = QTimer(self)
             self._orrery_timer.setInterval(80)
             self._orrery_timer.timeout.connect(lambda: self._orrery_step(+1))
-            self._orrery_offset = 0.0                     # jours depuis la date choisie
+            self._orrery_offset = 0.0                     # days from the chosen date
         self._orrery_timer.stop()
         self.fig_orrery = Figure(facecolor=Config.CIEL_100)
         self.canvas_orrery = FigureCanvasQTAgg(self.fig_orrery)
@@ -1592,13 +1612,13 @@ class AstroApp(QMainWindow):
         self._chart_tabs[page] = "orrery"
         self.tabs.addTab(page, t("tabs.planets"))
 
-    # ── Mises à jour ──────────────────────────────────────────────────────────
+    # ── Updates ───────────────────────────────────────────────────────────────
 
     def check_updates(self, interactive=True):
         """
-        Cherche une version plus récente (Release GitHub). *interactive*
-        (bouton) : la réponse s'affiche toujours ; au démarrage, seulement
-        s'il y a une version nouvelle que l'utilisateur n'a pas choisi
+        Looks for a newer version (GitHub Release). *interactive* (button):
+        the answer always shows; at startup, only when there is a new version
+        the user did not choose to skip.
         d'ignorer.
         """
         if getattr(self, "_update_busy", False):
@@ -1628,11 +1648,11 @@ class AstroApp(QMainWindow):
             QMessageBox.warning(self, t("update.title"), tf("update.error", detail=error))
 
     def _show_update_dialog(self, release):
-        """Fenêtre (non bloquante) : la version nouvelle, ses notes, et que faire."""
+        """Window (non-modal): the new version, its notes, and what to do."""
         box = QMessageBox(QMessageBox.Icon.Information, t("update.title"),
                           tf("update.available", version=release["version"], current=APP_VERSION),
                           parent=self)
-        box.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)           # fermée, elle ne reste pas en mémoire
+        box.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)           # once closed, it does not stay in memory
         notes = updater.plain_notes(release.get("notes", ""))
         if len(notes) > 800:
             notes = notes[:800].rsplit("\n", 1)[0] + "\n…"
@@ -1660,7 +1680,7 @@ class AstroApp(QMainWindow):
         box.open()
 
     def _install_update(self, release):
-        """Télécharge et vérifie l'installateur, le lance, puis ferme Céleste."""
+        """Downloads and checks the installer, runs it, then closes Céleste."""
         state = {"done": 0, "total": release.get("setup_size") or 0, "cancel": False}
         progress = QProgressDialog(tf("update.downloading", version=release["version"]),
                                    t("update.cancel"), 0, 1000, self)
@@ -1710,11 +1730,11 @@ class AstroApp(QMainWindow):
                                                     else "descending")) if sorted_here else "")
         self._show_planet_group()
 
-    _PLANET_ROWS_MAX = 8            # au-delà, le tableau défile
+    _PLANET_ROWS_MAX = 8            # beyond, the table scrolls
 
     def _show_planet_group(self):
-        """N'affiche que les astres du groupe choisi, et seulement ceux au-dessus
-        de l'horizon si « Visibles seulement » est cochée."""
+        """Shows only the bodies of the chosen group, and only those above the
+        horizon when "Visible only" is checked."""
         group = dict(_BODY_GROUPS).get(self._planet_group)
         visible_only = self._planet_visible.isChecked()
         table = self.planet_table
@@ -1738,9 +1758,9 @@ class AstroApp(QMainWindow):
         rows = max(1, min(shown, self._PLANET_ROWS_MAX))
         table.setFixedHeight(40 * rows + header.sizeHint().height() + 4)
 
-    # ── Onglet Coordonnées ────────────────────────────────────────────────────
-    #    x, y, z et distance selon l'origine « cartésiennes » ; deux angles selon
-    #    le repère « angulaires » ; magnitude, angle avec le Soleil, constellation.
+    # ── Coordinates tab ───────────────────────────────────────────────────────
+    #    x, y, z and distance from the "cartesian" origin; two angles in the
+    #    "angular" frame; magnitude, angle with the Sun, constellation.
 
     _COORD_CHOICES = (
         ("cartesian", AstroEngine.CENTERS, "coord_cartesian"),
@@ -1752,7 +1772,7 @@ class AstroApp(QMainWindow):
                       "col_sun_angle", "col_constellation", "angle1", "angle2")
 
     def _build_coordinates_tab(self):
-        # dix-huit astres : la page défile si la fenêtre est trop basse
+        # eighteen bodies: the page scrolls when the window is too low
         page, _inner, lay = _scroll_page()
 
         row = QHBoxLayout()
@@ -1816,7 +1836,7 @@ class AstroApp(QMainWindow):
         return self.coord_menus[key].currentData()
 
     def _sync_coord_menus(self):
-        """Le choix Soleil / Terre ne vaut que pour les coordonnées écliptiques."""
+        """The Sun / Earth choice only applies to ecliptic coordinates."""
         self.coord_menus["ecliptic_from"].setEnabled(self._coord_choice("angular") == "ecliptic")
 
     def _on_coord_choice(self, key):
@@ -1826,7 +1846,7 @@ class AstroApp(QMainWindow):
         self._refresh_coordinates()
 
     def _coord_angle_format(self):
-        """Format des angles du tableau : le sien, ou celui des paramètres (« global »)."""
+        """Angle format of the table: its own, or the settings' ("global")."""
         fmt = self._coord_choice("angle")
         return fmt if fmt in Formatters.ANGLE_FORMATS else _angle_format()
 
@@ -1841,13 +1861,13 @@ class AstroApp(QMainWindow):
         return f"{symbol} {name}" if symbol else name
 
     def _refresh_coordinates(self):
-        """Tableau des coordonnées, calculé quand son onglet est affiché."""
+        """Table of the coordinates, computed when its tab is shown."""
         if self._lat is None or self.tabs.currentWidget() is not getattr(self, "_coord_page", None):
             return
         cartesian, angular, from_body = (self._coord_choice(k)
                                          for k in ("cartesian", "angular", "ecliptic_from"))
-        # (origine, repère) des angles : équatoriales et horizontales vues du lieu,
-        # écliptiques vues du Soleil ou de la Terre
+        # (origin, frame) of the angles: equatorial and horizontal seen from the place,
+        # ecliptic seen from the Sun or the Earth
         if angular == "ecliptic":
             angle_system = ("heliocentric" if from_body == "sun" else "geocentric", "ecliptic")
         else:
@@ -1887,7 +1907,7 @@ class AstroApp(QMainWindow):
             t(f"coordinates.note_angular_{angular if angular != 'ecliptic' else 'ecliptic_' + from_body}"),
             t("coordinates.note_observation"))))
 
-    # ── Onglet 5 : événements ─────────────────────────────────────────────────
+    # ── Tab 5: events ─────────────────────────────────────────────────────────
 
     def _build_events_tab(self):
         page = QWidget()
@@ -1902,8 +1922,12 @@ class AstroApp(QMainWindow):
         btn_ecl.clicked.connect(self._search_eclipses_gui)
         btn_conj = _bouton(t("events.search_conjunctions"), "search")
         btn_conj.clicked.connect(self._search_conjunctions_gui)
+        btn_sat = _bouton(t("satellites.search"), "search")
+        btn_sat.setToolTip(t("satellites.search_tip"))
+        btn_sat.clicked.connect(self._search_satellites_gui)
         bar.addWidget(btn_ecl)
         bar.addWidget(btn_conj)
+        bar.addWidget(btn_sat)
         bar.addStretch()
         self._btn_ics = _bouton(t("events.export_ics"), "export")
         self._btn_ics.setToolTip(t("events.export_tip"))
@@ -1912,7 +1936,7 @@ class AstroApp(QMainWindow):
         bar.addWidget(self._btn_ics)
         lay.addLayout(bar)
 
-        # filtres des évènements de l'année
+        # filters of the year's events
         self._evt_filter_bar = QWidget()
         row = QHBoxLayout(self._evt_filter_bar)
         row.setContentsMargins(0, 0, 0, 0)
@@ -1941,7 +1965,7 @@ class AstroApp(QMainWindow):
         self._show_events_placeholder()
         self.tabs.addTab(page, t("tabs.events"))
 
-    # ── Onglet 6 : paramètres ─────────────────────────────────────────────────
+    # ── Tab 6: settings ───────────────────────────────────────────────────────
 
     def _build_settings_tab(self):
         scroll, _page, lay = _scroll_page()
@@ -1955,7 +1979,7 @@ class AstroApp(QMainWindow):
             lay.addWidget(card)
             return box
 
-        # Langue et affichage
+        # Language and display
         box = section(t("settings.display_section"))
         self._lang_combo = QComboBox()
         auto_lang = resolve_lang("auto", QLocale.system().name())
@@ -1986,7 +2010,7 @@ class AstroApp(QMainWindow):
         box.addLayout(row)
         box.addWidget(_label(t("settings.theme_hint"), "legende", wrap=True))
 
-        # Lieu de démarrage
+        # Starting place
         box = section(t("settings.default_place_section"))
         self._place_entry = QLineEdit(_clean_place(prefs.get("default_place")))
         box.addWidget(ChampSaisie(t("settings.default_place_name"), self._place_entry))
@@ -2009,13 +2033,13 @@ class AstroApp(QMainWindow):
         self._autogeo_cb.toggled.connect(lambda v: prefs.set("auto_geoloc", bool(v)))
         box.addWidget(self._autogeo_cb)
 
-        # Temps réel
+        # Real time
         box = section(t("settings.live_section"))
         box.addWidget(_label(t("settings.live_interval"), "libelle"))
         iv = QHBoxLayout()
         iv.setSpacing(12)
         self._iv_slider = QSlider(Qt.Orientation.Horizontal)
-        self._iv_slider.setRange(1, 20)            # pas de 500 ms
+        self._iv_slider.setRange(1, 20)            # steps of 500 ms
         self._iv_slider.setValue(int((prefs.get("live_interval") or 2000) / 500))
         self._iv_lbl = _label("", "donnee")
         self._iv_lbl.setMinimumWidth(80)
@@ -2025,7 +2049,7 @@ class AstroApp(QMainWindow):
         self._iv_lbl.setText(tf("units.ms", value=_num(self._iv_slider.value() * 500)))
         box.addLayout(iv)
 
-        # Réinitialisation (irréversible : bouton danger et confirmation)
+        # Reset (irreversible: danger button and confirmation)
         box = section(t("settings.reset_section"))
         box.addWidget(_label(t("settings.reset_hint"), "legende", wrap=True))
         buttons = QHBoxLayout()
@@ -2035,7 +2059,7 @@ class AstroApp(QMainWindow):
         buttons.addStretch()
         box.addLayout(buttons)
 
-        # À propos : mises à jour, liens
+        # About: updates, links
         box = section(t("settings.about_section"))
         box.addWidget(_label(tf("settings.about", version=APP_VERSION), "corps", wrap=True))
         box.addWidget(_label(t("settings.credits"), "legende", wrap=True))
@@ -2071,7 +2095,7 @@ class AstroApp(QMainWindow):
         lay.addStretch()
         self.tabs.addTab(scroll, t("tabs.settings"))
 
-    # ── Barre d'état ──────────────────────────────────────────────────────────
+    # ── Status bar ────────────────────────────────────────────────────────────
 
     def _build_status_bar(self):
         bar = QStatusBar()
@@ -2089,7 +2113,7 @@ class AstroApp(QMainWindow):
         self._apply_live_ui()
 
     # ──────────────────────────────────────────────────────────────────────────
-    # RECONSTRUCTION (LANGUE / THÈME)
+    # REBUILD (LANGUAGE / THEME)
     # ──────────────────────────────────────────────────────────────────────────
 
     def _snapshot(self):
@@ -2104,15 +2128,15 @@ class AstroApp(QMainWindow):
 
     @staticmethod
     def _input_coord(edit):
-        """Coordonnée saisie (nombre), ou le texte tel quel s'il est invalide."""
+        """A typed coordinate (number), or the text as it is when invalid."""
         try:
             return float(edit.text().strip().replace(",", ".").replace("−", "-"))
         except ValueError:
             return edit.text()
 
     def _rebuild(self, keep_place=True):
-        """Reconstruit la fenêtre (nouvelle langue ou nouveau thème) en gardant
-        la date, l'onglet, le mode temps réel et, si *keep_place*, le lieu."""
+        """Rebuilds the window (new language or theme), keeping the date, the
+        tab, the real-time mode and, with *keep_place*, the place."""
         state = self._snapshot()
         apply_theme(QApplication.instance())
         self._build_ui()
@@ -2134,9 +2158,11 @@ class AstroApp(QMainWindow):
             self._search_eclipses_gui()
         elif self._last_search == "conjunctions":
             self._search_conjunctions_gui()
+        elif self._last_search == "satellites":
+            self._search_satellites_gui()
 
     # ──────────────────────────────────────────────────────────────────────────
-    # HANDLERS PARAMÈTRES
+    # SETTINGS HANDLERS
     # ──────────────────────────────────────────────────────────────────────────
 
     def _on_theme_selected(self, key):
@@ -2159,9 +2185,14 @@ class AstroApp(QMainWindow):
         self.calculate()
 
     def _on_anglefmt_change(self, index):
-        """Format des angles de tout le logiciel (et du tableau des coordonnées s'il le suit)."""
+        """Angle format of the whole software (and of the coordinates table when it follows)."""
         prefs.set("angle_format", self._anglefmt_combo.itemData(index))
         self.calculate()
+
+    def _on_messier_toggled(self, checked):
+        prefs.set("show_messier", bool(checked))
+        if self._dte is not None:
+            self.calculate()
 
     def _mag_limit(self):
         return _pref_float("mag_limit", 6.0)
@@ -2191,7 +2222,7 @@ class AstroApp(QMainWindow):
         self._default_coords_lbl.setText(text)
 
     def _save_default_place(self):
-        """Le lieu saisi devient le lieu de démarrage (nom, coordonnées, fuseau)."""
+        """The typed place becomes the starting place (name, coordinates, time zone)."""
         try:
             _dte, lat, lon = self.current_inputs()
         except ValueError:
@@ -2265,7 +2296,7 @@ class AstroApp(QMainWindow):
         self.calculate()
 
     def _on_place_typed(self, text):
-        """Suggestions de villes à chaque lettre (deux au moins)."""
+        """City suggestions at each letter (two at least)."""
         found = places.search(text) if len(text.strip()) >= 2 else []
         self._place_found = {}
         for place in found:
@@ -2280,10 +2311,10 @@ class AstroApp(QMainWindow):
             self._apply_place(place)
 
     def _on_place_return(self):
-        """Entrée sans choisir : la première suggestion."""
+        """Return without choosing: the first suggestion."""
         text = self.entry_place.text()
         if not text.strip() or text in self._place_found:
-            return                                        # vide, ou déjà traité par le choix
+            return                                        # empty, or already handled by the choice
         found = places.search(text, limit=1)
         if found:
             self._apply_place(found[0])
@@ -2291,7 +2322,7 @@ class AstroApp(QMainWindow):
             self.statusBar().showMessage(tf("side.place_unknown", name=text.strip()), 5000)
 
     def _apply_place(self, place):
-        """Ville choisie : coordonnées, altitude et nom, puis calcul."""
+        """A city chosen: coordinates, elevation and name, then calculation."""
         self._place_completer.popup().hide()
         self.entry_lat.setText(_coord_text(place["lat"]))
         self.entry_lon.setText(_coord_text(place["lon"]))
@@ -2302,7 +2333,7 @@ class AstroApp(QMainWindow):
         self.calculate()
 
     def _on_coords_edited(self, _text):
-        """Coordonnées tapées à la main : ce n'est plus un lieu nommé."""
+        """Coordinates typed by hand: no longer a named place."""
         self.location_name = ""
         self.combo_fav.setCurrentIndex(-1)
 
@@ -2345,7 +2376,7 @@ class AstroApp(QMainWindow):
     # ──────────────────────────────────────────────────────────────────────────
 
     def _set_datetime(self, dte):
-        """Affiche *dte* (TU, sans fuseau) sans déclencher de recalcul."""
+        """Shows *dte* (UT, without time zone) without triggering a recalculation."""
         qdt = QDateTime(QDate(dte.year, dte.month, dte.day),
                         QTime(dte.hour, dte.minute, dte.second), _utc_zone())
         self.dt_edit.blockSignals(True)
@@ -2353,7 +2384,7 @@ class AstroApp(QMainWindow):
         self.dt_edit.blockSignals(False)
 
     def _edit_datetime(self):
-        """Date et heure TU saisies (datetime sans fuseau)."""
+        """Date and time typed, in UT (datetime without time zone)."""
         qdt = self.dt_edit.dateTime().toUTC()
         d, tm = qdt.date(), qdt.time()
         return datetime(d.year(), d.month(), d.day(), tm.hour(), tm.minute(), tm.second())
@@ -2377,7 +2408,7 @@ class AstroApp(QMainWindow):
         self.calculate()
 
     def _select_zone(self, name):
-        """Montre le fuseau *name* dans le sélecteur, sans recalcul."""
+        """Shows the time zone *name* in the selector, without recalculating."""
         idx = self.tz_menu.findData(name)
         if idx < 0:
             self.tz_menu.addItem(name, name)
@@ -2387,29 +2418,29 @@ class AstroApp(QMainWindow):
         self.tz_menu.blockSignals(False)
 
     def _elevation(self):
-        """Altitude saisie de l'observateur, en mètres (0 si vide ou invalide)."""
+        """Observer's elevation typed, in metres (0 when empty or invalid)."""
         try:
             return max(-500.0, min(9000.0, float(self.entry_elev.text().strip() or 0)))
         except ValueError:
             return 0.0
 
     def _local(self, dt):
-        """Heure locale (sans fuseau) de l'instant TU *dt* : fuseau du lieu, heure d'été comprise."""
+        """Local time (without time zone) of the UT instant *dt*: the place's zone, summer time included."""
         return dt.replace(tzinfo=timezone.utc).astimezone(self._zone).replace(tzinfo=None)
 
     @property
     def utc_offset(self):
-        """Décalage du fuseau à l'instant calculé, en heures (heure d'été comprise)."""
+        """Offset of the time zone at the computed instant, in hours (summer time included)."""
         dte = getattr(self, "_dte", None) or _utc_now()
         return dte.replace(tzinfo=timezone.utc).astimezone(self._zone).utcoffset().total_seconds() / 3600
 
     def _midnight_offset(self):
-        """Décalage du fuseau au minuit local du jour calculé, en heures."""
+        """Offset of the time zone at the local midnight of the computed day, in hours."""
         start = self._day_start or self._dte
         return (self._local(start) - start).total_seconds() / 3600
 
     def _zone_text(self):
-        """« Europe/Paris · UTC+1 » : le fuseau et son décalage à l'instant calculé."""
+        """"Europe/Paris · UTC+1": the time zone and its offset at the computed instant."""
         return f"{getattr(self._zone, 'key', 'UTC')} · {_fmt_offset(self.utc_offset)}"
 
     def _fmt_clock(self, dt):
@@ -2424,25 +2455,25 @@ class AstroApp(QMainWindow):
         return self._fmt_clock(self._local(dt + timedelta(seconds=30)))
 
     # ──────────────────────────────────────────────────────────────────────────
-    # GÉOLOCALISATION / TEMPS RÉEL
+    # GEOLOCATION / REAL TIME
     # ──────────────────────────────────────────────────────────────────────────
 
     def geolocate(self, interactive=True):
         """
-        Position de l'appareil par le service de localisation du système
-        (GPS, Wi-Fi : QtPositioning) ; s'il est absent, refusé ou muet, sa
-        dernière position connue, sinon la position approximative de l'adresse
-        IP. *interactive* (bouton) : une fenêtre dit alors pourquoi le service
-        n'a pas répondu et ouvre ses réglages ; au démarrage, la barre d'état.
+        Position of the device from the system's location service (GPS, Wi-Fi:
+        QtPositioning); when it is missing, denied or silent, its last known
+        position, else the approximate position of the IP address. *interactive*
+        (button): a window then says why the service did not answer and opens
+        its settings; at startup, the status bar.
         """
-        if self._geo_source is not None:                     # une requête est en cours
+        if self._geo_source is not None:                     # a request is under way
             return
         self._geo_interactive = interactive
         source = QGeoPositionInfoSource.createDefaultSource(self)
         if source is None:
             self._geolocate_by_ip("no_source")
             return
-        if hasattr(source, "setPreferredPositioningMethods"):           # GPS, Wi-Fi, réseau
+        if hasattr(source, "setPreferredPositioningMethods"):           # GPS, Wi-Fi, network
             source.setPreferredPositioningMethods(_ALL_POSITIONING_METHODS)
         self._geo_source = source
         source.positionUpdated.connect(self._on_device_position)
@@ -2479,14 +2510,14 @@ class AstroApp(QMainWindow):
         last = source.lastKnownPosition() if hasattr(source, "lastKnownPosition") else None
         self._end_device_request()
         if last is not None and last.isValid() and last.coordinate().isValid():
-            self._on_device_position(last)                    # dernière position connue
+            self._on_device_position(last)                    # last known position
             return
         code = getattr(error, "value", error)
         reason = {0: "access", 1: "closed", 4: "timeout"}.get(code, "unknown")
         self._geolocate_by_ip(reason)
 
     def _set_place(self, lat, lon, name, zone=None):
-        """Lieu trouvé par la géolocalisation : coordonnées, nom, fuseau, puis calcul."""
+        """Place found by geolocation: coordinates, name, time zone, then calculation."""
         self.entry_lat.setText(_coord_text(lat))
         self.entry_lon.setText(_coord_text(lon))
         if zone and self.tz_name != _AUTO_ZONE and self.tz_menu.findData(zone) >= 0:
@@ -2497,8 +2528,8 @@ class AstroApp(QMainWindow):
         self.calculate()
 
     def _geolocate_by_ip(self, reason=None):
-        """Secours : position de l'adresse IP, souvent celle du fournisseur d'accès ;
-        *reason* : pourquoi le service de l'appareil n'a pas répondu."""
+        """Fallback: position of the IP address, often the internet provider's;
+        *reason*: why the device's service did not answer."""
         url = ("http://ip-api.com/json/"
                "?fields=status,message,country,city,lat,lon,timezone")
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
@@ -2507,7 +2538,7 @@ class AstroApp(QMainWindow):
                 url, headers={"User-Agent": f"Celeste/{APP_VERSION}"})
             with urllib.request.urlopen(req, timeout=5) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
-        except Exception as exc:  # réseau, délai, JSON
+        except Exception as exc:  # network, delay, JSON
             QApplication.restoreOverrideCursor()
             QMessageBox.critical(self, t("errors.network_title"),
                                  tf("errors.geoloc_network", detail=exc))
@@ -2525,7 +2556,7 @@ class AstroApp(QMainWindow):
             self._explain_geolocation(reason, data.get("city", "?"), data.get("country", "?"))
 
     def _explain_geolocation(self, reason, city, country):
-        """Fenêtre (non bloquante) : position de l'IP, pourquoi, et les réglages à ouvrir."""
+        """Window (non-modal): position of the IP, why, and the settings to open."""
         box = QMessageBox(QMessageBox.Icon.Information, t("errors.geoloc_title"),
                           tf("errors.geoloc_ip_short", city=city, country=country), parent=self)
         box.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
@@ -2553,7 +2584,7 @@ class AstroApp(QMainWindow):
             self._live_timer.stop()
 
     def _apply_live_ui(self):
-        """Temps réel : le bouton reste enfoncé (aplat encre), la date se fige."""
+        """Real time: the button stays pressed (encre fill), the date freezes."""
         on = self.live_mode
         self.dt_edit.setReadOnly(on)
         _repolish(self.dt_edit)
@@ -2573,7 +2604,7 @@ class AstroApp(QMainWindow):
         QMessageBox.warning(self, t("errors.error_title"), t("status.invalid_coords"))
 
     def _check_inputs(self):
-        """Signale les coordonnées invalides sous leur champ ; True si tout est valide."""
+        """Flags invalid coordinates under their field; True when all is valid."""
         ok = True
         for edit, field, limit, key in ((self.entry_lat, self.field_lat, 90.0, "side.lat_error"),
                                         (self.entry_lon, self.field_lon, 180.0, "side.lon_error")):
@@ -2588,7 +2619,7 @@ class AstroApp(QMainWindow):
         return ok
 
     def calculate(self):
-        """Recalcule tout pour la date et le lieu saisis, puis met l'affichage à jour."""
+        """Computes everything for the typed date and place, then updates the display."""
         self._recalc_timer.stop()
         if not self._check_inputs():
             self.statusBar().showMessage(t("status.invalid_coords"), 6000)
@@ -2620,7 +2651,7 @@ class AstroApp(QMainWindow):
                           "dist": 6378.14 / math.sin(math.radians(m_p)),
                           "age": age}
 
-        # Événements du jour et courbes 24 h : seulement si la date ou le lieu change
+        # Events of the day and 24 h curves: only when the date or the place changes
         key = (f"{self._local(dte):%Y-%m-%d}_{lat:.4f}_{lon:.4f}_"
                f"{getattr(self._zone, 'key', 'UTC')}_{elev:g}")
         if key != self.last_cache_key:
@@ -2634,7 +2665,7 @@ class AstroApp(QMainWindow):
             self.last_cache_key = key
 
         self.planets, self.minor_planets = [], []
-        self._comets_now = AstroEngine.comets_at(tc)                  # dans leurs tables (2025–2031)
+        self._comets_now = AstroEngine.comets_at(tc)                  # within their tables (2025–2031)
         bodies = _PLANETS + MINOR_PLANETS + self._comets_now
         magnitudes = AstroEngine.observations(tc, bodies)
         for name in bodies:
@@ -2648,10 +2679,15 @@ class AstroApp(QMainWindow):
                 "comet": name in COMETS,
             })
 
-        # sur la carte, les planètes mineures et les comètes assez brillantes pour la limite choisie
+        # on the map, the minor planets and comets bright enough for the chosen limit
         bright = [m for m in self.minor_planets if m["mag"] <= self._mag_limit()]
+        deep_sky = []
+        if prefs.get("show_messier"):
+            alts, azs = AstroEngine.deep_sky_horizontal(tc, lat, lon, elev)
+            deep_sky = [{**obj, "alt": float(alt), "az": float(az)}
+                        for obj, alt, az in zip(messier_catalog(), alts, azs) if alt > 0]
         self._sky_scene = charts.sky_scene(jd, lat, lon, self._mag_limit(),
-                                           self.sun_data, self.moon_data, self.planets + bright)
+                                           self.sun_data, self.moon_data, self.planets + bright, deep_sky)
         self._sky_objects = charts.visible_objects(self._sky_scene)
         self.visible_stars = [s["name"] for s in self._sky_scene["stars"]]
         self.visible_planets_map = [p["name"] for p in self.planets if p["alt"] > 0]
@@ -2667,7 +2703,7 @@ class AstroApp(QMainWindow):
         self._draw_visible_chart()
 
     # ──────────────────────────────────────────────────────────────────────────
-    # MISE À JOUR DES CARTES
+    # UPDATING THE CARDS
     # ──────────────────────────────────────────────────────────────────────────
 
     def _events_title(self):
@@ -2717,7 +2753,7 @@ class AstroApp(QMainWindow):
                       "info" if phase == "day" else "neutre")
 
     def _update_tonight(self, dte, lat, lon, elev):
-        """Résumé « Ce soir », recalculé quand la nuit, le lieu ou le fuseau changent."""
+        """The "Tonight" summary, computed again when the night, the place or the time zone change."""
         start = AstroEngine._local_day(dte - timedelta(hours=12), self._zone)[0]
         key = (f"{start:%Y-%m-%d %H}", round(lat, 4), round(lon, 4),
                getattr(self._zone, "key", "UTC"), elev)
@@ -2728,14 +2764,14 @@ class AstroApp(QMainWindow):
         while self._tonight_box.count():
             item = self._tonight_box.takeAt(0)
             if item.widget():
-                item.widget().hide()                  # deleteLater() n'agit qu'au tour suivant
+                item.widget().hide()                  # deleteLater() only acts on the next turn
                 item.widget().deleteLater()
         for text, tone in self._tonight_lines():
             self._tonight_box.addWidget(_label(text, "corps" if tone is None else "legende",
                                                tone=tone or None, wrap=True))
 
     def _tonight_lines(self):
-        """[(texte, ton)] du résumé : la nuit, la Lune, une ligne par planète visible, la suite."""
+        """[(text, tone)] of the summary: the night, the Moon, a line per visible planet, what comes next."""
         n, clock = self._tonight, self._clock
         lines = []
         if n["dark"] is None:
@@ -2767,6 +2803,16 @@ class AstroApp(QMainWindow):
             if planet["set"]:
                 text += " · " + tf("tonight.sets", time=clock(planet["set"]))
             lines.append((text, None))
+        if n.get("satellites"):
+            items = [tf("tonight.satellite_item", name=t(f"satellites.short_{p['name']}"),
+                        start=clock(p["start"]), end=clock(p["end"]), alt=_num(p["max_alt"]),
+                        dir=self._wind(p["max_az"])) for p in n["satellites"][:4]]
+            lines.append((tf("tonight.satellites", passes=" · ".join(items)), None))
+        if n.get("deep_sky"):
+            catalog = messier_catalog()
+            items = [tf("tonight.deep_sky_item", name=_messier_label(catalog[o["m"] - 1]), alt=_num(o["alt"]),
+                        time=clock(o["best"])) for o in n["deep_sky"]]
+            lines.append((tf("tonight.deep_sky", objects=" · ".join(items)), None))
         if self._upcoming:
             items = []
             for ev in self._upcoming:
@@ -2781,7 +2827,7 @@ class AstroApp(QMainWindow):
     # ── Calendrier lunaire ────────────────────────────────────────────────────
 
     def _show_moon_calendar(self, year=None, month=None):
-        """Fenêtre (non bloquante) : la Lune jour par jour sur un mois, vue d'ici."""
+        """Window (non-modal): the Moon day by day over a month, seen from here."""
         if not self._check_inputs():
             self._warn_invalid_coords()
             return
@@ -2822,7 +2868,7 @@ class AstroApp(QMainWindow):
         dlg.raise_()
 
     def _fill_moon_calendar(self, step):
-        """Remplit la grille du mois affiché, décalé de *step* mois."""
+        """Fills the grid of the month shown, moved by *step* months."""
         dlg = self._calendar_dialog
         year, month = dlg._month
         month += step
@@ -2909,7 +2955,7 @@ class AstroApp(QMainWindow):
 
     def _update_planet_table(self):
         table = self.planet_table
-        table.setSortingEnabled(False)                   # pas de tri pendant la mise à jour
+        table.setSortingEnabled(False)                   # no sorting during the update
         for p in self.planets + self.minor_planets:
             items = self._planet_items[p["name"]]
             self._planet_alt[p["name"]] = float(p["alt"])
@@ -2923,7 +2969,7 @@ class AstroApp(QMainWindow):
             items["col_dec"].setText(_dec(p["dec"]))
             items["col_alt"].setText(_dec(p["alt"]))
             items["col_az"].setText(_az(p["az"]))
-            items["col_dist"].setText(_num(p["dist"], 4))                 # UA dans l'en-tête
+            items["col_dist"].setText(_num(p["dist"], 4))                 # AU in the header
             items["col_elong"].setText(f"{_deg(p['elong'], 1)} {side}")
             events = self.planet_events.get(p["name"], {})
             for key in ("rise", "transit", "set"):
@@ -2938,7 +2984,7 @@ class AstroApp(QMainWindow):
             state = t("common.visible" if up else "common.below_horizon")
             name.setToolTip(f"{_planet_name(p['name'], numbered=True)} · {state}" if p.get("minor") else state)
         table.setSortingEnabled(True)
-        table.horizontalHeader().setSortIndicatorShown(False)     # setSortingEnabled la remet
+        table.horizontalHeader().setSortIndicatorShown(False)     # setSortingEnabled turns it back on
         self._show_planet_group()
 
     def _update_status(self):
@@ -2963,13 +3009,13 @@ class AstroApp(QMainWindow):
     def _on_tab_changed(self, _index):
         timer = getattr(self, "_orrery_timer", None)
         if timer is not None and timer.isActive() and self._chart_tabs.get(self.tabs.currentWidget()) != "orrery":
-            self._toggle_orrery()                         # l'animation cachée ne tourne pas
+            self._toggle_orrery()                         # a hidden animation does not run
         self._draw_visible_chart()
         self._refresh_coordinates()
 
     def _draw_visible_chart(self):
-        """Dessine le graphique de l'onglet affiché s'il n'est plus à jour : en
-        temps réel, les graphiques cachés ne sont pas redessinés."""
+        """Draws the chart of the shown tab when it is out of date: in real time,
+        hidden charts are not redrawn."""
         name = self._chart_tabs.get(self.tabs.currentWidget())
         if name not in self._dirty or self._dte is None:
             return
@@ -3028,11 +3074,11 @@ class AstroApp(QMainWindow):
         self.canvas_orrery.draw_idle()
         self._show_orrery_date()
 
-    # ── Planétaire animé ─────────────────────────────────────────────────────
+    # ── Animated orrery ──────────────────────────────────────────────────────
 
     def _orrery_tc(self):
-        """Siècles juliens du planétaire : la date choisie, plus le décalage de l'animation,
-        bornés aux années de l'éphéméride."""
+        """Julian centuries of the orrery: the chosen date, plus the animation's offset,
+        bounded by the years of the ephemeris."""
         first, last = (AstroEngine.julian_day(datetime(y, m, d)) for y, m, d in
                        ((EPHEMERIS_YEARS[0], 1, 2), (EPHEMERIS_YEARS[1], 12, 30)))
         jd = AstroEngine.julian_day(self._dte) + self._orrery_offset
@@ -3050,7 +3096,7 @@ class AstroApp(QMainWindow):
         self._orrery_date.style().polish(self._orrery_date)
 
     def _orrery_step(self, sign):
-        """Une image : le planétaire avance (ou recule) du pas choisi."""
+        """A frame: the orrery moves forward (or back) by the chosen step."""
         if self._dte is None:
             return
         self._orrery_offset += sign * self._orrery_speed.currentData()
@@ -3071,14 +3117,14 @@ class AstroApp(QMainWindow):
         self._orrery_play.setToolTip(t("planets.orrery_pause" if running else "planets.orrery_play"))
 
     def _reset_orrery(self):
-        """Retour à la date choisie dans la barre latérale."""
+        """Back to the date chosen in the side panel."""
         if self._orrery_timer.isActive():
             self._toggle_orrery()
         self._orrery_offset = 0.0
         if self._dte is not None:
             self._draw_orrery()
 
-    # ── Survol et clic ───────────────────────────────────────────────────────
+    # ── Hover and click ──────────────────────────────────────────────────────
 
     def _on_traj_hover(self, event):
         tip = self._traj_tip.artist
@@ -3131,8 +3177,8 @@ class AstroApp(QMainWindow):
         title, _rows = self._object_details(obj, symbols=False)
         line = (f"{t('detail.alt')} {_deg(obj['alt'], 1)}  ·  "
                 f"{t('detail.az')} {_deg(obj['az'], 1)}")
-        if obj["kind"] == "star":
-            line += f"  ·  {t('detail.mag')} {_num(obj['mag'], 2)}"
+        if obj["kind"] in ("star", "deep_sky"):
+            line += f"  ·  {t('detail.mag')} {_num(obj['mag'], 2 if obj['kind'] == 'star' else 1)}"
         tip.set_text(f"{title}\n{line}")
         tip.xy = (obj["x"], obj["y"])
         right = obj["x"] > 0.35
@@ -3151,10 +3197,10 @@ class AstroApp(QMainWindow):
 
     def _object_details(self, obj, symbols=True, full=False):
         """
-        Titre et lignes (libellé, valeur) de la fiche d'un astre. *symbols* :
-        symboles suivis de U+FE0E (Qt) ; sans, pour matplotlib. *full* : la
-        fenêtre de données du Soleil, de la Lune ou d'une planète, avec
-        diamètre apparent, phase, distances, temps de lumière, lever et coucher.
+        Title and lines (label, value) of the card of a body. *symbols*:
+        symbols followed by U+FE0E (Qt); without, for matplotlib. *full*: the
+        data window of the Sun, the Moon or a planet, with apparent diameter,
+        phase, distances, light time, rise and set.
         """
         sym = SYMBOL if symbols else charts.SYMBOL
         kind = obj["kind"]
@@ -3184,6 +3230,19 @@ class AstroApp(QMainWindow):
                 rows.append((t("detail.mag"), _num(obj["mag"], 1)))
             rows.append((t("detail.distance"), tf("units.au", value=_num(obj["dist"], 4))))
             rows.append((t("detail.elongation"), f"{_deg(obj['elong'], 1)} {side}"))
+        elif kind == "deep_sky":
+            title = _messier_label(obj)
+            rows.append((t("detail.type"), t(f"messier.type_{obj['type']}")))
+            rows.append((t("detail.designation"), obj["id"]))
+            latin = constellation_names().get(obj["const"])
+            if latin:
+                rows.append((t("detail.constellation"), latin))
+            rows.append((t("detail.mag"), _num(obj["mag"], 1)))
+            if obj.get("major"):
+                size = f"{_num(obj['major'], 0)}′"
+                if obj.get("minor"):
+                    size += f" × {_num(obj['minor'], 0)}′"
+                rows.append((t("detail.size"), size))
         elif kind == "sun":
             title = f"{sym['Sun']} {t('chart.sun')}"
             rows.append((t("detail.type"), t("detail.type_sun")))
@@ -3205,7 +3264,7 @@ class AstroApp(QMainWindow):
 
     @staticmethod
     def _light_time(seconds):
-        """« 8 min 15 s », « 1 h 15 min »."""
+        """"8 min 15 s", "1 h 15 min"."""
         seconds = int(round(seconds))
         if seconds < 60:
             return f"{seconds} s"
@@ -3215,14 +3274,14 @@ class AstroApp(QMainWindow):
 
     @staticmethod
     def _diameter(arcsec):
-        """« 31′ 34″ », « 58,4″ »."""
+        """"31′ 34″", "58,4″"."""
         if arcsec >= 60.0:
             minutes, seconds = divmod(int(round(arcsec)), 60)
             return f"{minutes}′ {seconds:02d}″"
         return f"{_num(arcsec, 1 if arcsec >= 1 else 2)}″"
 
     def _data_rows(self, obj):
-        """Lignes de la fenêtre de données d'un astre du Système solaire."""
+        """Lines of the data window of a Solar System body."""
         body = {"sun": "sun", "moon": "moon"}.get(obj["kind"], obj.get("name"))
         d = AstroEngine.body_details(AstroEngine.julian_century_j2000(self._dte), body)
         rows = [] if obj.get("mag") is not None else [(t("detail.mag"), _num(d["mag"], 2))]
@@ -3245,7 +3304,7 @@ class AstroApp(QMainWindow):
         return rows
 
     def _body_object(self, name):
-        """L'astre *name* tel que la carte du ciel le décrit : Soleil, Lune ou planète."""
+        """The body *name* as the sky map describes it: Sun, Moon or planet."""
         if name == "sun":
             return {**self.sun_data, "kind": "sun"}
         if name == "moon":
@@ -3254,7 +3313,7 @@ class AstroApp(QMainWindow):
         return {**planet, "kind": "planet"} if planet else None
 
     def _show_body_detail(self, name):
-        """Fenêtre de données d'un astre choisi dans un tableau (non bloquante)."""
+        """Data window of a body chosen in a table (non-modal)."""
         obj = self._body_object(name)
         if obj is None:
             return
@@ -3294,11 +3353,11 @@ class AstroApp(QMainWindow):
         return dlg
 
     def _show_object_detail(self, obj):
-        """Fiche détaillée d'un astre de la carte du ciel."""
+        """Detailed card of a body of the sky map."""
         self._build_detail_dialog(obj).exec()
 
     # ──────────────────────────────────────────────────────────────────────────
-    # ÉVÉNEMENTS
+    # EVENTS
     # ──────────────────────────────────────────────────────────────────────────
 
     def _clear_evt_layout(self):
@@ -3306,7 +3365,7 @@ class AstroApp(QMainWindow):
             item = self._evt_layout.takeAt(0)
             widget = item.widget()
             if widget is not None:
-                widget.hide()           # deleteLater n'agit qu'au retour dans la boucle
+                widget.hide()           # deleteLater only acts back in the event loop
                 widget.deleteLater()
 
     def _show_events_placeholder(self):
@@ -3323,8 +3382,8 @@ class AstroApp(QMainWindow):
         self._evt_layout.addSpacing(8)
 
     def _event_card(self, symbole, accent, title, when, pills=(), details=(), action=None, lines=()):
-        """Carte d'événement : symbole, titre, pastilles, date ; détails dessous ;
-        *action* : (texte, fonction) d'un bouton à droite."""
+        """Event card: symbol, title, badges, date; details below; *action*:
+        (text, function) of a button on the right."""
         card = _card()
         card.setObjectName("card")
         card.setProperty("eventCard", True)
@@ -3389,12 +3448,12 @@ class AstroApp(QMainWindow):
 
     @staticmethod
     def _seconds(value):
-        """« 2 min 15 s »."""
+        """"2 min 15 s"."""
         value = int(round(value))
         return f"{value // 60} min {value % 60:02d} s"
 
     def _eclipse_local_lines(self, ec, loc):
-        """Circonstances locales d'une éclipse, en heure du lieu."""
+        """Local circumstances of an eclipse, in the place's time."""
         if ec["type"] == "solar":
             if loc is None:
                 return [t("events.local_none")]
@@ -3437,7 +3496,7 @@ class AstroApp(QMainWindow):
         return lines
 
     def _search_eclipses_gui(self):
-        """Recherche et affiche les éclipses des 12 prochains mois."""
+        """Searches and shows the eclipses of the next 12 months."""
         dte = self._search_start("eclipses")
         try:
             eclipses = AstroEngine.find_eclipses(dte, num_months=12)
@@ -3458,7 +3517,7 @@ class AstroApp(QMainWindow):
             pills = [(t(f"events.subtype_{ec['sub_type']}"), "info")]
             if ec.get("certainty") == "possible":
                 pills.append((t("events.certainty_possible"), "neutre"))
-            greatest = ec.get("greatest", ec["date"]) + timedelta(seconds=30)  # minute la plus proche
+            greatest = ec.get("greatest", ec["date"]) + timedelta(seconds=30)  # nearest minute
             when = greatest.strftime("%d/%m/%Y %H:%M") + f" {t('chart.ut')}"
             title = t("events.solar_eclipse" if solar else "events.lunar_eclipse")
             local = None
@@ -3481,7 +3540,7 @@ class AstroApp(QMainWindow):
         self._btn_ics.setEnabled(bool(self._ics_items))
 
     def _show_eclipse_map(self, ec):
-        """Fenêtre : l'éclipse projetée au sol (bande, ligne de centralité, partialité)."""
+        """Window: the eclipse projected on the ground (path, central line, partiality)."""
         solar = ec["type"] == "solar"
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
@@ -3507,7 +3566,7 @@ class AstroApp(QMainWindow):
             "decimal": _locale().decimalPoint(),
         }
         dlg = QDialog(self)
-        dlg.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)           # et sa figure avec elle
+        dlg.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)           # and its figure with it
         dlg.setWindowTitle(t("eclipse_map.window_title"))
         dlg.resize(1000, 640)
         lay = QVBoxLayout(dlg)
@@ -3525,13 +3584,13 @@ class AstroApp(QMainWindow):
         self._eclipse_dialog = dlg
         dlg.show()
 
-    # ── Évènements de l'année : planètes, planètes mineures, Lune, saisons ─────
+    # ── Events of the year: planets, minor planets, Moon, seasons ─────────────
 
     _EVENT_GROUPS = ("planets", "minor", "comets", "moon", "seasons", "meteors")
     _WINDS = ("n", "ne", "e", "se", "s", "sw", "w", "nw")
 
     def _body_name(self, name, symbol=False):
-        """Nom d'un astre des évènements : planète, Soleil, Lune ou étoile."""
+        """Name of a body of the events: planet, Sun, Moon or star."""
         if name in ("Sun", "Moon"):
             text = t(f"chart.{name.lower()}")
             return f"{SYMBOL[name]} {text}" if symbol else text
@@ -3540,7 +3599,7 @@ class AstroApp(QMainWindow):
         return _planet_name(name, symbol=symbol)
 
     def _event_title(self, ev, symbol=True):
-        """Titre d'un évènement de l'année."""
+        """Title of an event of the year."""
         kind = ev["type"]
         if kind == "season":
             return t(f"events.{ev['kind']}")
@@ -3563,16 +3622,16 @@ class AstroApp(QMainWindow):
         return tf("events.conjunction_pair", a=planet, b=self._body_name(b, symbol=symbol))
 
     def _event_when(self, dt):
-        """« 06/01/2026 16:36 TU » : l'instant à la minute la plus proche."""
+        """"06/01/2026 16:36 UT": the instant to the nearest minute."""
         return (dt + timedelta(seconds=30)).strftime("%d/%m/%Y %H:%M") + f" {t('chart.ut')}"
 
     def _clock(self, dt):
-        """Heure locale du lieu, à la minute la plus proche."""
+        """Local time of the place, to the nearest minute."""
         return self._fmt_clock(self._local(dt + timedelta(seconds=30)))
 
     @staticmethod
     def _elide(text):
-        """« de Uranus » → « d'Uranus » en français."""
+        """"de Uranus" → "d'Uranus" in French."""
         if get_lang() != "fr":
             return text
         return re.sub(r"\bde (?=[AEIOUYÉÈÊaeiouyéèê])", "d'", text)
@@ -3585,7 +3644,7 @@ class AstroApp(QMainWindow):
                   dir=t(f"skymap.cardinal_{wind}"), time=self._clock(vis["best"]))
 
     def _meteor_lines(self, vis):
-        """La nuit du maximum d'ici : meilleur moment (radiant, taux attendu), puis la Lune."""
+        """The night of the peak from here: best moment (radiant, expected rate), then the Moon."""
         if vis["period"] is None:
             first = t(f"events.invisible_{vis['reason']}")
         else:
@@ -3599,6 +3658,74 @@ class AstroApp(QMainWindow):
             moon_text = tf(f"meteors.moon_{moon}", pct=_num(100.0 * vis["moon_fraction"]))
         return [first, moon_text]
 
+    def _wind(self, az):
+        """Compass point of an azimuth, in the active language ("SO")."""
+        return t(f"skymap.cardinal_{self._WINDS[int(round(az / 45.0)) % 8]}")
+
+    # ── Satellite passes ─────────────────────────────────────────────────────
+
+    def _search_satellites_gui(self):
+        """Visible passes of the ISS, Tiangong and Hubble over the next 10 days; the
+        orbits are downloaded in the background when older than two days."""
+        dte = self._search_start("satellites")
+        self._evt_layout.addWidget(_label(t("satellites.loading"), "legende", tone="attenuee"))
+
+        def done(result):
+            elements, error = result
+            QApplication.restoreOverrideCursor()
+            if self._last_search != "satellites":
+                return
+            self._clear_evt_layout()
+            if not elements:
+                self._search_failed(error or t("satellites.no_elements"))
+                return
+            passes = AstroEngine.satellite_passes(elements, dte, self._lat, self._lon, self._elevation())
+            self._render_satellites(dte, passes, elements, error)
+            _TONIGHT_CACHE.clear()                        # "Tonight" can now show the passes
+            self._tonight_key = None
+            self._update_tonight(self._dte, self._lat, self._lon, self._elevation())
+
+        def failed(exc):
+            QApplication.restoreOverrideCursor()
+            if self._last_search == "satellites":
+                self._clear_evt_layout()
+                self._search_failed(exc)
+        _run_in_background(satellites.refresh, done, failed)
+
+    def _render_satellites(self, dte, passes, elements, error=None):
+        n = len(passes)
+        age = satellites.epoch_age_days(elements)
+        note = tf("satellites.note", days=_num(age, 1))
+        if error is not None:
+            note += " " + tf("satellites.not_refreshed", detail=error)
+        if age > satellites.STALE_DAYS:
+            note += " " + t("satellites.too_old")
+        self._events_header(tf("satellites.title", date=dte.strftime("%d/%m/%Y")),
+                            tf(_plural_key("satellites.count", n), n=n), note)
+        if not passes:
+            self._evt_layout.addWidget(_label(t("satellites.none"), "corps", tone="attenuee", wrap=True))
+        for p in passes:
+            clock = self._clock
+            first = tf("satellites.from_shadow" if p["from_shadow"] else "satellites.appears",
+                       time=clock(p["start"]), alt=_num(p["start_alt"]), dir=self._wind(p["start_az"]))
+            top = tf("satellites.highest", time=clock(p["max"]), alt=_num(p["max_alt"]),
+                     dir=self._wind(p["max_az"]))
+            last = tf("satellites.into_shadow" if p["into_shadow"] else "satellites.vanishes",
+                      time=clock(p["end"]), alt=_num(p["end_alt"]), dir=self._wind(p["end_az"]))
+            seconds = int(round((p["end"] - p["start"]).total_seconds()))
+            details = [tf("satellites.duration", min=seconds // 60, s=f"{seconds % 60:02d}")]
+            local = self._local(p["start"])
+            if local != p["start"].replace(tzinfo=None):
+                details.append(tf("events.local_time", time=f"{local:%d/%m} {self._fmt_clock(local)}",
+                                  zone=getattr(self._zone, "key", "UTC")))
+            pills = [(t("satellites.overhead"), "info")] if p["max_alt"] >= 60.0 else []
+            title = t(f"satellites.name_{p['name']}")
+            self._event_card(SYMBOL["dot"], "attenuee", title, self._event_when(p["start"]), pills, details,
+                             None, [f"{first} · {top} · {last}"])
+            self._ics_add(p["start"], p["end"], title, details + [f"{first} · {top} · {last}"])
+        self._evt_layout.addStretch()
+        self._btn_ics.setEnabled(bool(self._ics_items))
+
     def _event_shown(self, ev):
         if not self._evt_filters[ev.get("group", "planets")].isChecked():
             return False
@@ -3606,9 +3733,9 @@ class AstroApp(QMainWindow):
         return not (self._evt_filters["visible"].isChecked() and vis is not None and vis["period"] is None)
 
     def _search_conjunctions_gui(self):
-        """Recherche les évènements des 12 mois : conjonctions, oppositions et
-        élongations, planètes mineures, Lune, saisons, étoiles filantes ; leur
-        visibilité d'ici."""
+        """Searches the events of 12 months: conjunctions, oppositions and
+        elongations, minor planets, Moon, seasons, meteor showers; their
+        visibility from here."""
         dte = self._search_start("conjunctions")
         try:
             events = (AstroEngine.find_conjunctions(dte, num_days=365)
@@ -3628,7 +3755,7 @@ class AstroApp(QMainWindow):
         self._render_events()
 
     def _render_events(self, *_args):
-        """Affiche les évènements trouvés que laissent passer les filtres."""
+        """Shows the events found that the filters let through."""
         found = getattr(self, "_events_found", None)
         if not found or self._last_search != "conjunctions":
             return
@@ -3730,7 +3857,7 @@ class AstroApp(QMainWindow):
                                 "\n".join(details)))
 
     def _export_ics(self):
-        """Enregistre les évènements affichés dans un agenda iCalendar (.ics)."""
+        """Saves the shown events to an iCalendar calendar (.ics)."""
         if not getattr(self, "_ics_items", None):
             return
         default = os.path.join(os.path.expanduser("~"), t("events.export_filename"))
@@ -3749,7 +3876,7 @@ class AstroApp(QMainWindow):
         self.statusBar().showMessage(tf("events.exported", path=path), 8000)
 
     def _show_event_map(self, ev):
-        """Fenêtre : trajets des astres parmi les étoiles autour de l'évènement."""
+        """Window: paths of the bodies among the stars around the event."""
         from star_catalog import CATALOG
 
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)

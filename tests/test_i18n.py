@@ -1,10 +1,10 @@
 """
-tests/test_i18n.py — Tests unitaires du système d'internationalisation
-=======================================================================
-Vérifie le chargement des fichiers JSON, le basculement de langue,
-le fallback, et la cohérence entre les fichiers de traduction.
+tests/test_i18n.py — Unit tests of the internationalisation system
+===================================================================
+Checks the loading of the JSON files, the language switch, the fallback, and
+the consistency between the translation files.
 
-Lancer avec :  pytest tests/test_i18n.py -v
+Run with:  pytest tests/test_i18n.py -v
 """
 
 import sys
@@ -26,45 +26,45 @@ LOCALES_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__fil
 
 
 def _all_keys(code):
-    """Retourne l'ensemble des clés aplaties pour un fichier de langue."""
+    """The set of flattened keys of a language file."""
     return set(_load_json(code).keys())
 
 
 # ──────────────────────────────────────────────────────────────────────
-# 1. Chargement et API de base
+# 1. Loading and basic API
 # ──────────────────────────────────────────────────────────────────────
 
 class TestI18nBase:
     def setup_method(self):
-        """Remet le français comme langue active avant chaque test."""
+        """French back as the active language before each test."""
         switch_lang("fr")
 
     def test_default_lang_is_fr(self):
-        """La langue par défaut est le français."""
+        """The default language is French."""
         assert get_lang() == "fr"
 
     def test_t_returns_string(self):
-        """t() retourne toujours une chaîne."""
+        """t() always returns a string."""
         assert isinstance(t("app.title"), str)
 
     def test_t_known_key(self):
-        """Une clé connue retourne une traduction non vide."""
+        """A known key returns a non-empty translation."""
         val = t("app.title")
         assert val and not val.startswith("[")
 
     def test_t_unknown_key_returns_bracket(self):
-        """Une clé inconnue retourne [clé]."""
+        """An unknown key returns [key]."""
         val = t("this.key.does.not.exist")
         assert val == "[this.key.does.not.exist]"
 
     def test_available_langs_includes_fr_en(self):
-        """FR et EN sont disponibles."""
+        """FR and EN are available."""
         langs = available_langs()
         assert "fr" in langs
         assert "en" in langs
 
     def test_lang_name(self):
-        """lang_name retourne les noms natifs."""
+        """lang_name returns the native names."""
         assert lang_name("fr") == "Français"
         assert lang_name("en") == "English"
         assert lang_name("es") == "Español"
@@ -72,17 +72,17 @@ class TestI18nBase:
 
 
 # ──────────────────────────────────────────────────────────────────────
-# 2. Basculement de langue
+# 2. Language switch
 # ──────────────────────────────────────────────────────────────────────
 
 class TestSwitchLang:
     def test_switch_to_en(self):
-        """Basculer en anglais change la langue active."""
+        """Switching to English changes the active language."""
         switch_lang("en")
         assert get_lang() == "en"
 
     def test_switch_changes_translations(self):
-        """Les traductions changent effectivement après switch."""
+        """The translations do change after a switch."""
         switch_lang("fr")
         fr_title = t("sun.title")
         switch_lang("en")
@@ -92,17 +92,17 @@ class TestSwitchLang:
         assert "Sun" in en_title
 
     def test_switch_back_to_fr(self):
-        """Retour au français fonctionne."""
+        """Switching back to French works."""
         switch_lang("en")
         switch_lang("fr")
         assert get_lang() == "fr"
         assert "Soleil" in t("sun.title")
 
     def test_switch_unknown_lang_fallback(self):
-        """Une langue inconnue retombe sur le français."""
+        """An unknown language falls back to French."""
         switch_lang("xx")
         assert get_lang() == "xx"
-        # Les traductions tombent en fallback FR
+        # The translations fall back to FR
         assert t("app.title") != "[app.title]"
 
 
@@ -112,51 +112,51 @@ class TestSwitchLang:
 
 class TestFallback:
     def test_missing_key_in_en_falls_to_fr(self):
-        """Si une clé manque en EN, la valeur FR est retournée."""
-        # On force un test : si fr.json a une clé que en.json n'a pas,
-        # le fallback doit fonctionner. On teste avec app.header qui existe partout.
+        """When a key is missing in EN, the FR value is returned."""
+        # If fr.json has a key that en.json lacks, the fallback must work.
+        # Tested with app.header, which exists everywhere.
         switch_lang("en")
         val = t("app.header")
         assert val and not val.startswith("[")
 
 
 # ──────────────────────────────────────────────────────────────────────
-# 4. Cohérence des fichiers de traduction
+# 4. Consistency of the translation files
 # ──────────────────────────────────────────────────────────────────────
 
 class TestTranslationCoherence:
-    """Vérifie que tous les fichiers de traduction ont les mêmes clés."""
+    """All the translation files have the same keys."""
 
     def test_en_has_all_fr_keys(self):
-        """EN couvre toutes les clés de FR (aucune traduction manquante)."""
+        """EN covers all the keys of FR (no missing translation)."""
         fr_keys = _all_keys("fr")
         en_keys = _all_keys("en")
         missing = fr_keys - en_keys
-        assert not missing, f"Clés manquantes dans en.json : {missing}"
+        assert not missing, f"Missing keys in en.json: {missing}"
 
     def test_en_has_no_extra_keys(self):
-        """EN n'a pas de clés supplémentaires absentes de FR."""
+        """EN has no extra keys absent from FR."""
         fr_keys = _all_keys("fr")
         en_keys = _all_keys("en")
         extra = en_keys - fr_keys
-        assert not extra, f"Clés supplémentaires dans en.json : {extra}"
+        assert not extra, f"Extra keys in en.json: {extra}"
 
     def test_no_empty_values_in_fr(self):
-        """Aucune valeur vide dans FR (sauf lang.restart_hint)."""
+        """No empty value in FR (except lang.restart_hint)."""
         data = _load_json("fr")
         empty = [k for k, v in data.items()
                  if isinstance(v, str) and v == "" and k != "lang.restart_hint"]
-        assert not empty, f"Valeurs vides dans fr.json : {empty}"
+        assert not empty, f"Empty values in fr.json: {empty}"
 
     def test_no_empty_values_in_en(self):
-        """Aucune valeur vide dans EN (sauf lang.restart_hint)."""
+        """No empty value in EN (except lang.restart_hint)."""
         data = _load_json("en")
         empty = [k for k, v in data.items()
                  if isinstance(v, str) and v == "" and k != "lang.restart_hint"]
-        assert not empty, f"Valeurs vides dans en.json : {empty}"
+        assert not empty, f"Empty values in en.json: {empty}"
 
     def test_placeholders_consistent(self):
-        """Les placeholders {xxx} sont les mêmes entre FR et EN."""
+        """The {xxx} placeholders are the same in FR and EN."""
         import re
         fr_data = _load_json("fr")
         en_data = _load_json("en")
@@ -172,31 +172,31 @@ class TestTranslationCoherence:
                 mismatches.append(f"{key}: FR={fr_ph} EN={en_ph}")
 
         assert not mismatches, (
-            "Placeholders incohérents :\n" + "\n".join(mismatches))
+            "Inconsistent placeholders:\n" + "\n".join(mismatches))
 
 
     @pytest.mark.parametrize("code", ["es", "de"])
     def test_other_locales_match_fr(self, code):
-        """ES et DE ont exactement les clés de FR : rien ne retombe en français."""
+        """ES and DE have exactly the keys of FR: nothing falls back to French."""
         fr_keys = _all_keys("fr")
         keys = _all_keys(code)
-        assert not fr_keys - keys, f"Clés manquantes dans {code}.json : {fr_keys - keys}"
-        assert not keys - fr_keys, f"Clés en trop dans {code}.json : {keys - fr_keys}"
+        assert not fr_keys - keys, f"Missing keys in {code}.json: {fr_keys - keys}"
+        assert not keys - fr_keys, f"Extra keys in {code}.json: {keys - fr_keys}"
 
     @pytest.mark.parametrize("code", ["en", "es", "de"])
     def test_placeholders_consistent_all_locales(self, code):
-        """Les placeholders {xxx} sont les mêmes dans toutes les langues."""
+        """The {xxx} placeholders are the same in every language."""
         import re
         pattern = re.compile(r'\{(\w+)\}')
         fr_data = _load_json("fr")
         data = _load_json(code)
         mismatches = [k for k in fr_data if k in data and
                       set(pattern.findall(fr_data[k])) != set(pattern.findall(data[k]))]
-        assert not mismatches, f"Placeholders incohérents dans {code}.json : {mismatches}"
+        assert not mismatches, f"Inconsistent placeholders in {code}.json: {mismatches}"
 
 
 # ──────────────────────────────────────────────────────────────────────
-# 5. Langue automatique et formatage
+# 5. Automatic language and formatting
 # ──────────────────────────────────────────────────────────────────────
 
 class TestResolveLang:
@@ -221,7 +221,7 @@ class TestTf:
         assert tf("status.stars_many", n=12) == "12 étoiles visibles"
 
     def test_placeholder_named_key(self):
-        """Un champ peut s'appeler « key » comme le paramètre de tf()."""
+        """A field can be named "key", like the parameter of tf()."""
         assert "F5" in tf("side.calculate_tip", key="F5")
 
     def test_missing_value_returns_raw_text(self):
@@ -229,19 +229,19 @@ class TestTf:
 
 
 # ──────────────────────────────────────────────────────────────────────
-# 6. Format des fichiers JSON
+# 6. Format of the JSON files
 # ──────────────────────────────────────────────────────────────────────
 
 class TestJsonFormat:
     def test_fr_json_valid(self):
-        """fr.json est un JSON valide."""
+        """fr.json is valid JSON."""
         path = os.path.join(LOCALES_DIR, "fr.json")
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
         assert isinstance(data, dict)
 
     def test_en_json_valid(self):
-        """en.json est un JSON valide."""
+        """en.json is valid JSON."""
         path = os.path.join(LOCALES_DIR, "en.json")
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)

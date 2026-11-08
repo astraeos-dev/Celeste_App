@@ -322,7 +322,7 @@ def star_marker_size(mag):
     return diameter * diameter
 
 
-def sky_scene(jd, lat, lon, mag_limit, sun, moon, planets):
+def sky_scene(jd, lat, lon, mag_limit, sun, moon, planets, deep_sky=()):
     """
     Collects what the sky map shows.
 
@@ -332,6 +332,8 @@ def sky_scene(jd, lat, lon, mag_limit, sun, moon, planets):
         mag_limit (float): Faintest star magnitude shown.
         sun, moon (dict): name, alt, az, ra, dec (the Moon also illum, phase).
         planets (list[dict]): name, alt, az, ra, dec, dist for each planet.
+        deep_sky (list[dict]): Messier objects above the horizon (m, type,
+            alt, az, ra, dec, mag, label...).
 
     Returns:
         dict: stars (above the horizon and bright enough), constellation
@@ -374,12 +376,13 @@ def sky_scene(jd, lat, lon, mag_limit, sun, moon, planets):
         "sun": placed(sun, "sun"),
         "moon": placed(moon, "moon"),
         "planets": [placed(p, "planet") for p in planets],
+        "deep_sky": [placed(o, "deep_sky") for o in deep_sky if o["alt"] > 0],
     }
 
 
 def visible_objects(scene):
     """Objects of *scene* above the horizon, as the map draws them."""
-    objs = list(scene["stars"])
+    objs = list(scene["stars"]) + list(scene.get("deep_sky", ()))
     objs += [p for p in scene["planets"] if p["alt"] > 0]
     for body in (scene["sun"], scene["moon"]):
         if body["alt"] > 0:
@@ -487,6 +490,14 @@ def draw_sky_map(fig, scene, labels):
                    color=[to_rgba(Config.ENCRE, min(1.0, max(0.45, 1.0 - s["mag"] / 7.0)))
                           for s in stars],
                    linewidths=0, zorder=4)
+    # Messier objects: hollow symbols of sky atlases, under the stars
+    for kind, marker in _DEEP_SKY_MARKERS.items():
+        group = [o for o in scene.get("deep_sky", ()) if o["type"] in kind]
+        if group:
+            color = to_rgba(Config.LUNE, 0.85)
+            style = {"color": color} if marker == "x" else {"facecolors": "none", "edgecolors": color}
+            ax.scatter([o["x"] for o in group], [o["y"] for o in group], s=30, marker=marker,
+                       linewidths=0.9, zorder=3, **style)
     # Planets first, each label at the first of four places free of the other
     # labels and bodies; then the brightest stars, skipping a label that would
     # sit on another one (Orion's belt, Castor and Pollux)
@@ -524,6 +535,18 @@ def draw_sky_map(fig, scene, labels):
                         textcoords="offset points", fontsize=SIZE_LEGENDE * 0.75,
                         color=Config.ENCRE_ATTENUEE, zorder=5, va="bottom")
 
+    # the brighter Messier objects get their number, where it fits
+    for o in sorted(scene.get("deep_sky", ()), key=lambda o: o["mag"]):
+        if o["mag"] > _DEEP_SKY_LABEL_MAG:
+            break
+        text = f"M{o['m']}"
+        box = _label_box(ax, o["x"], o["y"], text, SIZE_LEGENDE * 0.75, 5, -9)
+        if any(_overlaps(box, other) for other in taken):
+            continue
+        taken.append(box)
+        ax.annotate(text, (o["x"], o["y"]), xytext=(5, -9), textcoords="offset points",
+                    fontsize=SIZE_LEGENDE * 0.75, color=Config.LUNE, zorder=5, va="bottom")
+
     moon = scene["moon"]
     if moon["alt"] > 0:
         ax.plot(moon["x"], moon["y"], "o", color=Config.LUNE, markersize=10,
@@ -541,6 +564,15 @@ def draw_sky_map(fig, scene, labels):
     fig.text(0.03, 0.97, labels["title"], ha="left", va="top", fontsize=SIZE_SOUS_TITRE,
              fontweight=600, color=Config.ENCRE)
     return ax, _tooltip(ax)
+
+
+# Symbols of the deep-sky objects (types of engine.MESSIER_TYPES), as in sky
+# atlases: an ellipse-like diamond for galaxies, circles for clusters, squares
+# for nebulae; the brighter ones (magnitude 7 or less) are numbered
+_DEEP_SKY_MARKERS = {("galaxy",): "D", ("globular_cluster",): "o", ("open_cluster",): "h",
+                     ("nebula", "planetary_nebula", "supernova_remnant"): "s",
+                     ("star_cloud", "asterism", "double_star"): "x"}
+_DEEP_SKY_LABEL_MAG = 7.0
 
 
 # ──────────────────────────────────────────────────────────────────────────────

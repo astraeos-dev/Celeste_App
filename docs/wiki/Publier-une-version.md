@@ -31,7 +31,7 @@ de construire plutôt que de publier une Release sans note.
 
 ## 3. Fusionner : la version se publie toute seule
 
-Quand une PR qui change `APP_VERSION` est fusionnée dans `master`, le workflow **Build — application Windows**
+Quand une PR qui change `APP_VERSION` est fusionnée dans `master`, le workflow **Build — Windows application**
 construit l'application et publie la **Release** `v4.3` : le programme d'installation `Celeste-4.3-Setup.exe` et
 son empreinte `Celeste-4.3-Setup.exe.sha256`, avec la note de la version tirée de `CHANGELOG.md`. Rien ne se passe si la
 version est déjà publiée : modifier `config.py` sans changer le numéro ne publie pas deux fois.

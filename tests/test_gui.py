@@ -1,18 +1,18 @@
 """
-tests/test_gui.py — Tests de l'interface PyQt6 (sans écran)
-============================================================
-Construit la fenêtre de Céleste hors écran (QT_QPA_PLATFORM=offscreen) et
-la pilote : calcul, changement de langue et de thème (Nuit, Jour,
-Observation) sans redémarrer, favoris, recherche d'événements, info-bulles
-et fiches de la carte du ciel, temps réel ; vérifie aussi deux
-règles du design Astræos (pas d'emoji, symboles suivis de U+FE0E).
+tests/test_gui.py — Tests of the PyQt6 interface (without a screen)
+===================================================================
+Builds the Céleste window off screen (QT_QPA_PLATFORM=offscreen) and drives
+it: calculation, change of language and theme (Nuit, Jour, Observation)
+without restarting, favourites, event search, tooltips and cards of the sky
+map, real time; also checks two rules of the Astræos design (no emoji,
+symbols followed by U+FE0E).
 
-Les préférences et les favoris sont écrits dans un dossier temporaire : ceux
-de l'utilisateur (~/.celeste) ne sont jamais modifiés.
-Les tests sont ignorés si PyQt6 (ou les bibliothèques système de Qt)
-manquent.
+The preferences and favourites are written to a temporary folder: the
+user's (~/.celeste) are never modified.
+The tests are skipped when PyQt6 (or Qt's system libraries) is
+missing.
 
-Lancer avec :  pytest tests/test_gui.py -v
+Run with:  pytest tests/test_gui.py -v
 """
 
 import io
@@ -27,7 +27,7 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-pytest.importorskip("PyQt6.QtWidgets", reason="PyQt6 ou les bibliothèques de Qt manquent")
+pytest.importorskip("PyQt6.QtWidgets", reason="PyQt6 or the Qt libraries are missing")
 pytest.importorskip("matplotlib")
 
 from matplotlib.backend_bases import MouseEvent  # noqa: E402
@@ -36,7 +36,7 @@ from PyQt6.QtWidgets import (  # noqa: E402
     QAbstractButton, QApplication, QDialog, QFrame, QLabel, QMessageBox,
 )
 
-DTE = datetime(2026, 11, 1, 21, 30, 0)     # nuit à Cherbourg, Véga bien haute
+DTE = datetime(2026, 11, 1, 21, 30, 0)     # night in Cherbourg, Vega high in the sky
 
 
 @pytest.fixture(scope="module")
@@ -56,13 +56,15 @@ def window(qapp, tmp_path, monkeypatch):
 
     monkeypatch.setattr(prefs, "_SETTINGS_FILE", str(tmp_path / "settings.json"))
     prefs.reset()
-    prefs.set("default_tz", "UTC")      # heures attendues en TU ; l'automatique a ses tests
+    prefs.set("default_tz", "UTC")      # times expected in UT; the automatic zone has its own tests
     favorites = tmp_path / "favorites.json"
     favorites.write_text(json.dumps({
         "Paris": {"lat": 48.8566, "lon": 2.3522},
         "Tokyo": {"lat": 35.6762, "lon": 139.6503},
     }), encoding="utf-8")
     monkeypatch.setattr(gui, "_FAVORITES_FILE", str(favorites))
+    import satellites
+    monkeypatch.setattr(satellites, "CACHE", str(tmp_path / "satellites.tle"))    # none on disk
     Config.apply_theme("nuit")
     switch_lang("fr")
     gui.apply_theme(qapp)
@@ -83,9 +85,9 @@ def window(qapp, tmp_path, monkeypatch):
 
 
 def _destroy(qapp, widget):
-    """Détruit vraiment la fenêtre : processEvents() seul ne traite pas deleteLater(),
-    et les fenêtres des tests précédents, toujours là, ralentissaient chaque
-    changement de thème ou de langue (toute l'application est restylée)."""
+    """Really destroys the window: processEvents() alone does not process deleteLater(),
+    and the windows of earlier tests, still there, slowed down every change of
+    theme or language (the whole application is restyled)."""
     widget.deleteLater()
     qapp.sendPostedEvents(None, QEvent.Type.DeferredDelete)
     qapp.processEvents()
@@ -105,7 +107,7 @@ def _yes_box(gui):
 
 
 # ──────────────────────────────────────────────────────────────────────
-# 1. Calcul et affichage
+# 1. Calculation and display
 # ──────────────────────────────────────────────────────────────────────
 
 class TestCalculation:
@@ -118,14 +120,14 @@ class TestCalculation:
 
     def test_planet_table(self, window):
         items = window._planet_items["Saturn"]
-        assert re.match(r"^\d+,\d{4}$", items["col_dist"].text())      # l'unité est dans l'en-tête
+        assert re.match(r"^\d+,\d{4}$", items["col_dist"].text())      # the unit is in the header
         assert items["col_planet"].toolTip() == "Visible"
         assert re.match(r"^\d\d:\d\d$", items["col_rise"].text())
         shown = [r for r in range(window.planet_table.rowCount()) if not window.planet_table.isRowHidden(r)]
-        assert len(shown) == 7                                             # Mercure à Neptune
+        assert len(shown) == 7                                             # Mercury to Neptune
 
     def test_tonight(self, window):
-        """« Ce soir » (heures en TU dans ces tests) : la nuit, la Lune, les planètes, la suite."""
+        """"Tonight" (times in UT in these tests): the night, the Moon, the planets, what comes next."""
         lines = [text for text, _tone in window._tonight_lines()]
         assert lines[0] == "Nuit noire de 18:33 à 05:08"
         assert lines[1].endswith("Lune éclairée à 49 %, se lève à 22:42")
@@ -135,7 +137,7 @@ class TestCalculation:
         assert "Nuit noire de 18:33 à 05:08" in shown
 
     def test_minor_planets_of_the_planet_table(self, window):
-        """Le choix « Planètes mineures » montre Cérès … Makemake, magnitude comprise."""
+        """The "Minor planets" choice shows Ceres … Makemake, magnitude included."""
         window._planet_selector.buttons["minor"].click()
         table = window.planet_table
         shown = [table.item(r, 0).text().split(" ", 1)[-1] for r in range(table.rowCount())
@@ -143,7 +145,7 @@ class TestCalculation:
         assert shown == ["Cérès", "Pallas", "Junon", "Vesta", "Pluton", "Éris", "Hauméa", "Makémaké", "Sedna"]
         assert table.item(window._planet_items["Eris"]["col_planet"].row(), 0).toolTip().startswith("(136199) Éris")
         vesta = window._planet_items["Vesta"]
-        assert re.match(r"^\d,\d$", vesta["col_mag"].text())               # Vesta : magnitude 6 à 8
+        assert re.match(r"^\d,\d$", vesta["col_mag"].text())               # Vesta: magnitude 6 to 8
         assert re.match(r"^\d\d:\d\d$", vesta["col_rise"].text())
         window._planet_selector.buttons["planets"].click()
         vesta_row = window._planet_items["Vesta"]["col_planet"].row()
@@ -155,8 +157,8 @@ class TestCalculation:
                 if not table.isRowHidden(r)]
 
     def test_all_bodies_and_visible_only(self, window):
-        """Issue #21 : tous les astres, ou seulement ceux au-dessus de l'horizon ; en 2026,
-        7 planètes, 9 planètes mineures et les 4 comètes suivies."""
+        """Issue #21: all the bodies, or only those above the horizon; in 2026,
+        7 planets, 9 minor planets and the 4 comets followed."""
         window._planet_selector.buttons["all"].click()
         assert len(self._shown(window)) == 20
         window._planet_visible.setChecked(True)
@@ -167,7 +169,7 @@ class TestCalculation:
         window._planet_selector.buttons["planets"].click()
 
     def test_sort_by_magnitude(self, window):
-        """Clic sur « Mag. » : du plus brillant au plus faible ; « Planète » : ordre du Système solaire."""
+        """Click on "Mag.": brightest to faintest; "Planet": order of the Solar System."""
         table = window.planet_table
         window._planet_selector.buttons["all"].click()
         mag = [table.horizontalHeaderItem(c).text() for c in range(table.columnCount())].index("Mag.")
@@ -180,7 +182,7 @@ class TestCalculation:
         window._planet_selector.buttons["planets"].click()
 
     def test_invalid_latitude_is_flagged_without_dialog(self, window):
-        """L'erreur s'affiche sous le champ (ChampSaisie), sans fenêtre."""
+        """The error shows under the field (ChampSaisie), without a window."""
         before = dict(window.sun_data)
         window.entry_lat.setText("123")
         window.calculate()
@@ -194,7 +196,7 @@ class TestCalculation:
         assert not window.field_lat.erreur.isVisibleTo(window)
 
     def test_data_cards(self, window):
-        """Les valeurs vedettes en style cadran, nombres à la française."""
+        """The highlighted values in the cadran style, numbers in the French style."""
         assert window.card_sun_rise.valeur.text() == "06:55"
         assert window.card_sun_alt.unite.text() == "°"
         assert "," in window.card_moon_alt.valeur.text()
@@ -238,7 +240,7 @@ class TestCalculation:
 
 
 # ──────────────────────────────────────────────────────────────────────
-# 2. Langue et thème appliqués sans redémarrage
+# 2. Language and theme applied without restarting
 # ──────────────────────────────────────────────────────────────────────
 
 class TestLiveSwitching:
@@ -262,7 +264,7 @@ class TestLiveSwitching:
 
     @pytest.mark.parametrize("theme", ["jour", "observation"])
     def test_theme_switch(self, window, qapp, theme):
-        """Le sélecteur de thème de la barre latérale applique le thème aussitôt."""
+        """The theme selector of the side panel applies the theme at once."""
         import settings as prefs
         from config import Config
         window.theme_selector.buttons[theme].click()
@@ -286,7 +288,7 @@ class TestLiveSwitching:
 
 
 # ──────────────────────────────────────────────────────────────────────
-# 3. Favoris
+# 3. Favourites
 # ──────────────────────────────────────────────────────────────────────
 
 class TestFavorites:
@@ -322,7 +324,7 @@ class TestFavorites:
 
 
 # ──────────────────────────────────────────────────────────────────────
-# 4. Événements
+# 4. Events
 # ──────────────────────────────────────────────────────────────────────
 
 def _event_cards(window):
@@ -336,7 +338,7 @@ def _event_cards(window):
 
 class TestEvents:
     def test_eclipse_search(self, window):
-        """Depuis le 1er novembre 2026 : 2 éclipses de Soleil, 3 de Lune pénombrales."""
+        """From 1 November 2026: 2 solar eclipses, 3 penumbral lunar ones."""
         window._search_eclipses_gui()
         cards = _event_cards(window)
         assert len(cards) == 5
@@ -345,10 +347,10 @@ class TestEvents:
         assert "Annulaire" in texts[0] and "06/02/2027" in texts[0]
         assert "Totale" in texts[3] and "02/08/2027" in texts[3]
         assert all("Pénombrale" in texts[i] for i in (1, 2, 4))
-        assert "Incertaine" in texts[2]              # 18/07/2027, magnitude 0,001
+        assert "Incertaine" in texts[2]              # 18/07/2027, magnitude 0.001
 
     def test_eclipse_time_is_greatest_eclipse_in_ut(self, window):
-        """Maximum en TU, à la minute près : NASA 16:00:47 et 10:07:49 TD, ΔT ≈ 69 s."""
+        """Maximum in UT, to the minute: NASA 16:00:47 and 10:07:49 TD, ΔT ≈ 69 s."""
         window._search_eclipses_gui()
         texts = [" ".join(lbl.text() for lbl in c.findChildren(QLabel))
                  for c in _event_cards(window)]
@@ -356,18 +358,18 @@ class TestEvents:
         assert "02/08/2027 10:07 TU" in texts[3]
 
     def test_conjunction_time_and_kind(self, window):
-        """Mercure en conjonction inférieure le 04/11/2026 à 14:24 TU (Horizons 14:24:19)."""
+        """Mercury at inferior conjunction on 04/11/2026 at 14:24 UT (Horizons 14:24:19)."""
         window._search_conjunctions_gui()
         texts = [" ".join(lbl.text() for lbl in c.findChildren(QLabel))
                  for c in _event_cards(window)]
         first = next(text for text in texts if "Mercure en conjonction inférieure" in text)
         assert "04/11/2026 14:24 TU" in first and "Mercure au sud du Soleil" in first
-        assert "Heure locale" not in first                  # lieu en TU : rien à ajouter
+        assert "Heure locale" not in first                  # place in UT: nothing to add
         assert any("plus grande élongation ouest (matin)" in text for text in texts)
         assert any("Mars au nord de Jupiter" in text for text in texts)
 
     def test_conjunction_local_time(self, window):
-        """L'heure locale du lieu, heure d'hiver de Paris comprise, sous l'instant TU."""
+        """The local time of the place, Paris winter time included, under the UT instant."""
         window.tz_menu.setCurrentIndex(window.tz_menu.findData("auto"))     # Cherbourg
         window._search_conjunctions_gui()
         texts = [" ".join(lbl.text() for lbl in c.findChildren(QLabel))
@@ -376,13 +378,13 @@ class TestEvents:
         assert "Heure locale 04/11 15:24 (Europe/Paris)" in first
 
     def test_map_of_a_conjunction(self, window, qapp):
-        """Le bouton « Carte » d'une conjonction ouvre le trajet des astres parmi les étoiles."""
+        """The "Map" button of a conjunction opens the path of the bodies among the stars."""
         from PyQt6.QtWidgets import QPushButton
         window._search_conjunctions_gui()
         qapp.processEvents()
         buttons = [b for card in _event_cards(window) for b in card.findChildren(QPushButton)
                    if b.text() == "Carte"]
-        assert 0 < len(buttons) < len(_event_cards(window))     # saisons, périgées : sans carte
+        assert 0 < len(buttons) < len(_event_cards(window))     # seasons, perigees: no map
         buttons[0].click()
         qapp.processEvents()
         dlg = window._event_dialog
@@ -393,17 +395,17 @@ class TestEvents:
         return [" ".join(lbl.text() for lbl in c.findChildren(QLabel)) for c in _event_cards(window)]
 
     def test_moon_seasons_and_minor_planets(self, window):
-        """Lune, saisons et planètes mineures parmi les évènements de l'année."""
+        """Moon, seasons and minor planets among the events of the year."""
         window._search_conjunctions_gui()
         texts = self._texts(window)
         assert any("Solstice de décembre" in x and "21/12/2026 20:50 TU" in x for x in texts)
         assert any("Lune au périgée" in x and "Super lune" in x for x in texts)     # 24/12/2026
         assert any("Lune et" in x for x in texts)
-        assert any("Vesta à l'opposition" in x for x in texts) is False           # en 2027 : non
+        assert any("Vesta à l'opposition" in x for x in texts) is False           # in 2027: no
         assert any(x.startswith("☍") or "à l'opposition" in x for x in texts)
 
     def test_visibility_line(self, window):
-        """Chaque conjonction dit si on la voit d'ici, et quand."""
+        """Each conjunction says whether it can be seen from here, and when."""
         window._search_conjunctions_gui()
         for text in self._texts(window):
             if "Lune et" in text:
@@ -427,7 +429,7 @@ class TestEvents:
         assert len(_event_cards(window)) == everything
 
     def test_export_ics(self, window, tmp_path, monkeypatch):
-        """Les évènements affichés vont dans un agenda iCalendar."""
+        """The events shown go into an iCalendar calendar."""
         import gui
         target = tmp_path / "agenda"
         monkeypatch.setattr(gui.QFileDialog, "getSaveFileName",
@@ -436,7 +438,7 @@ class TestEvents:
         window._search_conjunctions_gui()
         assert window._btn_ics.isEnabled()
         window._btn_ics.click()
-        text = (tmp_path / "agenda.ics").read_bytes().decode("utf-8")      # CRLF gardés
+        text = (tmp_path / "agenda.ics").read_bytes().decode("utf-8")      # CRLF kept
         assert text.startswith("BEGIN:VCALENDAR\r\n") and text.endswith("END:VCALENDAR\r\n")
         assert text.count("BEGIN:VEVENT") == len(_event_cards(window))
         assert "SUMMARY:Solstice de décembre\r\n" in text and "DTSTART:20261221T205014Z" in text
@@ -444,7 +446,7 @@ class TestEvents:
         window._evt_filters["moon"].setChecked(True)
 
     def test_meteor_showers(self, window, tmp_path, monkeypatch):
-        """Les étoiles filantes : leur filtre, la nuit du maximum vue d'ici, l'agenda."""
+        """Meteor showers: their filter, the night of the peak seen from here, the calendar."""
         import gui
         window._search_conjunctions_gui()
         for key, box in window._evt_filters.items():
@@ -457,7 +459,7 @@ class TestEvents:
         assert re.search(r"Meilleur moment vers \d\d:\d\d : radiant à \d+° de hauteur", gem)
         qua = next(x for x in texts if "Maximum des Quadrantides" in x)
         assert "04/01/2027" in qua
-        assert any("gêne forte" in x for x in texts)            # les Ursides, à la pleine Lune
+        assert any("gêne forte" in x for x in texts)            # the Ursids, at full Moon
         target = tmp_path / "agenda.ics"
         monkeypatch.setattr(gui.QFileDialog, "getSaveFileName",
                             staticmethod(lambda *a, **k: (str(target), "")))
@@ -468,7 +470,7 @@ class TestEvents:
             box.setChecked(box is not window._evt_filters["visible"])
 
     def test_eclipses_seen_from_here(self, window):
-        """Cherbourg : l'éclipse annulaire du 06/02/2027 n'y passe pas, celle du 02/08/2027 oui."""
+        """Cherbourg: the annular eclipse of 06/02/2027 does not pass there, the one of 02/08/2027 does."""
         window._search_eclipses_gui()
         texts = self._texts(window)
         assert "Ici : pas d'éclipse" in texts[0]
@@ -483,7 +485,7 @@ class TestEvents:
 
 
 # ──────────────────────────────────────────────────────────────────────
-# 5. Carte du ciel, trajectoires : info-bulles et fiches
+# 5. Sky map, trajectories: tooltips and cards
 # ──────────────────────────────────────────────────────────────────────
 
 def _vega(window):
@@ -537,7 +539,7 @@ class TestSkyMapAndTrajectory:
 
 
 # ──────────────────────────────────────────────────────────────────────
-# 6. Temps réel
+# 6. Real time
 # ──────────────────────────────────────────────────────────────────────
 
 class TestLiveAndExport:
@@ -551,11 +553,11 @@ class TestLiveAndExport:
 
 
 # ──────────────────────────────────────────────────────────────────────
-# 7. Règles du design Astræos
+# 7. Rules of the Astræos design
 # ──────────────────────────────────────────────────────────────────────
 
-# Symboles astronomiques admis (police Astraeos Symboles), point des pastilles
-# symboles astronomiques de la police Astraeos Symboles (présentation texte, U+FE0E)
+# Astronomical symbols allowed (Astraeos Symboles font), dot of the badges
+# astronomical symbols of the Astraeos Symboles font (text presentation, U+FE0E)
 _ALLOWED = set("☉☽☾☿♀♂♃♄♅♆♇⊕♈★●○☌☍☄⚳⚴⚵⚶\u2bf1\u2bf2\U0001f77b\U0001f77c")
 
 
@@ -568,7 +570,7 @@ def _is_emoji(ch):
 class TestAstraeosRules:
     @pytest.mark.parametrize("lang", ["fr", "en", "es", "de"])
     def test_no_emoji_in_the_interface(self, window, qapp, lang):
-        """« Interface : pas d'emoji » : ni dans les textes, ni dans les onglets."""
+        """"Interface: no emoji": neither in the texts nor in the tabs."""
         window._lang_combo.setCurrentIndex(window._lang_combo.findData(lang))
         _pump(qapp)
         texts = [w.text() for w in window.findChildren(QLabel)]
@@ -578,19 +580,19 @@ class TestAstraeosRules:
         assert not bad, bad
 
     def test_symbols_use_text_presentation(self, window):
-        """Chaque symbole d'astre est suivi de U+FE0E (jamais affiché en emoji)."""
+        """Each body symbol is followed by U+FE0E (never shown as an emoji)."""
         name = window._planet_items["Venus"]["col_planet"].text()
         assert name.startswith("\u2640\ufe0e")
 
     def test_single_gold_area(self, window):
-        """Un seul bouton principal (aplat or) dans la fenêtre."""
+        """A single primary button (gold fill) in the window."""
         from PyQt6.QtWidgets import QPushButton
         principal = [b for b in window.findChildren(QPushButton)
                      if b.property("variante") == "principal" and b.isVisibleTo(window)]
         assert principal == [window.btn_calc]
 
     def test_live_mode_is_a_pressed_toggle(self, window):
-        """Temps réel : bascule enfoncée et pastille « En direct »."""
+        """Real time: toggle pressed and "Live" badge."""
         window.btn_live.toggle()
         assert window.btn_live.isChecked()
         assert window._lbl_live.isVisibleTo(window)
@@ -599,13 +601,13 @@ class TestAstraeosRules:
 
 
 # ──────────────────────────────────────────────────────────────────────
-# Géolocalisation : service de l'appareil, adresse IP en secours
+# Geolocation: the device's service, the IP address as a fallback
 # ──────────────────────────────────────────────────────────────────────
 
 class _FakeSource:
-    """Service de localisation simulé : répond une position, ou l'erreur *error*
-    (0 accès refusé, 1 fermé, 2 inconnue, 4 délai dépassé), avec ou sans dernière
-    position connue."""
+    """Simulated location service: answers a position, or the error *error*
+    (0 access denied, 1 closed, 2 unknown, 4 timeout), with or without a last
+    known position."""
     def __init__(self, coord, error=2, last=None):
         from PyQt6.QtCore import QObject, pyqtSignal
 
@@ -649,16 +651,16 @@ class TestMoonCalendar:
         return [w for w in dlg.findChildren(QFrame) if w.property("calendarDay") and w.isVisibleTo(dlg)]
 
     def test_month_and_navigation(self, window, qapp):
-        """Novembre 2026 (heures en TU ici), puis décembre, puis retour à travers l'année."""
+        """November 2026 (times in UT here), then December, then back through the year."""
         window._show_moon_calendar()
         _pump(qapp)
         dlg = window._calendar_dialog
         assert dlg._title.text() == "Novembre 2026" and len(self._cells(dlg)) == 30
         texts = [" ".join(l.text() for l in c.findChildren(QLabel)) for c in self._cells(dlg)]
         assert "Pleine lune 14:54" in texts[23] and texts[23].startswith("24 100 %")   # 14:53:34
-        assert "↑ —" in texts[1]                                  # pas de lever le 2
+        assert "↑ —" in texts[1]                                  # no moonrise on the 2nd
         window._fill_moon_calendar(+1)
-        _pump(qapp)                                   # les nouvelles cases s'affichent au tour suivant
+        _pump(qapp)                                   # the new cells show on the next turn
         assert dlg._title.text() == "Décembre 2026" and len(self._cells(dlg)) == 31
         window._fill_moon_calendar(-12)
         assert dlg._title.text() == "Décembre 2025"
@@ -667,7 +669,7 @@ class TestMoonCalendar:
         assert window._calendar_dialog is None
 
     def test_first_day_of_the_week(self, window, qapp):
-        """En français, la semaine commence le lundi : le 1er novembre 2026, un dimanche, est en 7e colonne."""
+        """In French, the week starts on Monday: 1 November 2026, a Sunday, is in the 7th column."""
         window._show_moon_calendar(2026, 11)
         dlg = window._calendar_dialog
         first = self._cells(dlg)[0]
@@ -685,7 +687,7 @@ class TestOrreryAnimation:
         assert window._orrery_date.text() == "01/11/2026"
         mars = next(m for name, m, _l in window.fig_orrery._orrery_moving if name == "Mars")
         before = mars.get_xydata().copy()
-        window._orrery_speed.setCurrentIndex(2)                       # 1 mois par pas
+        window._orrery_speed.setCurrentIndex(2)                       # 1 month per step
         window._orrery_step(+1)
         assert window._orrery_offset == 30.0 and window._orrery_date.text() == "01/12/2026"
         assert window._orrery_date.property("tone") == "or"
@@ -702,7 +704,7 @@ class TestOrreryAnimation:
 
     def test_back_to_the_date(self, window, qapp):
         self._planets_tab(window, qapp)
-        window._orrery_speed.setCurrentIndex(3)                       # 1 an par pas
+        window._orrery_speed.setCurrentIndex(3)                       # 1 year per step
         window._orrery_step(+1)
         window._reset_orrery()
         assert window._orrery_offset == 0.0 and window._orrery_date.text() == "01/11/2026"
@@ -713,6 +715,90 @@ class TestOrreryAnimation:
         window._orrery_offset = 200 * 365.25
         window._orrery_step(+1)
         assert window._orrery_date.text() == "30/12/2149" and not window._orrery_timer.isActive()
+
+
+class TestSatellites:
+    @pytest.fixture
+    def orbits(self, monkeypatch):
+        """Background tasks run at once; the elements of 7 November 2026."""
+        import gui
+        import satellites
+        from tests.test_satellites import ELEMENTS
+
+        def run_now(func, on_done, on_error):
+            try:
+                result = func()
+            except Exception as exc:  # noqa: BLE001
+                on_error(exc)
+            else:
+                on_done(result)
+        monkeypatch.setattr(gui, "_run_in_background", run_now)
+        answer = {"refresh": (ELEMENTS, None)}
+        monkeypatch.setattr(satellites, "refresh", lambda: answer["refresh"])
+        return answer
+
+    def test_search(self, window, qapp, orbits, tmp_path, monkeypatch):
+        """From Cherbourg, from 10 November 2026 (times in UT here): the ISS in the evening."""
+        import gui
+        window._set_datetime(datetime(2026, 11, 10, 12, 0))
+        window.calculate()
+        window._search_satellites_gui()
+        texts = [" ".join(l.text() for l in c.findChildren(QLabel)) for c in _event_cards(window)]
+        assert len(texts) >= 8 and QApplication.overrideCursor() is None
+        assert all("Station spatiale internationale (ISS)" in x or "Tiangong" in x for x in texts)
+        assert any("entre dans l'ombre de la Terre" in x for x in texts)
+        assert re.search(r"Visible \d+ min \d\d s", texts[0])
+        target = tmp_path / "passes.ics"
+        monkeypatch.setattr(gui.QFileDialog, "getSaveFileName", staticmethod(lambda *a, **k: (str(target), "")))
+        window._btn_ics.click()
+        assert target.read_bytes().decode("utf-8").count("BEGIN:VEVENT") == len(texts)
+
+    def test_offline_without_orbits(self, window, orbits):
+        import satellites
+        orbits["refresh"] = ({}, satellites.SatelliteError("offline"))
+        window._search_satellites_gui()
+        listed = [window._evt_layout.itemAt(i).widget() for i in range(window._evt_layout.count())]
+        assert any(isinstance(w, QLabel) and "offline" in w.text() for w in listed)
+        assert not _event_cards(window)
+
+    def test_tonight_from_the_orbits_on_disk(self, window, qapp, orbits):
+        import satellites
+        from tests.test_satellites import ELEMENTS
+        satellites.save(ELEMENTS)
+        window._set_datetime(datetime(2026, 11, 14, 20, 0))
+        window.calculate()
+        line = next(text for text, _tone in window._tonight_lines() if text.startswith("Passages"))
+        assert re.match(r"Passages : ISS 18:2\d–18:2\d \(\d+° [A-Z]+\)", line)
+
+
+class TestDeepSky:
+    def test_on_the_sky_map(self, window, qapp):
+        window.tabs.setCurrentWidget(next(p for p, n in window._chart_tabs.items() if n == "sky"))
+        _pump(qapp)
+        dso = [o for o in window._sky_objects if o["kind"] == "deep_sky"]
+        assert 30 < len(dso) < 110 and all(o["alt"] > 0 for o in dso)
+        m31 = next(o for o in dso if o["m"] == 31)
+        title, rows = window._object_details(m31)
+        assert title == "M31 Galaxie d'Andromède"
+        assert ("Type", "Galaxie") in rows and ("Désignation", "NGC 224") in rows
+        assert ("Taille apparente", "178′ × 70′") in rows
+        window._messier_box.setChecked(False)
+        assert not [o for o in window._sky_objects if o["kind"] == "deep_sky"]
+        window._messier_box.setChecked(True)
+
+    def test_tonight_line(self, window):
+        line = next(text for text, _tone in window._tonight_lines() if text.startswith("Ciel profond"))
+        assert "M31 Galaxie d'Andromède (82°, 22:05)" in line and line.count("·") == 4
+
+    def test_every_common_name_is_translated(self):
+        import json
+        from engine import messier_catalog
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        for lang in ("fr", "en", "es", "de"):
+            with open(os.path.join(root, "locales", f"{lang}.json"), encoding="utf-8") as f:
+                names = json.load(f)["messier"]
+            missing = [o["m"] for o in messier_catalog() if o["name"] and f"name_{o['m']}" not in names]
+            assert not missing, (lang, missing)
 
 
 class TestComets:
@@ -758,17 +844,17 @@ class TestComets:
             box.setChecked(box is not window._evt_filters["visible"])
 
     def test_on_the_sky_map(self, window, qapp, monkeypatch):
-        """C/2026 C1 (magnitude 6,6) seen from Santiago, limit 7 : sur la carte du ciel."""
+        """C/2026 C1 (magnitude 6.6) seen from Santiago, limit 7: on the sky map."""
         monkeypatch.setattr(window, "_mag_limit", lambda: 7.0)
         self._at(window, qapp, datetime(2028, 11, 11, 3), -33.45, -70.67)
         assert "Tsuchinshan" in [o.get("name") for o in window._sky_objects]
         window.tabs.setCurrentWidget(next(p for p, n in window._chart_tabs.items() if n == "sky"))
-        _pump(qapp)                                       # la carte se dessine, nom compris
+        _pump(qapp)                                       # the map draws, name included
 
 
 class TestPlaceSearch:
     def test_suggestions_then_choice(self, window, qapp):
-        """« londres » propose London ; la choisir remplit lieu, altitude et nom."""
+        """"londres" offers London; choosing it fills place, elevation and name."""
         window._on_place_typed("londres")
         assert window._place_model.stringList() == ["London · England · GB"]
         window._on_place_chosen("London · England · GB")
@@ -794,7 +880,7 @@ class TestPlaceSearch:
         assert window._place_model.stringList() == []
 
     def test_name_without_network(self, monkeypatch):
-        """Sans Nominatim, la ville la plus proche de la liste hors ligne nomme le point."""
+        """Without Nominatim, the nearest city of the offline list names the point."""
         import gui
         monkeypatch.setattr(gui, "_nominatim_name", lambda lat, lon: "")
         assert gui._place_name(49.6333, -1.6167) == "Cherbourg"
@@ -803,7 +889,7 @@ class TestPlaceSearch:
 
 class TestGeolocation:
     def test_device_position_is_used(self, window, monkeypatch):
-        """Cherbourg donné par le service de l'appareil, nommé par OpenStreetMap."""
+        """Cherbourg given by the device's service, named by OpenStreetMap."""
         import gui
         monkeypatch.setattr(gui, "QGeoPositionInfoSource", _FakeSource((49.6386, -1.6164)))
         monkeypatch.setattr(gui, "_place_name", lambda lat, lon: "Cherbourg-en-Cotentin")
@@ -813,7 +899,7 @@ class TestGeolocation:
         assert "±25 m" in window.statusBar().currentMessage()
 
     def test_ip_address_only_as_a_fallback(self, window, monkeypatch):
-        """Service muet : position de l'adresse IP, annoncée comme approximative."""
+        """Silent service: position of the IP address, announced as approximate."""
         import gui
         monkeypatch.setattr(gui, "QGeoPositionInfoSource", _FakeSource(None))
         answer = {"status": "success", "city": "Paris", "country": "France",
@@ -832,7 +918,7 @@ class TestGeolocation:
                             lambda *a, **k: _FakeResponse(json.dumps(answer).encode()))
 
     def test_access_denied_is_explained(self, window, monkeypatch):
-        """Issue #19 : accès refusé par Windows — la fenêtre le dit et ouvre les réglages."""
+        """Issue #19: access denied by Windows — the window says so and opens the settings."""
         import gui
         monkeypatch.setattr(gui, "QGeoPositionInfoSource", _FakeSource(None, error=0))
         monkeypatch.setattr(gui.sys, "platform", "win32")
@@ -848,7 +934,7 @@ class TestGeolocation:
         assert opened and opened[0].toString() == "ms-settings:privacy-location"
 
     def test_last_known_position_before_the_ip_address(self, window, monkeypatch):
-        """Délai dépassé : la dernière position connue de l'appareil plutôt que l'adresse IP."""
+        """Timeout: the device's last known position rather than the IP address."""
         import gui
         monkeypatch.setattr(gui, "QGeoPositionInfoSource",
                             _FakeSource(None, error=4, last=(49.6386, -1.6164)))
@@ -858,7 +944,7 @@ class TestGeolocation:
         assert window.location_name == "Cherbourg-en-Cotentin"
 
     def test_no_window_at_startup(self, window, monkeypatch):
-        """Au démarrage (géolocalisation automatique), la barre d'état seulement."""
+        """At startup (automatic geolocation), the status bar only."""
         import gui
         monkeypatch.setattr(gui, "QGeoPositionInfoSource", _FakeSource(None, error=4))
         self._ip_answer(monkeypatch)
@@ -869,11 +955,11 @@ class TestGeolocation:
 
 
 # ──────────────────────────────────────────────────────────────────────
-# Onglet Coordonnées et format des angles
+# Coordinates tab and angle format
 # ──────────────────────────────────────────────────────────────────────
 
 class TestCoordinatesTab:
-    """Onglet Coordonnées : x, y, z et angles en même temps."""
+    """Coordinates tab: x, y, z and angles at the same time."""
 
     BODIES = ["Soleil", "Lune", "Mercure", "Vénus", "Terre", "Mars", "Cérès", "Pallas", "Junon",
               "Vesta", "Jupiter", "Saturne", "Uranus", "Neptune", "Pluton", "Hauméa", "Makémaké",
@@ -896,7 +982,7 @@ class TestCoordinatesTab:
         return [table.horizontalHeaderItem(c).text() for c in range(table.columnCount())]
 
     def test_short_lists_show_every_choice(self, window, qapp):
-        """Listes en mode liste : aucun choix caché derrière des flèches de défilement."""
+        """Lists in list mode: no choice hidden behind scroll arrows."""
         self._open(window)
         for menu in window.coord_menus.values():
             menu.showPopup()
@@ -908,7 +994,7 @@ class TestCoordinatesTab:
             menu.hidePopup()
 
     def test_default_heliocentric_and_equatorial(self, window):
-        """Par défaut : x, y, z héliocentriques, angles équatoriaux."""
+        """By default: heliocentric x, y, z, equatorial angles."""
         self._open(window)
         assert self._headers(window) == [
             "Astre", "x (UA)", "y (UA)", "z (UA)", "Dist. (UA)", "Mag.",
@@ -916,13 +1002,13 @@ class TestCoordinatesTab:
         rows = [window.coord_table.item(r, 0).text() for r in range(window.coord_table.rowCount())]
         assert [r.split(" ", 1)[-1] for r in rows] == self.BODIES
         sun, earth = self._row(window, "Soleil"), self._row(window, "Terre")
-        assert sun[1:5] == ["—"] * 4                      # le Soleil est l'origine
+        assert sun[1:5] == ["—"] * 4                      # the Sun is the origin
         assert sun[5].startswith("−26,7") and sun[7] == "Lib"
-        assert earth[1] != "—" and earth[5:] == ["—"] * 5   # la Terre : x, y, z seulement
-        assert sun[8].endswith("s")                           # ascension droite en h m s
+        assert earth[1] != "—" and earth[5:] == ["—"] * 5   # the Earth: x, y, z only
+        assert sun[8].endswith("s")                           # right ascension in h m s
 
     def test_cartesian_and_angular_are_independent(self, window):
-        """Changer l'origine cartésienne ne change pas les angles, et inversement."""
+        """Changing the cartesian origin does not change the angles, and vice versa."""
         self._open(window)
         before = self._row(window, "Mars")
         self._choose(window, "cartesian", "geocentric")
@@ -939,11 +1025,11 @@ class TestCoordinatesTab:
         self._choose(window, "angular", "ecliptic")
         assert window.coord_menus["ecliptic_from"].isEnabled()
         assert self._headers(window)[8:] == ["Longitude λ", "Latitude β"]
-        assert self._row(window, "Soleil")[8:] == ["—", "—"]   # vu du Soleil
+        assert self._row(window, "Soleil")[8:] == ["—", "—"]   # seen from the Sun
         assert self._row(window, "Terre")[8] != "—"
         assert "vues du Soleil" in window._coord_note.text()
         self._choose(window, "ecliptic_from", "earth")
-        assert self._row(window, "Terre")[8:] == ["—", "—"]    # vu de la Terre
+        assert self._row(window, "Terre")[8:] == ["—", "—"]    # seen from the Earth
         assert self._row(window, "Soleil")[8] != "—"
         assert "vues de la Terre" in window._coord_note.text()
 
@@ -951,7 +1037,7 @@ class TestCoordinatesTab:
                                               ("dm", r"^\d+h \d\d,\d{3}m$"),
                                               ("dd", r"^\d+,\d{5}h$")])
     def test_settings_format_applies_everywhere(self, window, fmt, pattern):
-        """Format des paramètres : tout le logiciel, et le tableau qui le suit par défaut."""
+        """Format of the settings: the whole software, and the table that follows it by default."""
         self._open(window)
         assert window.coord_menus["angle"].currentData() == "global"
         combo = window._anglefmt_combo
@@ -960,7 +1046,7 @@ class TestCoordinatesTab:
         assert re.match(pattern, self._row(window, "Vénus")[8])
 
     def test_coordinates_format_only_for_the_table(self, window):
-        """Le format choisi dans l'onglet ne change que le tableau (issue #13)."""
+        """The format chosen in the tab only changes the table (issue #13)."""
         self._open(window)
         ephemeris = window.sun_labels["ra"].text()
         self._choose(window, "angle", "dd")
@@ -968,16 +1054,16 @@ class TestCoordinatesTab:
         assert window.sun_labels["ra"].text() == ephemeris
         window._anglefmt_combo.setCurrentIndex(window._anglefmt_combo.findData("dm"))
         assert re.match(r"^\d+h \d\d,\d{3}m$", window.sun_labels["ra"].text())
-        assert re.match(r"^\d+,\d{5}h$", self._row(window, "Vénus")[8])   # garde le sien
+        assert re.match(r"^\d+,\d{5}h$", self._row(window, "Vénus")[8])   # keeps its own
 
 
 # ──────────────────────────────────────────────────────────────────────
-# Préférences et favoris hors du dépôt (~/.celeste)
+# Preferences and favourites outside the repository (~/.celeste)
 # ──────────────────────────────────────────────────────────────────────
 
 class TestUserFiles:
     def test_settings_live_in_the_user_folder(self, tmp_path, monkeypatch):
-        """Écrites dans le dossier de l'utilisateur, créé au besoin."""
+        """Written to the user's folder, created when needed."""
         import settings as prefs
         target = tmp_path / "celeste" / "settings.json"
         monkeypatch.setattr(prefs, "_SETTINGS_FILE", str(target))
@@ -987,7 +1073,7 @@ class TestUserFiles:
         assert json.loads(target.read_text(encoding="utf-8"))["theme"] == "jour"
 
     def test_settings_of_a_previous_version_are_taken_over(self, tmp_path, monkeypatch):
-        """Un settings.json resté dans le dossier de l'application est repris."""
+        """A settings.json left in the application folder is taken over."""
         import settings as prefs
         legacy = tmp_path / "settings.json"
         legacy.write_text(json.dumps({"theme": "observation", "default_utc": 2}), encoding="utf-8")
@@ -998,7 +1084,7 @@ class TestUserFiles:
         assert prefs.get("default_tz") == "Etc/GMT-2"
 
     def test_favorites_start_from_the_default_list(self, window, tmp_path, monkeypatch):
-        """Sans favoris enregistrés, la liste de départ (36 villes) ; enregistrés chez l'utilisateur."""
+        """Without saved favourites, the starting list (36 cities); saved in the user's folder."""
         import gui
         monkeypatch.setattr(gui, "_FAVORITES_FILE", str(tmp_path / "user" / "favorites.json"))
         monkeypatch.setattr(gui, "_LEGACY_FAVORITES_FILE", str(tmp_path / "absent.json"))
@@ -1012,7 +1098,7 @@ class TestUserFiles:
 
 class TestEclipseMap:
     def test_map_of_a_solar_eclipse(self, window, qapp):
-        """Le bouton « Carte » d'une éclipse ouvre sa projection au sol."""
+        """The "Map" button of an eclipse opens its ground projection."""
         from PyQt6.QtWidgets import QPushButton
         window._search_eclipses_gui()
         qapp.processEvents()
@@ -1027,7 +1113,7 @@ class TestEclipseMap:
 
 
 # ──────────────────────────────────────────────────────────────────────
-# Liens : site, code source, café, demandes sur GitHub (issue #22)
+# Links: website, source code, coffee, requests on GitHub (issue #22)
 # ──────────────────────────────────────────────────────────────────────
 
 class TestLinks:
@@ -1046,7 +1132,7 @@ class TestLinks:
         assert "template=body.yml" in opened[2]
 
     def test_every_issue_form_exists(self):
-        """Chaque lien vers GitHub a son formulaire dans .github/ISSUE_TEMPLATE."""
+        """Each link to GitHub has its form in .github/ISSUE_TEMPLATE."""
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         for template in ("bug", "feature", "body"):
             assert os.path.isfile(os.path.join(root, ".github", "ISSUE_TEMPLATE", f"{template}.yml"))
@@ -1054,7 +1140,7 @@ class TestLinks:
 
 
 # ──────────────────────────────────────────────────────────────────────
-# Fenêtre de données d'un astre (issue #23)
+# Data window of a body (issue #23)
 # ──────────────────────────────────────────────────────────────────────
 
 class TestDataWindow:
@@ -1063,7 +1149,7 @@ class TestDataWindow:
         return labels
 
     def test_click_on_a_planet(self, window, qapp):
-        """Un clic sur Jupiter dans l'onglet Planètes ouvre sa fenêtre de données."""
+        """A click on Jupiter in the Planets tab opens its data window."""
         table = window.planet_table
         row = window._planet_items["Jupiter"]["col_planet"].row()
         table.cellClicked.emit(row, 3)
@@ -1077,7 +1163,7 @@ class TestDataWindow:
         dlg.close()
 
     def test_click_in_the_coordinates_table(self, window, qapp):
-        """Soleil et Vesta depuis l'onglet Coordonnées ; la Terre n'a pas de fiche."""
+        """Sun and Vesta from the Coordinates tab; the Earth has no card."""
         window.tabs.setCurrentWidget(window._coord_page)
         from engine import AstroEngine
         bodies = list(AstroEngine.BODIES)
@@ -1096,7 +1182,7 @@ class TestDataWindow:
         window._detail_dialog.close()
 
     def test_closed_windows_are_freed(self, window, qapp):
-        """Fenêtres de données et cartes fermées ne restent pas en mémoire, sous la fenêtre."""
+        """Closed data windows and maps do not stay in memory, under the window."""
         for name in ("Jupiter", "Vesta", "sun"):
             window._show_body_detail(name)
             qapp.processEvents()
@@ -1107,7 +1193,7 @@ class TestDataWindow:
 
 
 # ──────────────────────────────────────────────────────────────────────
-# Premier lancement : téléchargement de l'éphéméride
+# First launch: download of the ephemeris
 # ──────────────────────────────────────────────────────────────────────
 
 def tmp_user(engine):
@@ -1117,7 +1203,7 @@ def tmp_user(engine):
 class TestFirstLaunch:
     @pytest.fixture
     def missing(self, qapp, tmp_path, monkeypatch):
-        """Pas d'éphéméride : main.ensure_ephemeris() la télécharge (ici, sans réseau)."""
+        """No ephemeris: main.ensure_ephemeris() downloads it (here, without network)."""
         import engine
         import main
         monkeypatch.setattr(engine, "ephemeris_path", lambda: str(tmp_path / "absente.bsp"))
@@ -1148,21 +1234,21 @@ class TestFirstLaunch:
             raise engine.DownloadCancelled("download cancelled")
         monkeypatch.setattr(engine, "download_ephemeris", download)
         assert main.ensure_ephemeris() is False
-        assert loaded == [] and errors == []               # pas de message : on a choisi d'annuler
+        assert loaded == [] and errors == []               # no message: the user chose to cancel
 
     def test_no_network(self, missing, monkeypatch):
         engine, main, loaded, errors = missing
 
         def download(**_kw):
-            raise engine.EphemerisUnavailable("pas de réseau")
+            raise engine.EphemerisUnavailable("no network")
         monkeypatch.setattr(engine, "download_ephemeris", download)
         assert main.ensure_ephemeris() is False
         assert loaded == [] and len(errors) == 1
-        assert "pas de réseau" in errors[0] and str(tmp_user(engine)) in errors[0]
+        assert "no network" in errors[0] and str(tmp_user(engine)) in errors[0]
 
 
 # ──────────────────────────────────────────────────────────────────────
-# Mises à jour (Paramètres › À propos)
+# Updates (Settings › About)
 # ──────────────────────────────────────────────────────────────────────
 
 class TestUpdates:
@@ -1173,7 +1259,7 @@ class TestUpdates:
 
     @pytest.fixture
     def offline(self, monkeypatch):
-        """Tâches de fond exécutées tout de suite ; Release simulée."""
+        """Background tasks run at once; simulated Release."""
         import gui
 
         def run_now(func, on_done, on_error):
@@ -1205,7 +1291,7 @@ class TestUpdates:
         box.close()
 
     def test_notes_in_plain_text(self, window, offline):
-        """La note de la Release (CHANGELOG.md) s'affiche sans balises Markdown."""
+        """The note of the Release (CHANGELOG.md) shows without Markdown tags."""
         offline["release"] = dict(self.RELEASE, notes="- Étoiles **filantes**\n  dans `Évènements`")
         window.check_updates()
         box = window._update_dialog
@@ -1228,7 +1314,7 @@ class TestUpdates:
         skip.click()
         assert prefs.get("update_skipped") == "99.0"
         window._update_dialog = None
-        window.check_updates(interactive=False)                  # au démarrage : silence
+        window.check_updates(interactive=False)                  # at startup: silence
         assert window._update_dialog is None
         assert "99.0" in window._update_info.text()
 
@@ -1236,7 +1322,7 @@ class TestUpdates:
         import gui
 
         def fail():
-            raise gui.updater.UpdateError("pas de réseau")
+            raise gui.updater.UpdateError("no network")
         monkeypatch.setattr(gui.updater, "latest_release", fail)
         window.check_updates(interactive=False)
-        assert "pas de réseau" in window._update_info.text()
+        assert "no network" in window._update_info.text()

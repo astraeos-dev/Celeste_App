@@ -1,9 +1,9 @@
 """
-tests/test_release_notes.py — Journal des versions (CHANGELOG.md) et notes des Releases
-========================================================================================
-Chaque version publiée prend sa note dans CHANGELOG.md (scripts/release_notes.py,
-workflow de build) : la version en cours doit y avoir sa section, sinon la
-Release ne serait pas publiée.
+tests/test_release_notes.py — Changelog (CHANGELOG.md) and release notes
+=========================================================================
+Each published version takes its note from CHANGELOG.md (scripts/release_notes.py,
+build workflow): the current version must have its section there, otherwise
+the Release would not be published.
 """
 import os
 import subprocess
@@ -39,18 +39,18 @@ def test_newest_first_without_duplicates():
 
 
 def test_readable_in_the_update_window():
-    """Sans gras ni code (la fenêtre des versions ≤ 4.4 les afficherait tels quels),
-    et assez courte pour n'être pas coupée (800 caractères)."""
+    """No bold and no code (the window of versions ≤ 4.4 would show them as they are),
+    and short enough not to be cut (800 characters)."""
     for version, notes in release_notes.sections(_changelog()):
         assert "**" not in notes and "`" not in notes, version
         assert len(notes) <= 800, version
 
 
 def test_wrapped_items_and_trailing_text():
-    text = ("# Titre\n\n## 2.1\n\n- un\n  deux\n- trois\n\nUn paragraphe.\n\n## 2.0\n\n- zéro\n\n"
-            "Les versions antérieures…\n")
-    assert release_notes.sections(text) == [("2.1", "- un deux\n- trois"), ("2.0", "- zéro")]
-    assert release_notes.notes("2.0", text) == "- zéro" and release_notes.notes("1.9", text) is None
+    text = ("# Title\n\n## 2.1\n\n- one\n  two\n- three\n\nA paragraph.\n\n## 2.0\n\n- naïve\n\n"
+            "Earlier versions…\n")
+    assert release_notes.sections(text) == [("2.1", "- one two\n- three"), ("2.0", "- naïve")]
+    assert release_notes.notes("2.0", text) == "- naïve" and release_notes.notes("1.9", text) is None
 
 
 def test_script_writes_utf8(tmp_path):

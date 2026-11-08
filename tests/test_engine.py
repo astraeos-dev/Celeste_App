@@ -756,7 +756,7 @@ class TestTonight:
         assert [p["best"] for p in night["planets"]] == sorted(p["best"] for p in night["planets"])
 
     def test_the_night_under_way(self, night):
-        """At 3 a.m., « tonight » is the night already begun."""
+        """At 3 a.m., "tonight" is the night already begun."""
         from zoneinfo import ZoneInfo
         later = AstroEngine.tonight(datetime(2026, 11, 2, 3, 0), self.LAT, self.LON, 0.0,
                                     ZoneInfo("Europe/Paris"))
@@ -814,6 +814,41 @@ class TestMoonCalendar:
         from zoneinfo import ZoneInfo
         tokyo = AstroEngine.moon_calendar(2026, 11, 35.68, 139.69, 0.0, ZoneInfo("Asia/Tokyo"))
         assert tokyo[23]["event"]["kind"] == "full_moon"
+
+
+class TestDeepSky:
+    """The Messier catalogue (assets/messier.csv, OpenNGC + SEDS) and the night's best objects."""
+
+    def test_catalogue(self):
+        from engine import MESSIER_TYPES, messier_catalog
+        catalog = messier_catalog()
+        assert [o["m"] for o in catalog] == list(range(1, 111))
+        assert all(o["type"] in MESSIER_TYPES and -2 < o["mag"] <= 11.0 for o in catalog)   # M91: 11.0
+        m31 = catalog[30]
+        assert m31["id"] == "NGC 224" and m31["const"] == "And" and m31["name"] == "Andromeda Galaxy"
+        assert abs(m31["ra"] - 0.7123) < 0.001 and abs(m31["dec"] - 41.269) < 0.001 and m31["mag"] == 3.4
+        assert catalog[101]["id"] == "NGC 5866"                 # M102, the Spindle Galaxy
+        assert catalog[21]["mag"] == 5.1                        # M22, magnitude from SEDS
+
+    def test_upper_culmination_of_m31(self):
+        """From Cherbourg, M31 culminates at 90° − (φ − δ of the date) ≈ 81.8°."""
+        from zoneinfo import ZoneInfo
+        night = AstroEngine.tonight(datetime(2026, 11, 1, 21, 30), 49.6333, -1.6167, 0.0, ZoneInfo("Europe/Paris"))
+        m31 = next(o for o in night["deep_sky"] if o["m"] == 31)
+        assert abs(m31["alt"] - 81.8) < 0.3 and abs(m31["az"] - 180.0) < 10.0
+        alt, _az = AstroEngine.deep_sky_horizontal(AstroEngine.julian_century_j2000(m31["best"]), 49.6333, -1.6167)
+        assert abs(float(alt[30]) - m31["alt"]) < 0.3            # hour angles vs full reduction
+
+    def test_the_brightest_first(self):
+        from zoneinfo import ZoneInfo
+        night = AstroEngine.tonight(datetime(2026, 11, 1, 21, 30), 49.6333, -1.6167, 0.0, ZoneInfo("Europe/Paris"))
+        assert [o["m"] for o in night["deep_sky"]] == [45, 44, 31, 42, 39]
+        assert all(o["alt"] >= 30.0 for o in night["deep_sky"])
+
+    def test_white_night(self):
+        from zoneinfo import ZoneInfo
+        night = AstroEngine.tonight(datetime(2026, 6, 21, 12), 69.65, 18.96, 0.0, ZoneInfo("Europe/Oslo"))
+        assert night["deep_sky"] == []
 
 
 class TestComets:
@@ -876,7 +911,7 @@ class TestMeteorShowers:
         return {e["kind"]: e for e in AstroEngine.find_meteor_showers(datetime(2026, 1, 1), 365)}
 
     @pytest.mark.parametrize("code, expected, minutes", [
-        ("QUA", datetime(2026, 1, 3, 21, 0), 60),          # « close to 21h UT »
+        ("QUA", datetime(2026, 1, 3, 21, 0), 60),          # "close to 21h UT"
         ("LYR", datetime(2026, 4, 22, 19, 40), 10),        # 19h 40m UT
         ("PER", datetime(2026, 8, 13, 3, 0), 60),          # 02h to 04h UT
         ("DRA", datetime(2026, 10, 9, 1, 0), 30),          # 01h UT

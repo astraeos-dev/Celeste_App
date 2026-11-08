@@ -14,20 +14,20 @@ dist/
 .eggs/
 wheels/
 
-# ── Environnements virtuels ───────────────────────────────
+# ── Virtual environments ──────────────────────────────────
 .venv/
 venv/
 env/
 ENV/
 .env
 
-# ── Tests & couverture ────────────────────────────────────
+# ── Tests & coverage ──────────────────────────────────────
 .pytest_cache/
 .coverage
 htmlcov/
 .tox/
 
-# ── Outils de développement ───────────────────────────────
+# ── Development tools ─────────────────────────────────────
 .mypy_cache/
 .ruff_cache/
 *.DS_Store
@@ -36,26 +36,26 @@ htmlcov/
 *.sublime-project
 *.sublime-workspace
 
-# ── PyInstaller (packaging exécutable) ───────────────────
+# ── PyInstaller (executable packaging) ───────────────────
 *.spec
 !celeste.spec
 /dist_exe/
 
-# ── Données utilisateur ───────────────────────────────────
-# Préférences et favoris vivent dans ~/.celeste (settings.py) ; les copies
-# laissées ici par les versions ≤ 4.1 sont reprises puis ignorées.
+# ── User data ─────────────────────────────────────────────
+# Preferences and favourites live in ~/.celeste (settings.py); the copies left
+# here by versions 4.1 and earlier are taken over, then ignored.
 /settings.json
 /favorites.json
 
 # ── Claude Code ───────────────────────────────────────────
 .claude/
 
-# ── Fichiers générés ──────────────────────────────────────
-# Éphémérides JPL/IMCCE (téléchargées à la demande) et PDF exportés
+# ── Generated files ───────────────────────────────────────
+# JPL/IMCCE ephemerides (downloaded on demand) and exported PDFs
 *.bsp
 /*.pdf
 
-# ── Éphéméride JPL DE440 (32 Mo, téléchargée au premier lancement) ──
+# ── JPL DE440 ephemeris (32 MB, downloaded at the first launch) ──
 data/*.bsp
 .history/
 /Celeste_App/

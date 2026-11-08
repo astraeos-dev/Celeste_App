@@ -1,15 +1,16 @@
 """
-main.py — Point d'entrée de l'application Céleste (PyQt6)
-==========================================================
-Usage :
+main.py — Entry point of the Céleste application (PyQt6)
+=========================================================
+Usage:
     python main.py
     python main.py --lang fr        (auto, fr, en, es, de)
     python main.py --theme jour     (nuit, jour, observation)
 
-Sans option, la langue et le thème viennent des préférences (~/.celeste/settings.json) ; la langue
-« auto » (par défaut) suit celle du système, ou l'anglais si elle n'est pas
-traduite. La langue se change ensuite dans l'onglet Paramètres et le thème
-en bas de la barre latérale, sans redémarrer.
+Without options, the language and the theme come from the preferences
+(~/.celeste/settings.json); the "auto" language (the default) follows the
+system's, or English when it is not translated. The language then changes in
+the Settings tab and the theme at the bottom of the side panel, without a
+restart.
 """
 
 import argparse
@@ -24,13 +25,13 @@ from i18n import resolve_lang, switch_lang, t
 
 
 def parse_args(argv):
-    """Options de Céleste ; les options propres à Qt sont laissées à Qt."""
+    """Options of Céleste; Qt's own options are left to Qt."""
     parser = argparse.ArgumentParser(
-        prog="main.py", description="Céleste — observatoire astronomique")
-    parser.add_argument("--lang", help="langue de l'interface : auto, fr, en, es, de")
-    parser.add_argument("--theme", help="thème : nuit, jour, observation")
+        prog="main.py", description="Céleste — astronomical observatory")
+    parser.add_argument("--lang", help="language of the interface: auto, fr, en, es, de")
+    parser.add_argument("--theme", help="theme: nuit (night), jour (day), observation")
     parser.add_argument("--self-test", action="store_true",
-                        help="ouvre la fenêtre, calcule, puis quitte (vérifie un exécutable)")
+                        help="opens the window, calculates, then quits (checks an executable)")
     args, _qt_args = parser.parse_known_args(argv)
     return args
 
@@ -92,7 +93,7 @@ def main(argv=None):
     prefs.load()
 
     if sys.platform == "win32":
-        # Icône de Céleste (et non de Python) dans la barre des tâches
+        # Céleste's icon (not Python's) in the taskbar
         try:
             import ctypes
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("astraeos.celeste")
@@ -122,11 +123,11 @@ def main(argv=None):
               f"location sources: {sources}")
         return 0
 
-    # Géolocalisation au démarrage si elle est activée dans les paramètres
+    # Geolocation at startup when enabled in the settings
     if prefs.get("auto_geoloc"):
         QTimer.singleShot(800, lambda: window.geolocate(interactive=False))
 
-    # Mise à jour : une version plus récente est-elle publiée ? (Paramètres › À propos)
+    # Update: is a newer version published? (Settings › About)
     if prefs.get("update_check"):
         QTimer.singleShot(4000, lambda: window.check_updates(interactive=False))
 

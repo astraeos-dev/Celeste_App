@@ -1,67 +1,75 @@
-# Journal des versions
+# Changelog
 
-Les nouveautés de chaque version de Céleste, la plus récente en haut.
+What is new in each version of Céleste, the latest first.
 
-La section d'une version devient telle quelle la note de sa Release sur GitHub, et le texte que la fenêtre de mise à
-jour montre aux utilisateurs. Écrivez pour eux : des phrases courtes, en tirets, sans gras ni code (la fenêtre des
-versions 4.4 et antérieures les afficherait tels quels), en 800 caractères environ (la suite est coupée dans la
-fenêtre, pas sur GitHub). Voir la fiche du wiki « Publier une version ».
+A version's section becomes, as it is, the note of its GitHub Release and the text the update window shows to users.
+Write for them: short sentences, as dashes, no bold or code (the window of versions 4.4 and earlier would show the
+markup as it is), about 800 characters at most (the window cuts the rest, GitHub does not). See the wiki page
+"Publier une version".
+
+## 4.7
+
+- Deep sky: the 110 Messier objects (nebulae, clusters, galaxies) on the sky map, with their card; a switch turns
+  them off.
+- Tonight lists the best deep-sky objects of the night and the visible passes of the space stations.
+- Satellite passes: the International Space Station, Tiangong and Hubble over the next 10 days, with the time they
+  appear, their highest point and when they vanish into the Earth's shadow. The orbits are downloaded every two days.
+- Release notes, code and documentation are now written in English; the interface stays in French, English,
+  Spanish and German.
 
 ## 4.6
 
-- Recherche de lieu : tapez le nom d'une ville (34 000 villes, sans connexion) ; latitude, longitude et altitude
-  se remplissent.
-- « Ce soir », en tête des éphémérides : la nuit noire, la Lune, les planètes visibles et les trois prochains
-  évènements visibles de chez vous.
-- Calendrier lunaire du mois : la phase, le lever et le coucher de la Lune chaque jour.
-- Le planétaire de l'onglet Planètes s'anime, d'un jour à un an par pas.
-- Comètes : C/2026 O1, 45P, C/2026 C1 et 19P, de 2025 à 2031, dans les planètes, la carte du ciel et les
-  évènements.
+- Place search: type the name of a city (34,000 cities, no connection needed); latitude, longitude and elevation
+  are filled in.
+- Tonight, at the top of the ephemeris: the dark night, the Moon, the visible planets and the next three events
+  visible from your place.
+- Monthly lunar calendar: the phase, rise and set of the Moon each day.
+- The orrery of the Planets tab is animated, from one day to one year per step.
+- Comets: C/2026 O1, 45P, C/2026 C1 and 19P, from 2025 to 2031, in the planets, the sky map and the events.
 
 ## 4.5
 
-- Étoiles filantes dans l'onglet Évènements : les maxima des 13 grandes pluies de l'année (Quadrantides, Lyrides,
-  Perséides, Orionides, Léonides, Géminides…), d'après le calendrier de l'Organisation internationale des météores.
-- Pour chacune, la nuit du maximum vue de chez vous : meilleur moment, hauteur et direction du radiant, nombre de
-  météores par heure sous un ciel noir, et gêne due à la Lune.
-- Un filtre « Étoiles filantes », et l'export vers votre agenda comme les autres évènements.
-- Les notes de version, comme celle-ci, sont désormais en français.
+- Meteor showers in the Events tab: the peaks of the 13 major showers of the year (Quadrantids, Lyrids, Perseids,
+  Orionids, Leonids, Geminids…), from the calendar of the International Meteor Organization.
+- For each, the night of the peak seen from your place: best moment, height and direction of the radiant, meteors
+  per hour under a dark sky, and the Moon's interference.
+- A "Meteor showers" filter, and export to your calendar like the other events.
+- Release notes, like this one, are now in French.
 
 ## 4.4
 
-- Mises à jour plus légères : 82 Mo au lieu de 111. L'éphéméride JPL (32 Mo) n'est plus dans le programme
-  d'installation ; Céleste la télécharge une seule fois, au premier lancement, et la vérifie.
-- Une installation existante garde son éphéméride : rien n'est retéléchargé.
-- Les fenêtres de données et les cartes fermées ne restent plus en mémoire.
+- Lighter updates: 82 MB instead of 111. The JPL ephemeris (32 MB) is no longer in the installer; Céleste
+  downloads it once, at the first launch, and checks it.
+- An existing installation keeps its ephemeris: nothing is downloaded again.
+- Closed data windows and maps no longer stay in memory.
 
 ## 4.3.1
 
-- Bandeaux et bouton Buy Me a Coffee sur la page du dépôt.
-- La mise à jour silencieuse écrit son journal dans %TEMP%\Celeste-update\install.log.
+- Badges and a Buy Me a Coffee button on the repository page.
+- The silent update writes its log to %TEMP%\Celeste-update\install.log.
 
 ## 4.3
 
-- Mise à jour automatique : Céleste cherche une nouvelle version au démarrage et l'installe sans tout réinstaller
-  (Paramètres › À propos).
-- Sedna rejoint les planètes mineures, qui portent leur numéro du Minor Planet Center : (136199) Éris.
-- Symboles d'Éris, Haumea, Makemake et Sedna.
-- Un wiki de fiches pratiques pour modifier Céleste.
+- Automatic update: Céleste looks for a new version at startup and installs it without a full reinstall
+  (Settings › About).
+- Sedna joins the minor planets, which carry their Minor Planet Center number: (136199) Eris.
+- Symbols for Eris, Haumea, Makemake and Sedna.
+- A wiki of how-to pages for changing Céleste.
 
 ## 4.2
 
-- Les évènements vus de chez vous : visibles le soir, le matin ou toute la nuit, et les occultations par la Lune.
-- Circonstances locales des éclipses : heures des contacts, magnitude, durée de la totalité.
-- Planètes mineures : Cérès, Pallas, Junon, Vesta, Pluton, Éris, Haumea, Makemake.
-- Conjonctions de la Lune, périgées, apogées et super lunes ; équinoxes, solstices, périhélie et aphélie.
-- Fenêtre de données d'un astre, tri de l'onglet Planètes, liens dans les paramètres, géolocalisation plus sûre,
-  logo du programme d'installation.
+- Events seen from your place: visible in the evening, the morning or all night, and occultations by the Moon.
+- Local circumstances of eclipses: contact times, magnitude, length of totality.
+- Minor planets: Ceres, Pallas, Juno, Vesta, Pluto, Eris, Haumea, Makemake.
+- Conjunctions of the Moon, perigees, apogees and supermoons; equinoxes, solstices, perihelion and aphelion.
+- Data window of a body, sorting in the Planets tab, links in the settings, safer geolocation, installer logo.
 
 ## 4.1
 
-- Moteur JPL DE440 : positions à 0,07″ de JPL Horizons, levers et couchers à la seconde, fuseaux horaires et heure
-  d'été du lieu.
-- Onglet Coordonnées, étoiles ramenées à la date, vraie position GPS.
-- Conjonctions, oppositions et élongations à la minute, avec leur carte ; éclipses projetées sur la Terre.
-- Préférences et favoris dans le dossier de l'utilisateur ; application Windows autonome.
+- JPL DE440 engine: positions within 0.07″ of JPL Horizons, rises and sets to the second, time zones and summer
+  time of the place.
+- Coordinates tab, stars brought to the date, true GPS position.
+- Conjunctions, oppositions and elongations to the minute, with their map; eclipses projected on the Earth.
+- Preferences and favourites in the user's folder; standalone Windows application.
 
-Les versions antérieures sont décrites par l'historique du dépôt.
+Earlier versions are described by the history of the repository.

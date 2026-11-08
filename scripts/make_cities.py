@@ -1,18 +1,18 @@
 """
-scripts/make_cities.py — Villes pour la recherche de lieu (assets/cities.tsv.gz)
-================================================================================
-Télécharge la liste GeoNames des villes de plus de 15 000 habitants
-(cities15000, licence CC BY 4.0, https://www.geonames.org) et la réduit à ce
-dont la recherche de lieu a besoin, une ville par ligne, des plus peuplées aux
-moins peuplées :
+scripts/make_cities.py — Cities for the place search (assets/cities.tsv.gz)
+============================================================================
+Downloads the GeoNames list of the cities of more than 15,000 inhabitants
+(cities15000, CC BY 4.0 licence, https://www.geonames.org) and reduces it to
+what the place search needs, one city per line, from the most populated to
+the least:
 
-    nom  autres noms (séparés par |)  pays  région  latitude  longitude  altitude  population
+    name  other names (separated by |)  country  region  latitude  longitude  elevation  population
 
-Les autres noms (Londres, Moscou, Pékin…) ne sont gardés que pour les villes de
-plus de 100 000 habitants, et seulement en écriture latine : le fichier reste
-petit et la recherche se tape au clavier.
+The other names (Londres, Moscou, Pékin…) are kept only for the cities of more
+than 100,000 inhabitants, and only in Latin script: the file stays small and
+the search is typed on a keyboard.
 
-Usage : python scripts/make_cities.py      (quelques secondes, 3 Mo à télécharger)
+Usage: python scripts/make_cities.py      (a few seconds, 3 MB to download)
 """
 import gzip
 import io
@@ -34,12 +34,12 @@ def fetch(name):
 
 
 def latin(text):
-    """Écriture latine seulement (lettres accentuées comprises), une majuscule en tête,
-    sans codes en capitales, translittérations en minuscules ni surnoms."""
+    """Latin script only (accented letters included), a capital first, no codes in
+    capitals, lower-case transliterations or nicknames."""
     if not text or len(text) < 3 or len(text) > 40 or not text[0].isupper() \
             or (text.isupper() and len(text) <= 4):
         return False
-    if len(text.split()) > 3 or " of " in text:        # surnoms : « Paris of the North »
+    if len(text.split()) > 3 or " of " in text:        # nicknames: "Paris of the North"
         return False
     for ch in text:
         if ch.isalpha() and not unicodedata.name(ch, "").startswith("LATIN"):
@@ -75,7 +75,7 @@ def main():
     data = ("\n".join(r[1] for r in rows) + "\n").encode("utf-8")
     with open(OUT, "wb") as out:
         out.write(gzip.compress(data, compresslevel=9, mtime=0))
-    print(f"{len(rows)} villes, {os.path.getsize(OUT) / 1e6:.2f} Mo : {OUT}")
+    print(f"{len(rows)} cities, {os.path.getsize(OUT) / 1e6:.2f} MB: {OUT}")
 
 
 if __name__ == "__main__":

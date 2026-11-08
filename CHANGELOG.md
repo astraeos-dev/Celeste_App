@@ -7,6 +7,13 @@ Write for them: short sentences, as dashes, no bold or code (the window of versi
 markup as it is), about 800 characters at most (the window cuts the rest, GitHub does not). See the wiki page
 "Publier une version".
 
+## 4.7.1
+
+- Updates hold up when GitHub answers badly (errors 503 or 504, as during its incidents): Céleste asks two ways,
+  through the GitHub API and through github.com, three times before giving up.
+- When an update cannot be downloaded, Céleste now says why, instead of closing the progress window without a word,
+  and offers the release page to install it by hand.
+
 ## 4.7
 
 - Deep sky: the 110 Messier objects (nebulae, clusters, galaxies) on the sky map, with their card; a switch turns

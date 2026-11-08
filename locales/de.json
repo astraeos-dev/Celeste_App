@@ -671,6 +671,7 @@
     "skip": "Diese Version überspringen",
     "later": "Später",
     "from_source": "Céleste läuft aus den Quellen: Aktualisieren Sie es mit „git pull“.",
+    "failed_hint": "Sie können das Installationsprogramm von der Versionsseite herunterladen und ausführen: Einstellungen und Favoriten bleiben erhalten. Protokoll: {path}",
     "downloading": "Céleste {version} wird heruntergeladen…",
     "cancel": "Abbrechen",
     "installing": "Céleste {version} wird installiert: Die Anwendung schließt sich und öffnet sich erneut.",

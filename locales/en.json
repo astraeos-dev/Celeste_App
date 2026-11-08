@@ -671,6 +671,7 @@
     "skip": "Skip this version",
     "later": "Later",
     "from_source": "Céleste runs from its sources: update it with “git pull”.",
+    "failed_hint": "You can download the installer from the release page and run it: your settings and favourites are kept. Log: {path}",
     "downloading": "Downloading Céleste {version}…",
     "cancel": "Cancel",
     "installing": "Installing Céleste {version}: the application will close and reopen.",

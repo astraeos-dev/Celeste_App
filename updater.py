@@ -8,6 +8,10 @@ against the one published with it (.sha256), then it runs silently: it
 installs the new version over the old one (same Inno Setup AppId), keeping
 settings and favourites, and reopens Céleste.
 
+v4.7.1: the files come from the GitHub API first (the github.com links are
+sometimes slow or answer 504), with github.com as a fallback and up to three
+rounds of attempts; each failure goes to update.log, next to the installer.
+
 The Releases are created by the "Build — Windows application" workflow when
 APP_VERSION changes on master. This module does not depend on Qt.
 """
@@ -17,6 +21,8 @@ import os
 import re
 import sys
 import tempfile
+import time
+import urllib.parse
 import urllib.request
 
 from config import APP_VERSION
@@ -24,17 +30,28 @@ from config import APP_VERSION
 REPOSITORY = "astraeos-dev/Celeste_App"
 LATEST_RELEASE_API = f"https://api.github.com/repos/{REPOSITORY}/releases/latest"
 _SETUP = re.compile(r"^Celeste-(?P<version>[\d.]+)-Setup\.exe$")
+_ASSET = "application/octet-stream"     # a Release file, through the API or github.com
+_ATTEMPTS = 3                           # rounds over the sources (API, then github.com)
+_RETRY_DELAY_S = 2.0                    # pause before the 2nd round; twice as long before the 3rd
 
 
 class UpdateError(RuntimeError):
     """An update could not be checked, downloaded or verified."""
 
 
+class UpdateCancelled(UpdateError):
+    """The user interrupted the download."""
+
+
+class CorruptDownload(UpdateError):
+    """A complete file whose checksum differs: downloading it again would not help."""
+
+
 def parse_version(text):
     """"v4.2.1" → (4, 2, 1); "4.2" → (4, 2, 0)."""
     numbers = [int(n) for n in re.findall(r"\d+", text or "")[:3]]
     if not numbers:
-        raise ValueError(f"version illisible : {text!r}")
+        raise ValueError(f"unreadable version: {text!r}")
     return tuple(numbers + [0] * (3 - len(numbers)))
 
 
@@ -42,10 +59,29 @@ def is_newer(remote, local=APP_VERSION):
     return parse_version(remote) > parse_version(local)
 
 
-def _request(url):
+def _request(url, accept="application/vnd.github+json"):
     return urllib.request.Request(url, headers={
-        "Accept": "application/vnd.github+json",
+        "Accept": accept,
         "User-Agent": f"Celeste/{APP_VERSION} (+https://github.com/{REPOSITORY})"})
+
+
+def update_folder():
+    """Where the installer, update.log and the installer's install.log go."""
+    return os.path.join(tempfile.gettempdir(), "Celeste-update")
+
+
+def log_path():
+    return os.path.join(update_folder(), "update.log")
+
+
+def log(message):
+    """Adds a dated line to update.log, to find out why an update failed."""
+    try:
+        os.makedirs(update_folder(), exist_ok=True)
+        with open(log_path(), "a", encoding="utf-8") as f:
+            f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')}  Céleste {APP_VERSION}  {message}\n")
+    except OSError:
+        pass
 
 
 def latest_release(timeout=10):
@@ -54,8 +90,9 @@ def latest_release(timeout=10):
 
     Returns:
         dict | None: version, tag, notes, page (address of the Release),
-        setup_url, setup_name, setup_size, sha256_url; None when the Release
-        has no installer.
+        setup_url, setup_name, setup_size, sha256_url (github.com links),
+        setup_api_url, sha256_api_url (the same files through the API);
+        None when the Release has no installer.
     """
     try:
         with urllib.request.urlopen(_request(LATEST_RELEASE_API), timeout=timeout) as resp:
@@ -76,6 +113,8 @@ def latest_release(timeout=10):
         "setup_name": setup["name"],
         "setup_size": int(setup.get("size") or 0),
         "sha256_url": checksum["browser_download_url"] if checksum else None,
+        "setup_api_url": setup.get("url"),
+        "sha256_api_url": checksum.get("url") if checksum else None,
     }
 
 
@@ -115,10 +154,10 @@ def sha256_of(path):
     return digest.hexdigest()
 
 
-def expected_sha256(url, timeout=10):
+def expected_sha256(url, timeout=10, accept=_ASSET):
     """Checksum published with the installer ("<hex>  <name>")."""
     try:
-        with urllib.request.urlopen(_request(url), timeout=timeout) as resp:
+        with urllib.request.urlopen(_request(url, accept), timeout=timeout) as resp:
             text = resp.read(4096).decode("ascii", "replace")
     except Exception as exc:
         raise UpdateError(str(exc)) from exc
@@ -126,6 +165,47 @@ def expected_sha256(url, timeout=10):
     if not match:
         raise UpdateError("unreadable SHA-256 checksum")
     return match.group(0).lower()
+
+
+def _sources(release, kind):
+    """(address, Accept) of the installer (*kind* "setup") or of its checksum
+    ("sha256"): through the API first, then the github.com link."""
+    urls = (release.get(f"{kind}_api_url"), release.get(f"{kind}_url"))
+    return [(url, _ASSET) for url in urls if url]
+
+
+def _pause(seconds, cancelled):
+    end = time.monotonic() + seconds
+    while time.monotonic() < end:
+        if cancelled is not None and cancelled():
+            raise UpdateCancelled("download interrupted")
+        time.sleep(0.1)
+
+
+def _with_retries(sources, fetch, cancelled=None):
+    """
+    fetch(url, accept) on each source in turn, for up to _ATTEMPTS rounds;
+    the first success wins. Each failure is logged; the last one is raised.
+    A cancellation or a corrupt file stops at once.
+    """
+    last = UpdateError("no download address")
+    for attempt in range(_ATTEMPTS):
+        if attempt:
+            _pause(_RETRY_DELAY_S * attempt, cancelled)
+        for url, accept in sources:
+            if cancelled is not None and cancelled():
+                raise UpdateCancelled("download interrupted")
+            try:
+                return fetch(url, accept)
+            except UpdateCancelled:
+                log("cancelled")
+                raise
+            except Exception as exc:
+                last = UpdateError(f"{urllib.parse.urlsplit(url).hostname}: {exc}")
+                log(f"attempt {attempt + 1}, {url}: {exc}")
+                if isinstance(exc, CorruptDownload):
+                    raise last from exc
+    raise last
 
 
 def download(release, progress=None, cancelled=None, timeout=30):
@@ -139,36 +219,42 @@ def download(release, progress=None, cancelled=None, timeout=30):
     Returns:
         str: path of the verified installer.
     """
-    if not release.get("sha256_url"):
+    checksum_sources = _sources(release, "sha256")
+    if not checksum_sources:
         raise UpdateError("no SHA-256 checksum published with this version")
-    expected = expected_sha256(release["sha256_url"], timeout)
-    folder = os.path.join(tempfile.gettempdir(), "Celeste-update")
-    os.makedirs(folder, exist_ok=True)
-    path = os.path.join(folder, release["setup_name"])
-    try:
-        with urllib.request.urlopen(_request(release["setup_url"]), timeout=timeout) as resp, \
-                open(path, "wb") as out:
-            total = int(resp.headers.get("Content-Length") or release.get("setup_size") or 0)
-            done = 0
-            while True:
-                if cancelled is not None and cancelled():
-                    raise UpdateError("download interrupted")
-                block = resp.read(1 << 16)
-                if not block:
-                    break
-                out.write(block)
-                done += len(block)
-                if progress is not None:
-                    progress(done, total)
-    except UpdateError:
-        _remove(path)
-        raise
-    except Exception as exc:
-        _remove(path)
-        raise UpdateError(str(exc)) from exc
-    if sha256_of(path) != expected:
-        _remove(path)
-        raise UpdateError("different SHA-256 checksum: corrupt file")
+    log(f"downloading {release.get('setup_name')}")
+    expected = _with_retries(checksum_sources,
+                             lambda url, accept: expected_sha256(url, timeout, accept), cancelled)
+    os.makedirs(update_folder(), exist_ok=True)
+    path = os.path.join(update_folder(), release["setup_name"])
+
+    def fetch(url, accept):
+        try:
+            with urllib.request.urlopen(_request(url, accept), timeout=timeout) as resp, \
+                    open(path, "wb") as out:
+                total = int(resp.headers.get("Content-Length") or release.get("setup_size") or 0)
+                done = 0
+                while True:
+                    if cancelled is not None and cancelled():
+                        raise UpdateCancelled("download interrupted")
+                    block = resp.read(1 << 16)
+                    if not block:
+                        break
+                    out.write(block)
+                    done += len(block)
+                    if progress is not None:
+                        progress(done, total)
+            if total and done != total:
+                raise UpdateError(f"incomplete download ({done} of {total} bytes)")
+            if sha256_of(path) != expected:
+                raise CorruptDownload("different SHA-256 checksum: corrupt file")
+            return path
+        except BaseException:
+            _remove(path)
+            raise
+
+    path = _with_retries(_sources(release, "setup"), fetch, cancelled)
+    log(f"downloaded and verified: {path}")
     return path
 
 
@@ -190,9 +276,9 @@ def installer_command(setup_path, app_dir=None):
     app_dir = os.path.normcase(os.path.abspath(app_dir or os.path.dirname(sys.executable)))
     program_files = [os.environ.get(k) for k in ("ProgramFiles", "ProgramFiles(x86)", "ProgramW6432")]
     machine = any(p and app_dir.startswith(os.path.normcase(os.path.abspath(p))) for p in program_files)
-    log = os.path.join(os.path.dirname(os.path.abspath(setup_path)), "install.log")
+    install_log = os.path.join(os.path.dirname(os.path.abspath(setup_path)), "install.log")
     return [setup_path, "/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CLOSEAPPLICATIONS",
-            "/ALLUSERS" if machine else "/CURRENTUSER", f"/LOG={log}"]
+            "/ALLUSERS" if machine else "/CURRENTUSER", f"/LOG={install_log}"]
 
 
 def launch_installer(setup_path):

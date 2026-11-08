@@ -1326,3 +1326,40 @@ class TestUpdates:
         monkeypatch.setattr(gui.updater, "latest_release", fail)
         window.check_updates(interactive=False)
         assert "no network" in window._update_info.text()
+
+    def test_failed_download_is_reported(self, window, offline, monkeypatch):
+        """v4.7.1: closing the progress window emitted canceled, which hid the error."""
+        import gui
+
+        def fail(release, progress=None, cancelled=None):
+            progress(1000, 10_000)
+            raise gui.updater.UpdateError("api.github.com: HTTP Error 504: Gateway Timeout")
+        monkeypatch.setattr(gui.updater, "download", fail)
+        window._install_update(dict(self.RELEASE))
+        box = window._update_failure
+        assert box.isVisible() and "Mise à jour impossible" in box.text() and "504" in box.text()
+        assert gui.updater.log_path() in box.informativeText()
+        assert "Voir la version" in {b.text() for b in box.buttons()}
+        assert not window._update_progress.isVisible()
+        box.close()
+
+    def test_cancelled_download_is_silent(self, window, offline, monkeypatch):
+        import gui
+
+        def cancel(release, progress=None, cancelled=None):
+            window._update_progress.canceled.emit()            # what the Cancel button sends
+            assert cancelled()
+            raise gui.updater.UpdateCancelled("download interrupted")
+        monkeypatch.setattr(gui.updater, "download", cancel)
+        window._install_update(dict(self.RELEASE))
+        assert getattr(window, "_update_failure", None) is None
+
+    def test_downloaded_installer_is_launched(self, window, offline, monkeypatch):
+        import gui
+        launched, timers = [], []
+        monkeypatch.setattr(gui.updater, "download", lambda release, **_kw: "/tmp/Celeste-99.0-Setup.exe")
+        monkeypatch.setattr(gui.updater, "launch_installer", launched.append)
+        monkeypatch.setattr(gui.QTimer, "singleShot", lambda *args: timers.append(args))
+        window._install_update(dict(self.RELEASE))
+        assert launched == ["/tmp/Celeste-99.0-Setup.exe"] and timers and timers[0][0] == 300
+        assert getattr(window, "_update_failure", None) is None

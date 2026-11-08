@@ -1619,7 +1619,6 @@ class AstroApp(QMainWindow):
         Looks for a newer version (GitHub Release). *interactive* (button):
         the answer always shows; at startup, only when there is a new version
         the user did not choose to skip.
-        d'ignorer.
         """
         if getattr(self, "_update_busy", False):
             return
@@ -1681,12 +1680,15 @@ class AstroApp(QMainWindow):
 
     def _install_update(self, release):
         """Downloads and checks the installer, runs it, then closes Céleste."""
-        state = {"done": 0, "total": release.get("setup_size") or 0, "cancel": False}
+        state = {"done": 0, "total": release.get("setup_size") or 0, "cancel": False,
+                 "closing": False}
         progress = QProgressDialog(tf("update.downloading", version=release["version"]),
                                    t("update.cancel"), 0, 1000, self)
         progress.setWindowTitle(t("update.title"))
         progress.setMinimumDuration(0)
-        progress.canceled.connect(lambda: state.update(cancel=True))
+        # close() emits canceled too: only the Cancel button (or the window's ×)
+        # before the end of the download is the user's cancellation
+        progress.canceled.connect(lambda: state["closing"] or state.update(cancel=True))
         ticker = QTimer(progress)
         ticker.timeout.connect(lambda: progress.setValue(
             int(1000 * state["done"] / state["total"]) if state["total"] else 0))
@@ -1697,19 +1699,40 @@ class AstroApp(QMainWindow):
             return updater.download(release, progress=lambda d, n: state.update(done=d, total=n),
                                     cancelled=lambda: state["cancel"])
 
-        def downloaded(path):
+        def finish():
+            state["closing"] = True
             ticker.stop()
             progress.close()
+
+        def downloaded(path):
+            finish()
             self.statusBar().showMessage(tf("update.installing", version=release["version"]))
             updater.launch_installer(path)
             QTimer.singleShot(300, QApplication.instance().quit)
 
         def failed(error):
-            ticker.stop()
-            progress.close()
-            if not state["cancel"]:
-                QMessageBox.warning(self, t("update.title"), tf("update.error", detail=error))
+            cancelled = state["cancel"]
+            finish()
+            if not cancelled:
+                self._show_update_failure(release, error)
         _run_in_background(fetch, downloaded, failed)
+
+    def _show_update_failure(self, release, error):
+        """Window (non-modal): why the download failed, the release page to
+        install by hand, and the log."""
+        box = QMessageBox(QMessageBox.Icon.Warning, t("update.title"),
+                          tf("update.error", detail=error), parent=self)
+        box.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        box.setInformativeText(tf("update.failed_hint", path=updater.log_path()))
+        page = box.addButton(t("update.open_page"), QMessageBox.ButtonRole.ActionRole)
+        box.addButton(QMessageBox.StandardButton.Close)
+
+        def done(_result):
+            if box.clickedButton() is page:
+                _open_url(release["page"])
+        box.finished.connect(done)
+        self._update_failure = box
+        box.open()
 
     def _on_planet_group(self, key):
         self._planet_group = key

@@ -671,6 +671,7 @@
     "skip": "Omitir esta versión",
     "later": "Más tarde",
     "from_source": "Céleste se ejecuta desde sus fuentes: actualícelo con «git pull».",
+    "failed_hint": "Puede descargar el instalador desde la página de la versión y ejecutarlo: se conservan sus ajustes y favoritos. Registro: {path}",
     "downloading": "Descargando Céleste {version}…",
     "cancel": "Cancelar",
     "installing": "Instalando Céleste {version}: la aplicación se cerrará y volverá a abrirse.",

@@ -358,7 +358,8 @@ is needed on that day; after that everything works offline, and the updates (≈
   SHA-256 checksum, and the note of the version, taken from the changelog).
 - **Automatic update**: an installed Céleste looks for a newer version at startup (or through Settings › About › Check
   for updates), downloads it, checks its checksum, installs it over the old one and reopens, with the settings and
-  favourites kept (`updater.py`). See the wiki, [Publier une version](docs/wiki/Publier-une-version.md) (in French).
+  favourites kept (`updater.py`). When a download fails, the window says why; each attempt is logged in
+  `%TEMP%\Celeste-update\update.log`. See the wiki, [Publier une version](docs/wiki/Publier-une-version.md) (in French).
 - **On a Windows PC**:
 
 ```bash

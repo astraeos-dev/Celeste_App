@@ -1,146 +1,38 @@
 {
-  "Caen": {
-    "lat": 49.1833,
-    "lon": -0.3667
-  },
-  "Rouen": {
-    "lat": 49.4431,
-    "lon": 1.0993
-  },
-  "Le Havre": {
-    "lat": 49.4938,
-    "lon": 0.1077
-  },
-  "Saint-Malo": {
-    "lat": 48.6493,
-    "lon": -2.0107
-  },
-  "Mont-Saint-Michel": {
-    "lat": 48.6361,
-    "lon": -1.5115
-  },
-  "Rennes": {
-    "lat": 48.1147,
-    "lon": -1.6794
-  },
-  "Paris": {
-    "lat": 48.8566,
-    "lon": 2.3522
-  },
-  "Lyon": {
-    "lat": 45.764,
-    "lon": 4.8357
-  },
-  "Marseille": {
-    "lat": 43.2965,
-    "lon": 5.3698
-  },
-  "Bordeaux": {
-    "lat": 44.8378,
-    "lon": -0.5792
-  },
-  "Toulouse": {
-    "lat": 43.6047,
-    "lon": 1.4442
-  },
-  "Nice": {
-    "lat": 43.7102,
-    "lon": 7.262
-  },
-  "Strasbourg": {
-    "lat": 48.5734,
-    "lon": 7.7521
-  },
-  "Nantes": {
-    "lat": 47.2184,
-    "lon": -1.5536
-  },
-  "Londres": {
-    "lat": 51.5074,
-    "lon": -0.1278
-  },
-  "Madrid": {
-    "lat": 40.4168,
-    "lon": -3.7038
-  },
-  "Berlin": {
-    "lat": 52.52,
-    "lon": 13.405
-  },
-  "Rome": {
-    "lat": 41.9028,
-    "lon": 12.4964
-  },
-  "Bruxelles": {
-    "lat": 50.8503,
-    "lon": 4.3517
-  },
-  "Amsterdam": {
-    "lat": 52.3676,
-    "lon": 4.9041
-  },
-  "Lisbonne": {
-    "lat": 38.7169,
-    "lon": -9.1399
-  },
-  "Reykjavik": {
-    "lat": 64.1265,
-    "lon": -21.8174
-  },
-  "Moscou": {
-    "lat": 55.7558,
-    "lon": 37.6173
-  },
-  "New York": {
-    "lat": 40.7128,
-    "lon": -74.006
-  },
-  "Los Angeles": {
-    "lat": 34.0522,
-    "lon": -118.2437
-  },
-  "Montréal": {
-    "lat": 45.5017,
-    "lon": -73.5673
-  },
-  "Mexico": {
-    "lat": 19.4326,
-    "lon": -99.1332
-  },
-  "Rio de Janeiro": {
-    "lat": -22.9068,
-    "lon": -43.1729
-  },
-  "Le Caire": {
-    "lat": 30.0444,
-    "lon": 31.2357
-  },
-  "Nairobi": {
-    "lat": -1.2921,
-    "lon": 36.8219
-  },
-  "Le Cap": {
-    "lat": -33.9249,
-    "lon": 18.4241
-  },
-  "Dubaï": {
-    "lat": 25.2048,
-    "lon": 55.2708
-  },
-  "Pékin": {
-    "lat": 39.9042,
-    "lon": 116.4074
-  },
-  "Tokyo": {
-    "lat": 35.6762,
-    "lon": 139.6503
-  },
-  "Sydney": {
-    "lat": -33.8688,
-    "lon": 151.2093
-  },
-  "Anchorage": {
-    "lat": 61.2181,
-    "lon": -149.9003
-  }
+  "Caen": {"lat": 49.1833, "lon": -0.3667, "elev": 21},
+  "Rouen": {"lat": 49.4431, "lon": 1.0993, "elev": 21, "names": {"en": "Rouen", "es": "Ruan", "de": "Rouen"}},
+  "Le Havre": {"lat": 49.4938, "lon": 0.1077, "elev": 5, "names": {"en": "Le Havre", "es": "El Havre", "de": "Le Havre"}},
+  "Saint-Malo": {"lat": 48.6493, "lon": -2.0107, "elev": 10},
+  "Mont-Saint-Michel": {"lat": 48.6361, "lon": -1.5115, "elev": 10},
+  "Rennes": {"lat": 48.1147, "lon": -1.6794, "elev": 39},
+  "Paris": {"lat": 48.8566, "lon": 2.3522, "elev": 44, "names": {"en": "Paris", "es": "París", "de": "Paris"}},
+  "Lyon": {"lat": 45.764, "lon": 4.8357, "elev": 180},
+  "Marseille": {"lat": 43.2965, "lon": 5.3698, "elev": 6, "names": {"en": "Marseille", "es": "Marsella", "de": "Marseille"}},
+  "Bordeaux": {"lat": 44.8378, "lon": -0.5792, "elev": 20, "names": {"en": "Bordeaux", "es": "Burdeos", "de": "Bordeaux"}},
+  "Toulouse": {"lat": 43.6047, "lon": 1.4442, "elev": 150},
+  "Nice": {"lat": 43.7102, "lon": 7.262, "elev": 25, "names": {"en": "Nice", "es": "Niza", "de": "Nizza"}},
+  "Strasbourg": {"lat": 48.5734, "lon": 7.7521, "elev": 147, "names": {"en": "Strasbourg", "es": "Estrasburgo", "de": "Straßburg"}},
+  "Nantes": {"lat": 47.2184, "lon": -1.5536, "elev": 19},
+  "Londres": {"lat": 51.5074, "lon": -0.1278, "elev": 25, "names": {"en": "London", "es": "Londres", "de": "London"}},
+  "Madrid": {"lat": 40.4168, "lon": -3.7038, "elev": 665},
+  "Berlin": {"lat": 52.52, "lon": 13.405, "elev": 48, "names": {"en": "Berlin", "es": "Berlín", "de": "Berlin"}},
+  "Rome": {"lat": 41.9028, "lon": 12.4964, "elev": 56, "names": {"en": "Rome", "es": "Roma", "de": "Rom"}},
+  "Bruxelles": {"lat": 50.8503, "lon": 4.3517, "elev": 28, "names": {"en": "Brussels", "es": "Bruselas", "de": "Brüssel"}},
+  "Amsterdam": {"lat": 52.3676, "lon": 4.9041, "elev": 0, "names": {"en": "Amsterdam", "es": "Ámsterdam", "de": "Amsterdam"}},
+  "Lisbonne": {"lat": 38.7169, "lon": -9.1399, "elev": 68, "names": {"en": "Lisbon", "es": "Lisboa", "de": "Lissabon"}},
+  "Reykjavik": {"lat": 64.1265, "lon": -21.8174, "elev": 37, "names": {"en": "Reykjavik", "es": "Reikiavik", "de": "Reykjavík"}},
+  "Moscou": {"lat": 55.7558, "lon": 37.6173, "elev": 155, "names": {"en": "Moscow", "es": "Moscú", "de": "Moskau"}},
+  "New York": {"lat": 40.7128, "lon": -74.006, "elev": 10, "names": {"en": "New York", "es": "Nueva York", "de": "New York"}},
+  "Los Angeles": {"lat": 34.0522, "lon": -118.2437, "elev": 89, "names": {"en": "Los Angeles", "es": "Los Ángeles", "de": "Los Angeles"}},
+  "Montréal": {"lat": 45.5017, "lon": -73.5673, "elev": 36, "names": {"en": "Montreal", "es": "Montreal", "de": "Montreal"}},
+  "Mexico": {"lat": 19.4326, "lon": -99.1332, "elev": 2240, "names": {"en": "Mexico City", "es": "Ciudad de México", "de": "Mexiko-Stadt"}},
+  "Rio de Janeiro": {"lat": -22.9068, "lon": -43.1729, "elev": 12, "names": {"en": "Rio de Janeiro", "es": "Río de Janeiro", "de": "Rio de Janeiro"}},
+  "Le Caire": {"lat": 30.0444, "lon": 31.2357, "elev": 27, "names": {"en": "Cairo", "es": "El Cairo", "de": "Kairo"}},
+  "Nairobi": {"lat": -1.2921, "lon": 36.8219, "elev": 1684},
+  "Le Cap": {"lat": -33.9249, "lon": 18.4241, "elev": 25, "names": {"en": "Cape Town", "es": "Ciudad del Cabo", "de": "Kapstadt"}},
+  "Dubaï": {"lat": 25.2048, "lon": 55.2708, "elev": 7, "names": {"en": "Dubai", "es": "Dubái", "de": "Dubai"}},
+  "Pékin": {"lat": 39.9042, "lon": 116.4074, "elev": 49, "names": {"en": "Beijing", "es": "Pekín", "de": "Peking"}},
+  "Tokyo": {"lat": 35.6762, "lon": 139.6503, "elev": 46, "names": {"en": "Tokyo", "es": "Tokio", "de": "Tokio"}},
+  "Sydney": {"lat": -33.8688, "lon": 151.2093, "elev": 58, "names": {"en": "Sydney", "es": "Sídney", "de": "Sydney"}},
+  "Anchorage": {"lat": 61.2181, "lon": -149.9003, "elev": 31}
 }

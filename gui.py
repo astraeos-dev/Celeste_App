@@ -276,6 +276,26 @@ def _fmt_lon(lon):
     return f"{_num(abs(lon), 4)}° {t('coords.east') if lon >= 0 else t('coords.west')}"
 
 
+def _default_favorites(lang=None):
+    """
+    The preloaded places (favorites_default.json), named in the interface
+    language: a place's key is its French name, and "names" gives the others
+    where they differ. A language without its own name gets the English one.
+    """
+    lang = lang or get_lang()
+    try:
+        with open(_DEFAULT_FAVORITES_FILE, "r", encoding="utf-8") as f:
+            preloaded = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return {}
+    favorites = {}
+    for key, place in preloaded.items():
+        names = place.get("names", {})
+        name = key if lang == "fr" else names.get(lang, names.get("en", key))
+        favorites[name] = {k: v for k, v in place.items() if k != "names"}
+    return favorites
+
+
 def _coord_text(value):
     """A coordinate shown in a field (decimal comma in French)."""
     return _num(value, 4)
@@ -2169,6 +2189,8 @@ class AstroApp(QMainWindow):
         tab, the real-time mode and, with *keep_place*, the place."""
         state = self._snapshot()
         apply_theme(QApplication.instance())
+        named_by_favorite = state["fav"] >= 0 and self.location_name == self.combo_fav.currentText()
+        self.favorites = self._load_favorites()          # preloaded places: in the new language
         self._build_ui()
         self._set_datetime(state["dte"])
         if keep_place:
@@ -2176,6 +2198,8 @@ class AstroApp(QMainWindow):
                 edit.setText(_coord_text(value) if isinstance(value, float) else value)
             self.entry_elev.setText(state["elev"])
             self.combo_fav.setCurrentIndex(state["fav"])
+            if named_by_favorite and self.combo_fav.currentIndex() >= 0:
+                self.location_name = self.combo_fav.currentText()
         self._dirty = set()
         self.tabs.setCurrentIndex(state["tab"])
         self.btn_live.blockSignals(True)
@@ -2290,14 +2314,15 @@ class AstroApp(QMainWindow):
     # ──────────────────────────────────────────────────────────────────────────
 
     def _load_favorites(self):
-        for path in (_FAVORITES_FILE, _LEGACY_FAVORITES_FILE, _DEFAULT_FAVORITES_FILE):
+        """The user's favourites; until one is saved, the preloaded places."""
+        for path in (_FAVORITES_FILE, _LEGACY_FAVORITES_FILE):
             if os.path.exists(path):
                 try:
                     with open(path, "r", encoding="utf-8") as f:
                         return json.load(f)
                 except (OSError, json.JSONDecodeError):
                     continue
-        return {}
+        return _default_favorites()
 
     def _save_favorites(self):
         try:

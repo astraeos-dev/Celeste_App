@@ -1107,10 +1107,33 @@ class TestUserFiles:
         monkeypatch.setattr(gui, "_LEGACY_FAVORITES_FILE", str(tmp_path / "absent.json"))
         favorites = window._load_favorites()
         assert len(favorites) == 36 and "Paris" in favorites
+        assert favorites["Mexico"] == {"lat": 19.4326, "lon": -99.1332, "elev": 2240}
         window.favorites = {"Ici": {"lat": 1.0, "lon": 2.0, "elev": 0}}
         window._save_favorites()
         assert json.loads((tmp_path / "user" / "favorites.json").read_text(encoding="utf-8")) == \
             window.favorites
+
+    def test_preloaded_places_in_the_interface_language(self, window, tmp_path, monkeypatch, qapp):
+        """v4.8: London, Londres, Londres, London; a language without its own name: English."""
+        import gui
+        monkeypatch.setattr(gui, "_FAVORITES_FILE", str(tmp_path / "user" / "favorites.json"))
+        monkeypatch.setattr(gui, "_LEGACY_FAVORITES_FILE", str(tmp_path / "legacy.json"))
+        names = {lang: list(gui._default_favorites(lang)) for lang in ("fr", "en", "es", "de", "it")}
+        assert all(len(n) == len(set(n)) == 36 for n in names.values())
+        assert [n[14] for n in names.values()] == ["Londres", "London", "Londres", "London", "London"]
+        assert "Pékin" in names["fr"] and "Beijing" in names["en"] and "Pekín" in names["es"] \
+            and "Peking" in names["de"]
+        assert all("names" not in place for place in gui._default_favorites("en").values())
+        # the window follows the language, and keeps the chosen place
+        window._rebuild()
+        window.combo_fav.setCurrentIndex(window.combo_fav.findText("Londres"))
+        window._apply_favorite(window.combo_fav.currentIndex())
+        assert window.location_name == "Londres" and window.entry_elev.text() == "25"
+        window._lang_combo.setCurrentIndex(window._lang_combo.findData("en"))
+        _pump(qapp)
+        assert window.combo_fav.currentText() == "London" and window.location_name == "London"
+        assert window.combo_fav.findText("Londres") < 0
+        assert window.entry_lat.text() == "51.5074"
 
 
 class TestEclipseMap:

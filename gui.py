@@ -613,7 +613,9 @@ class InputField(QWidget):
     def eventFilter(self, obj, event):
         kind = event.type()
         if kind in (QEvent.Type.FocusIn, QEvent.Type.FocusOut):
-            _set_prop(self.box, "focus", kind == QEvent.Type.FocusIn)
+            # "focused", not "focus": Qt's own read-only property of that name
+            # cannot be set, and the gold ring never showed
+            _set_prop(self.box, "focused", kind == QEvent.Type.FocusIn)
         elif obj is self.box and kind in (QEvent.Type.Enter, QEvent.Type.Leave):
             _set_prop(self.box, "hover", kind == QEvent.Type.Enter)
         return False
@@ -900,7 +902,7 @@ QLineEdit, QComboBox, QDateTimeEdit {{
 QLineEdit:focus, QComboBox:focus, QDateTimeEdit:focus {{ border: 2px solid {C.OR}; }}
 QFrame#fieldBox {{ background: {C.CIEL_100}; border: 1px solid {C.ENCRE_ATTENUEE}; border-radius: 4px; }}
 QFrame#fieldBox[hover="true"] {{ border-color: {C.ENCRE}; }}
-QFrame#fieldBox[focus="true"] {{ border: 2px solid {C.OR}; }}
+QFrame#fieldBox[focused="true"] {{ border: 2px solid {C.OR}; }}
 QFrame#fieldBox[error="true"] {{ border-color: {C.SIGNAL_ALERTE}; }}
 QFrame#fieldBox[inactive="true"] {{ border-color: {off}; }}
 QFrame#fieldBox QLineEdit, QFrame#fieldBox QComboBox, QFrame#fieldBox QDateTimeEdit {{

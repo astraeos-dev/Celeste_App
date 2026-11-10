@@ -591,6 +591,23 @@ class TestAstraeosRules:
                      if b.property("variant") == "principal" and b.isVisibleTo(window)]
         assert principal == [window.btn_calc]
 
+    def test_focused_field_shows_the_gold_ring(self, window, qapp):
+        """v4.8: the box of a field with the keyboard focus is outlined in gold (the
+        property was named "focus", Qt's own read-only one, and never changed)."""
+        from PyQt6.QtCore import Qt
+        from PyQt6.QtGui import QFocusEvent
+        from config import Config
+        for field in (window.field_lat, window.field_date):
+            box = field.box
+            assert box.grab().toImage().pixelColor(0, 20).name() == Config.ENCRE_ATTENUEE
+            qapp.sendEvent(field.input, QFocusEvent(QEvent.Type.FocusIn, Qt.FocusReason.TabFocusReason))
+            _pump(qapp, 3)
+            assert box.property("focused") is True
+            assert box.grab().toImage().pixelColor(0, 20).name() == Config.OR
+            qapp.sendEvent(field.input, QFocusEvent(QEvent.Type.FocusOut, Qt.FocusReason.TabFocusReason))
+            _pump(qapp, 3)
+            assert box.grab().toImage().pixelColor(0, 20).name() == Config.ENCRE_ATTENUEE
+
     def test_live_mode_is_a_pressed_toggle(self, window):
         """Real time: toggle pressed and "Live" badge."""
         window.btn_live.toggle()

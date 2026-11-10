@@ -35,6 +35,8 @@
     "calculate_tip": "Für das eingegebene Datum und den Ort berechnen ({key})",
     "live": "Live verfolgen",
     "live_tip": "Der aktuellen Uhrzeit folgen, mit automatischer Aktualisierung ({key})",
+    "history": "Verlauf",
+    "history_tip": "Eine der letzten Berechnungen zurückholen: Datum, Ort und Zeitzone ({key})",
     "lat_error": "Eine Breite zwischen −90 und 90 eingeben",
     "lon_error": "Eine Länge zwischen −180 und 180 eingeben"
   },
@@ -557,6 +559,11 @@
     "short_ISS": "ISS",
     "short_Tiangong": "Tiangong",
     "short_Hubble": "Hubble"
+  },
+  "history": {
+    "empty": "Noch keine Berechnung",
+    "clear": "Verlauf löschen",
+    "cleared": "Verlauf gelöscht."
   },
   "favs": {
     "save_title": "Zu den Favoriten hinzufügen",

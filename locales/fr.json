@@ -35,6 +35,8 @@
     "calculate_tip": "Calculer pour la date et le lieu saisis ({key})",
     "live": "Suivre en temps réel",
     "live_tip": "Suivre l'heure actuelle, avec mise à jour automatique ({key})",
+    "history": "Historique",
+    "history_tip": "Retrouver un des derniers calculs : date, lieu et fuseau ({key})",
     "lat_error": "Saisir une latitude entre −90 et 90",
     "lon_error": "Saisir une longitude entre −180 et 180"
   },
@@ -557,6 +559,11 @@
     "short_ISS": "ISS",
     "short_Tiangong": "Tiangong",
     "short_Hubble": "Hubble"
+  },
+  "history": {
+    "empty": "Aucun calcul pour l'instant",
+    "clear": "Effacer l'historique",
+    "cleared": "Historique effacé."
   },
   "favs": {
     "save_title": "Ajouter aux favoris",

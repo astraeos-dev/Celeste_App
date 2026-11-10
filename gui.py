@@ -40,7 +40,7 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError, available_timezones
 
 from PyQt6.QtCore import (
-    QDate, QDateTime, QEvent, QLocale, QPointF, QRectF, QRegularExpression, QSize,
+    QDate, QDateTime, QEvent, QLocale, QPoint, QPointF, QRectF, QRegularExpression, QSize,
     QStringListModel, Qt, QTime, QTimer, QTimeZone, QUrl,
 )
 from PyQt6.QtGui import (
@@ -51,7 +51,7 @@ from PyQt6.QtPositioning import QGeoPositionInfo, QGeoPositionInfoSource
 from PyQt6.QtWidgets import (
     QAbstractItemView, QApplication, QButtonGroup, QCheckBox, QComboBox, QCompleter,
     QDateTimeEdit, QDialog, QDialogButtonBox, QFileDialog, QFrame, QGridLayout, QProgressDialog,
-    QHBoxLayout, QHeaderView, QInputDialog, QLabel, QLineEdit, QMainWindow,
+    QHBoxLayout, QHeaderView, QInputDialog, QLabel, QLineEdit, QMainWindow, QMenu,
     QMessageBox, QProgressBar, QPushButton, QScrollArea, QSizePolicy, QSlider,
     QStatusBar, QTabWidget, QTableWidget, QTableWidgetItem, QToolButton,
     QVBoxLayout, QWidget,
@@ -63,6 +63,7 @@ from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg  # noqa: E402
 from matplotlib.figure import Figure  # noqa: E402
 
 import charts  # noqa: E402
+import history  # noqa: E402
 import icons  # noqa: E402
 import places  # noqa: E402
 import satellites  # noqa: E402
@@ -92,6 +93,7 @@ _FONTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts")
 
 _AUTO_ZONE = "auto"           # time zone from the place (timezonefinder)
 _GEOLOC_TIMEOUT_MS = 15000    # wait for the device's location service
+_HISTORY_DELAY_MS = 3000      # a calculation enters the history once the user has stayed on it
 
 _ALL_POSITIONING_METHODS = QGeoPositionInfoSource.PositioningMethod.AllPositioningMethods
 
@@ -992,8 +994,11 @@ QCalendarWidget QToolButton {{ background: transparent; border: none; padding: 4
 QCalendarWidget QAbstractItemView {{
     background: {C.CIEL_100}; selection-background-color: {C.ENCRE}; selection-color: {C.CIEL_000};
 }}
-QMenu {{ background: {C.CIEL_100}; border: 1px solid {C.CIEL_200}; }}
+QMenu {{ background: {C.CIEL_100}; border: 1px solid {C.CIEL_200}; padding: 4px 0px; font-size: 15px; }}
+QMenu::item {{ padding: 6px 16px; }}
 QMenu::item:selected {{ background: {C.CIEL_200}; }}
+QMenu::item:disabled {{ color: {C.ENCRE_ATTENUEE}; }}
+QMenu::separator {{ height: 1px; background: {C.CIEL_200}; margin: 4px 0px; }}
 """
 
 
@@ -1079,22 +1084,29 @@ class AstroApp(QMainWindow):
         self._sky_hover          = None
         self._dirty              = set()
         self._last_search        = None
+        self.history             = history.load()
+        self._history_pending    = None      # the calculation shown, not yet in the history
+        self._history_quiet      = False     # a calculation the user did not ask for (start, rebuild)
 
-        # Timers: real time and delayed recalculation after typing
+        # Timers: real time, delayed recalculation after typing, history
         self._live_timer = QTimer(self)
         self._live_timer.timeout.connect(self._live_tick)
         self._recalc_timer = QTimer(self)
         self._recalc_timer.setSingleShot(True)
         self._recalc_timer.timeout.connect(self.calculate)
+        self._history_timer = QTimer(self)
+        self._history_timer.setSingleShot(True)
+        self._history_timer.timeout.connect(self._commit_history)
 
         # Shortcuts, attached to the window: they survive the rebuilds
         for keys, slot in ((("F5", "Ctrl+Return"), self.calculate),
-                           (("Ctrl+L",), lambda: self.btn_live.toggle())):
+                           (("Ctrl+L",), lambda: self.btn_live.toggle()),
+                           (("Ctrl+H",), lambda: self._show_history_menu())):
             for key in keys:
                 QShortcut(QKeySequence(key), self).activated.connect(slot)
 
         self._build_ui()
-        self.calculate()
+        self._calculate_quietly()
 
     # ──────────────────────────────────────────────────────────────────────────
     # BUILDING THE INTERFACE
@@ -1255,6 +1267,10 @@ class AstroApp(QMainWindow):
         self.btn_live.setToolTip(tf("side.live_tip", key="Ctrl+L"))
         self.btn_live.toggled.connect(self.toggle_live)
         lay.addWidget(self.btn_live)
+        self.btn_history = _button(t("side.history"), "history", "discret")
+        self.btn_history.setToolTip(tf("side.history_tip", key="Ctrl+H"))
+        self.btn_history.clicked.connect(self._show_history_menu)
+        lay.addWidget(self.btn_history)
 
         lay.addStretch()
         self.theme_selector = ThemeSelector(Config.THEME, self._on_theme_selected)
@@ -2207,7 +2223,7 @@ class AstroApp(QMainWindow):
         self.btn_live.blockSignals(False)
         self._apply_live_ui()
         self.last_cache_key = ""
-        self.calculate()
+        self._calculate_quietly()
         if self._last_search == "eclipses":
             self._search_eclipses_gui()
         elif self._last_search == "conjunctions":
@@ -2756,6 +2772,86 @@ class AstroApp(QMainWindow):
         self._update_status()
         self._dirty = {"traj", "sky", "orrery"}
         self._draw_visible_chart()
+        self._note_calculation(dte, lat, lon, elev)
+
+    # ── History of the calculations ───────────────────────────────────────────
+
+    def _calculate_quietly(self):
+        """A calculation the user did not ask for (start, new language or theme):
+        it stays out of the history."""
+        self._history_quiet = True
+        try:
+            self.calculate()
+        finally:
+            self._history_quiet = False
+
+    def _note_calculation(self, dte, lat, lon, elev):
+        """
+        The calculation shown enters the history once the user has stayed on it
+        for a few seconds: not each step through the dates, not each tick of
+        the real-time mode.
+        """
+        if self._history_quiet or self.live_mode:
+            return
+        self._history_pending = history.entry(dte, lat, lon, elev, self.location_name, self.tz_name)
+        self._history_timer.start(_HISTORY_DELAY_MS)
+
+    def _commit_history(self):
+        self._history_timer.stop()
+        item, self._history_pending = self._history_pending, None
+        if item is not None:
+            self.history = history.add(self.history, item)
+            history.save(self.history)
+
+    def _history_label(self, item):
+        """"01/11/2026 21:30 UT · Cherbourg-en-Cotentin" (or the coordinates of an unnamed place)."""
+        place = item["name"] or f"{_fmt_lat(item['lat'])}, {_fmt_lon(item['lon'])}"
+        return f"{history.when(item):%d/%m/%Y %H:%M} {t('chart.ut')} · {place}"
+
+    def _show_history_menu(self):
+        """Menu under the History button: the last calculations, the most recent first."""
+        self._commit_history()                            # the calculation shown comes first
+        menu = QMenu(self)
+        menu.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        for item in self.history:
+            action = menu.addAction(self._history_label(item))
+            action.triggered.connect(lambda _checked=False, it=item: self._restore_calculation(it))
+        if self.history:
+            menu.addSeparator()
+            menu.addAction(t("history.clear")).triggered.connect(self._clear_history)
+        else:
+            menu.addAction(t("history.empty")).setEnabled(False)
+        self._history_menu = menu
+        menu.popup(self.btn_history.mapToGlobal(QPoint(0, self.btn_history.height())))
+
+    def _restore_calculation(self, item):
+        """Brings a calculation of the history back: date, place, elevation and time zone."""
+        if self.live_mode:
+            self.btn_live.setChecked(False)
+        self._set_datetime(history.when(item))
+        self.entry_lat.setText(_coord_text(item["lat"]))
+        self.entry_lon.setText(_coord_text(item["lon"]))
+        self.entry_elev.setText(_elev_text(item["elev"]))
+        self.location_name = item["name"]
+        favorite = self.favorites.get(item["name"])
+        same_place = bool(favorite) and (round(float(favorite["lat"]), 4), round(float(favorite["lon"]), 4)) \
+            == (item["lat"], item["lon"])
+        self.combo_fav.setCurrentIndex(self.combo_fav.findText(item["name"]) if same_place else -1)
+        self.tz_name = item["tz"]
+        self._select_zone(self.tz_name)
+        self.calculate()
+        self._commit_history()                            # back to the top of the list at once
+
+    def _clear_history(self):
+        self._history_timer.stop()
+        self._history_pending = None
+        self.history = []
+        history.save(self.history)
+        self.statusBar().showMessage(t("history.cleared"), 5000)
+
+    def closeEvent(self, event):
+        self._commit_history()                            # a calculation made just before closing
+        super().closeEvent(event)
 
     # ──────────────────────────────────────────────────────────────────────────
     # UPDATING THE CARDS

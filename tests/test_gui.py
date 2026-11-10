@@ -65,6 +65,8 @@ def window(qapp, tmp_path, monkeypatch):
     monkeypatch.setattr(gui, "_FAVORITES_FILE", str(favorites))
     import satellites
     monkeypatch.setattr(satellites, "CACHE", str(tmp_path / "satellites.tle"))    # none on disk
+    import history
+    monkeypatch.setattr(history, "FILE", str(tmp_path / "history.json"))          # empty
     Config.apply_theme("nuit")
     switch_lang("fr")
     gui.apply_theme(qapp)
@@ -1285,6 +1287,95 @@ class TestFirstLaunch:
         assert main.ensure_ephemeris() is False
         assert loaded == [] and len(errors) == 1
         assert "no network" in errors[0] and str(tmp_user(engine)) in errors[0]
+
+
+# ──────────────────────────────────────────────────────────────────────
+# History of the calculations (v4.8)
+# ──────────────────────────────────────────────────────────────────────
+
+class TestHistory:
+    def test_a_calculation_enters_after_a_moment(self, window):
+        """Not at once: the user may only be passing through this date."""
+        import history
+        assert window.history == [] and window._history_timer.isActive()
+        assert window._history_timer.interval() == 3000
+        window._commit_history()                                # what the timer does
+        assert [window._history_label(e) for e in window.history] == \
+            ["01/11/2026 21:30 TU · Cherbourg-en-Cotentin"]
+        assert history.load() == window.history                 # written at once
+        assert window.history[0]["tz"] == "UTC" and window.history[0]["elev"] == 0
+
+    def test_only_the_date_the_user_stops_on(self, window):
+        for day in (2, 3, 4):
+            window._set_datetime(datetime(2026, 11, day, 21, 30))
+            window.calculate()
+        window._commit_history()
+        assert [e["date"] for e in window.history] == ["2026-11-04T21:30:00"]
+
+    def test_start_rebuild_and_real_time_stay_out(self, window, qapp):
+        window._commit_history()
+        assert len(window.history) == 1
+        window._rebuild()                                        # new theme or language
+        assert window._history_pending is None and not window._history_timer.isActive()
+        window.btn_live.setChecked(True)                         # each tick calculates
+        _pump(qapp, 3)
+        assert window._history_pending is None
+        window.btn_live.setChecked(False)
+        import gui
+        other = gui.AstroApp()                                   # the calculation of the start
+        assert other._history_pending is None and len(other.history) == 1
+        other.close()
+        _destroy(qapp, other)
+
+    def test_menu_brings_a_calculation_back(self, window, qapp):
+        window._commit_history()
+        window.tz_name = "Asia/Tokyo"
+        window._select_zone("Asia/Tokyo")
+        window._set_datetime(datetime(2027, 8, 2, 9, 0))
+        window._apply_favorite(window.combo_fav.findText("Tokyo"))
+        window._show_history_menu()                              # the calculation shown comes first
+        actions = window._history_menu.actions()
+        assert [a.text() for a in actions if not a.isSeparator()] == [
+            "02/08/2027 09:00 TU · Tokyo", "01/11/2026 21:30 TU · Cherbourg-en-Cotentin",
+            "Effacer l'historique"]
+        window.btn_live.setChecked(True)                         # bringing one back leaves real time
+        actions[1].trigger()
+        assert not window.live_mode
+        assert window.current_inputs() == (DTE, 49.6333, -1.6167)
+        assert window.location_name == "Cherbourg-en-Cotentin" and window.tz_name == "UTC"
+        assert window.tz_menu.currentData() == "UTC" and window.combo_fav.currentIndex() == -1
+        assert window.card_sun_rise.value.text() == "06:55"      # and it is calculated
+        assert [e["name"] for e in window.history] == ["Cherbourg-en-Cotentin", "Tokyo"]
+        window._history_menu.close()
+        window._restore_calculation(window.history[1])
+        assert window.combo_fav.currentText() == "Tokyo" and window.tz_name == "Asia/Tokyo"
+        assert window.entry_lat.text() == "35,6762"
+
+    def test_unnamed_place_and_clear(self, window):
+        window.entry_lat.setText("10,5")
+        window.entry_lon.setText("-20,25")
+        window._on_coords_edited("")
+        window.calculate()
+        window._commit_history()
+        assert window._history_label(window.history[0]).endswith("TU · 10,5000° N, 20,2500° O")
+        window._clear_history()
+        import history
+        assert window.history == [] and history.load() == []
+        window._show_history_menu()
+        only = window._history_menu.actions()
+        assert [a.text() for a in only] == ["Aucun calcul pour l'instant"] and not only[0].isEnabled()
+        window._history_menu.close()
+
+    def test_a_calculation_made_just_before_closing_is_kept(self, window):
+        import history
+        assert history.load() == []
+        window.close()
+        assert [e["date"] for e in history.load()] == ["2026-11-01T21:30:00"]
+
+    def test_button_and_shortcut(self, window):
+        assert window.btn_history.text() == "Historique"
+        assert "Ctrl+H" in window.btn_history.toolTip()
+        assert window.btn_history.property("variant") == "discret"
 
 
 # ──────────────────────────────────────────────────────────────────────

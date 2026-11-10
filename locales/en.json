@@ -35,6 +35,8 @@
     "calculate_tip": "Calculate for the date and place entered ({key})",
     "live": "Follow live",
     "live_tip": "Follow the current time, updated automatically ({key})",
+    "history": "History",
+    "history_tip": "Bring back one of the last calculations: date, place and time zone ({key})",
     "lat_error": "Enter a latitude between −90 and 90",
     "lon_error": "Enter a longitude between −180 and 180"
   },
@@ -557,6 +559,11 @@
     "short_ISS": "ISS",
     "short_Tiangong": "Tiangong",
     "short_Hubble": "Hubble"
+  },
+  "history": {
+    "empty": "No calculation yet",
+    "clear": "Clear the history",
+    "cleared": "History cleared."
   },
   "favs": {
     "save_title": "Add to favourites",

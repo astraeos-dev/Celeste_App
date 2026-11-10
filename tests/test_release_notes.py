@@ -27,7 +27,7 @@ def _changelog():
 
 def test_the_current_version_has_its_notes():
     notes = release_notes.notes(APP_VERSION)
-    assert notes, f"CHANGELOG.md : ajouter une section « ## {APP_VERSION} »"
+    assert notes, f"CHANGELOG.md: add a \"## {APP_VERSION}\" section"
     assert all(line.startswith("- ") for line in notes.split("\n"))
 
 

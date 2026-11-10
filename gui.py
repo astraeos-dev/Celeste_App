@@ -7,9 +7,15 @@ v3.3 — Interface following the Astræos design system:
   ★ IBM Plex Sans for the text, IBM Plex Mono for the data, astronomical
     symbols (☉ ☽ ♀ ♂ ♃ ♄ ☌ ☍) always next to the name of the body
   ★ No emoji: Material Design line icons
-  ★ Components: Bouton, BoutonIcone, ChampSaisie, CarteDonnee, PastilleEtat,
-    Jauge, Onglets, SelecteurTheme; a single gold area per screen (the
+  ★ Components of the design system, under English names here: Bouton
+    (_button), BoutonIcone (_icon_button), ChampSaisie (InputField),
+    CarteDonnee (DataCard), PastilleEtat (_badge), Jauge, Onglets,
+    SelecteurTheme (ThemeSelector); a single gold area per screen (the
     Calculate button), hairlines rather than shadows
+  ★ Names kept from the design system (tokens.json): the colour tokens
+    (ciel, encre, or, lune…), the text styles (corps, legende, donnee,
+    cadran…), the variants (principal, secondaire, discret), the tones
+    (neutre, alerte, attenuee) and the themes (nuit, jour, observation)
   ★ Translated texts (fr, en, es, de); numbers in the language's style
   ★ Shortcuts: F5 calculate, Ctrl+L real time
 
@@ -73,7 +79,7 @@ from i18n import (  # noqa: E402
 )
 from utils import Formatters  # noqa: E402
 
-# ── Constantes ────────────────────────────────────────────────────────────────
+# ── Constants ─────────────────────────────────────────────────────────────────
 
 
 # The user's favourites, outside the repository; at the first launch, those of an
@@ -120,7 +126,7 @@ _FALLBACK_MONO = ("Cascadia Mono", "Consolas", "JetBrains Mono", "Menlo",
 _fonts = {"sans": FONT_SANS, "mono": FONT_MONO}
 
 
-# ── Petites fonctions ─────────────────────────────────────────────────────────
+# ── Small helpers ─────────────────────────────────────────────────────────────
 
 def _utc_now():
     """The present instant in universal time, without time zone or microseconds."""
@@ -485,23 +491,23 @@ def _icon(key, color=None, size=20, checked=False):
                       disabled_color=mix(color, Config.CIEL_100, 0.45))
 
 
-def _bouton(text, icon_key=None, variante="secondaire", compact=False, checkable=False):
+def _button(text, icon_key=None, variant="secondaire", compact=False, checkable=False):
     """
-    Astræos button: "principal" (gold fill, once per screen), "secondaire"
+    Astræos Bouton: "principal" (gold fill, once per screen), "secondaire"
     (outline), "discret" or "danger"; normal (40 px) or compact.
     """
     btn = QPushButton(text)
-    btn.setProperty("variante", variante)
+    btn.setProperty("variant", variant)
     if compact:
-        btn.setProperty("taille", "compact")
+        btn.setProperty("density", "compact")
     btn.setFixedHeight(32 if compact else 40)
     btn.setCheckable(checkable)
     btn.setFocusPolicy(Qt.FocusPolicy.TabFocus)     # focus ring from the keyboard only
     btn.setCursor(Qt.CursorShape.PointingHandCursor)
     if icon_key:
-        if variante == "principal":
+        if variant == "principal":
             color = Config.SUR_OR
-        elif variante == "danger":
+        elif variant == "danger":
             color = Config.SIGNAL_ALERTE
         else:
             color = Config.ENCRE
@@ -511,36 +517,36 @@ def _bouton(text, icon_key=None, variante="secondaire", compact=False, checkable
     return btn
 
 
-def _bouton_icone(icon_key, libelle, variante="discret", compact=False, checkable=False):
-    """Astræos BoutonIcone: round, an icon only, named by *libelle* (tooltip)."""
+def _icon_button(icon_key, label, variant="discret", compact=False, checkable=False):
+    """Astræos BoutonIcone: round, an icon only, named by *label* (tooltip)."""
     btn = QToolButton()
-    btn.setObjectName("boutonIcone")
-    btn.setProperty("variante", variante)
+    btn.setObjectName("iconButton")
+    btn.setProperty("variant", variant)
     if compact:
-        btn.setProperty("taille", "compact")
+        btn.setProperty("density", "compact")
     size = 32 if compact else 40
     icon_size = 16 if compact else 20
     btn.setFixedSize(size, size)
     btn.setIcon(_icon(icon_key, Config.ENCRE, icon_size, checked=checkable))
     btn.setIconSize(QSize(icon_size, icon_size))
-    btn.setToolTip(libelle)
-    btn.setAccessibleName(libelle)
+    btn.setToolTip(label)
+    btn.setAccessibleName(label)
     btn.setCheckable(checkable)
     btn.setFocusPolicy(Qt.FocusPolicy.TabFocus)
     btn.setCursor(Qt.CursorShape.PointingHandCursor)
     return btn
 
 
-def _set_pastille(label, text, ton):
-    """PastilleEtat: a dot and one or two words; neutral, info, ok or alert tone."""
+def _set_badge(label, text, tone):
+    """Astræos PastilleEtat: a dot and one or two words; tone "neutre", "info", "ok" or "alerte"."""
     label.setText(f"{SYMBOL['dot']}  {text}")
     label.setFixedHeight(24)
-    _set_prop(label, "pastille", ton)
+    _set_prop(label, "badge", tone)
 
 
-def _pastille(text="", ton="neutre"):
+def _badge(text="", tone="neutre"):
     lbl = QLabel()
-    _set_pastille(lbl, text, ton)
+    _set_badge(lbl, text, tone)
     return lbl
 
 
@@ -558,80 +564,79 @@ def _scroll_page():
     return scroll, page, layout
 
 
-# ── Composants Astræos ────────────────────────────────────────────────────────
+# ── Astræos components ────────────────────────────────────────────────────────
 
-class ChampSaisie(QWidget):
+class InputField(QWidget):
     """
-    Astræos input field: a label always visible above, a 40 px box (encre-attenuee
+    Astræos ChampSaisie: a label always visible above, a 40 px box (encre-attenuee
     outline, encre on hover, gold ring on focus), the unit on the right, help
     or error below. *widget*: QLineEdit (the default), QComboBox or
     QDateTimeEdit.
     """
 
-    def __init__(self, libelle, widget=None, unite=None, numerique=False, aide=None):
+    def __init__(self, label, widget=None, unit=None, numeric=False, hint=None):
         super().__init__()
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(4)
-        self.libelle = _label(libelle, "libelle")
-        lay.addWidget(self.libelle)
+        self.label = _label(label, "label")
+        lay.addWidget(self.label)
 
-        self.boite = QFrame()
-        self.boite.setObjectName("champBoite")
-        self.boite.setFixedHeight(40)
-        row = QHBoxLayout(self.boite)
+        self.box = QFrame()
+        self.box.setObjectName("fieldBox")
+        self.box.setFixedHeight(40)
+        row = QHBoxLayout(self.box)
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(0)
-        self.saisie = widget if widget is not None else QLineEdit()
-        if numerique:
-            self.saisie.setProperty("numerique", True)
-        row.addWidget(self.saisie, stretch=1)
-        if unite:
-            unit = _label(unite, "corps", tone="attenuee", name="champUnite")
-            row.addWidget(unit)
-            self.saisie.setAccessibleName(f"{libelle} ({unite})")
+        self.input = widget if widget is not None else QLineEdit()
+        if numeric:
+            self.input.setProperty("numeric", True)
+        row.addWidget(self.input, stretch=1)
+        if unit:
+            row.addWidget(_label(unit, "corps", tone="attenuee", name="fieldUnit"))
+            self.input.setAccessibleName(f"{label} ({unit})")
         else:
-            self.saisie.setAccessibleName(libelle)
-        lay.addWidget(self.boite)
+            self.input.setAccessibleName(label)
+        lay.addWidget(self.box)
 
-        self.erreur = _label("", "legende", tone="alerte", strong=True, wrap=True)
-        self.erreur.hide()
-        lay.addWidget(self.erreur)
-        self.aide = None
-        if aide:
-            self.aide = _label(aide, "legende", wrap=True)
-            lay.addWidget(self.aide)
+        self.error = _label("", "legende", tone="alerte", strong=True, wrap=True)
+        self.error.hide()
+        lay.addWidget(self.error)
+        self.hint = None
+        if hint:
+            self.hint = _label(hint, "legende", wrap=True)
+            lay.addWidget(self.hint)
 
-        self.saisie.installEventFilter(self)
-        self.boite.installEventFilter(self)
+        self.input.installEventFilter(self)
+        self.box.installEventFilter(self)
 
     def eventFilter(self, obj, event):
         kind = event.type()
         if kind in (QEvent.Type.FocusIn, QEvent.Type.FocusOut):
-            _set_prop(self.boite, "focus", kind == QEvent.Type.FocusIn)
-        elif obj is self.boite and kind in (QEvent.Type.Enter, QEvent.Type.Leave):
-            _set_prop(self.boite, "hover", kind == QEvent.Type.Enter)
+            _set_prop(self.box, "focus", kind == QEvent.Type.FocusIn)
+        elif obj is self.box and kind in (QEvent.Type.Enter, QEvent.Type.Leave):
+            _set_prop(self.box, "hover", kind == QEvent.Type.Enter)
         return False
 
-    def set_erreur(self, message):
+    def set_error(self, message):
         """Shows *message* (what is wrong and how to fix it), or nothing with None."""
-        _set_prop(self.boite, "erreur", bool(message))
-        self.erreur.setText(message or "")
-        self.erreur.setVisible(bool(message))
-        if self.aide is not None:
-            self.aide.setVisible(not message)
+        _set_prop(self.box, "error", bool(message))
+        self.error.setText(message or "")
+        self.error.setVisible(bool(message))
+        if self.hint is not None:
+            self.hint.setVisible(not message)
 
-    def set_desactive(self, off):
-        _set_prop(self.boite, "desactive", bool(off))
+    def set_inactive(self, off):
+        _set_prop(self.box, "inactive", bool(off))
 
 
-class CarteDonnee(QFrame):
+class DataCard(QFrame):
     """
     Astræos CarteDonnee, normal density: symbol and label, the value in the
     cadran style (Plex Mono 32 px) with its unit, a context line.
     """
 
-    def __init__(self, libelle, symbole=None, accent=None):
+    def __init__(self, label, symbol=None, accent=None):
         super().__init__()
         self.setObjectName("card")
         lay = QVBoxLayout(self)
@@ -639,35 +644,35 @@ class CarteDonnee(QFrame):
         lay.setSpacing(8)
         head = QHBoxLayout()
         head.setSpacing(8)
-        if symbole:
-            head.addWidget(_label(symbole, "symbole", tone=accent or "attenuee"))
-        head.addWidget(_label(libelle, "legende"), stretch=1)
+        if symbol:
+            head.addWidget(_label(symbol, "symbol", tone=accent or "attenuee"))
+        head.addWidget(_label(label, "legende"), stretch=1)
         lay.addLayout(head)
-        mesure = QHBoxLayout()
-        mesure.setSpacing(4)
-        self.valeur = _label("—", "cadran")
-        self.unite = _label("", "corps", tone="attenuee")
-        mesure.addWidget(self.valeur, alignment=Qt.AlignmentFlag.AlignBaseline)
-        mesure.addWidget(self.unite, alignment=Qt.AlignmentFlag.AlignBaseline)
-        mesure.addStretch()
-        lay.addLayout(mesure)
+        measure = QHBoxLayout()
+        measure.setSpacing(4)
+        self.value = _label("—", "cadran")
+        self.unit = _label("", "corps", tone="attenuee")
+        measure.addWidget(self.value, alignment=Qt.AlignmentFlag.AlignBaseline)
+        measure.addWidget(self.unit, alignment=Qt.AlignmentFlag.AlignBaseline)
+        measure.addStretch()
+        lay.addLayout(measure)
         self.detail = _label("", "legende", wrap=True)
         lay.addWidget(self.detail)
         lay.addStretch()
 
-    def set_valeur(self, valeur, unite="", detail=""):
-        self.valeur.setText(valeur)
-        self.unite.setText(unite)
-        self.unite.setVisible(bool(unite))
+    def set_value(self, value, unit="", detail=""):
+        self.value.setText(value)
+        self.unit.setText(unit)
+        self.unit.setVisible(bool(unit))
         self.detail.setText(detail)
 
 
-class PhaseLune(QWidget):
+class MoonPhase(QWidget):
     """The Moon's disc lit by the phase angle, drawn in the LUNE colour token."""
 
-    def __init__(self, diametre=56):
+    def __init__(self, diameter=56):
         super().__init__()
-        self.setFixedSize(diametre, diametre)
+        self.setFixedSize(diameter, diameter)
         self._phase = 0.0
         self._mirror = False
 
@@ -694,7 +699,7 @@ class PhaseLune(QWidget):
         lit.moveTo(c.x(), c.y() - r)
         lit.arcTo(disc, 90, -180)                                 # right edge, lit
         ell = QRectF(c.x() - abs(e), c.y() - r, 2 * abs(e), 2 * r)
-        lit.arcTo(ell, -90, 180 if e > 0 else -180)               # terminateur
+        lit.arcTo(ell, -90, 180 if e > 0 else -180)               # terminator
         lit.closeSubpath()
         if waxing == self._mirror:                                # waning: on the left
             p.translate(2 * c.x(), 0)
@@ -708,13 +713,13 @@ class PhaseLune(QWidget):
         p.end()
 
 
-class SelecteurTheme(QFrame):
-    """SelecteurTheme Astræos : Nuit, Jour, Observation, l'option active en aplat encre ;
+class ThemeSelector(QFrame):
+    """Astræos SelecteurTheme: Nuit, Jour, Observation, the active option in an encre fill;
     *options* (key, label, tooltip) for another exclusive choice."""
 
     def __init__(self, current, on_change, options=None, legend=None):
         super().__init__()
-        self.setObjectName("selecteurTheme")
+        self.setObjectName("themeSelector")
         self.setAccessibleName(legend or t("theme.legend"))
         lay = QHBoxLayout(self)
         lay.setContentsMargins(4, 4, 4, 4)
@@ -726,7 +731,7 @@ class SelecteurTheme(QFrame):
             options = [(key, t(f"theme.{key}"), t(f"theme.{key}_tip")) for key in THEME_NAMES]
         for key, text, tip in options:
             btn = QPushButton(text)
-            btn.setObjectName("optionTheme")
+            btn.setObjectName("themeOption")
             btn.setCheckable(True)
             btn.setFixedHeight(32)
             btn.setToolTip(tip)
@@ -739,7 +744,7 @@ class SelecteurTheme(QFrame):
             btn.clicked.connect(lambda _checked, k=key: on_change(k))
 
 
-# ── Style de l'application ────────────────────────────────────────────────────
+# ── Application style ─────────────────────────────────────────────────────────
 
 def _register_fonts():
     """Registers the fonts of fonts/; False when IBM Plex could not be loaded."""
@@ -814,8 +819,8 @@ def build_stylesheet():
     off = mix(C.ENCRE, C.CIEL_100, 0.45)                       # 45 % opacity
     pressed_hover = mix(C.ENCRE, C.CIEL_000, 0.85)
     pills = "\n".join(
-        f'QLabel[pastille="{ton}"] {{ color: {color}; border: 1px solid {_rgba(color, 0.45)}; }}'
-        for ton, color in (("neutre", C.ENCRE_ATTENUEE), ("info", C.LUNE),
+        f'QLabel[badge="{tone}"] {{ color: {color}; border: 1px solid {_rgba(color, 0.45)}; }}'
+        for tone, color in (("neutre", C.ENCRE_ATTENUEE), ("info", C.LUNE),
                            ("ok", C.SIGNAL_OK), ("alerte", C.SIGNAL_ALERTE)))
     return f"""
 QWidget {{ color: {C.ENCRE}; font-family: {sans}; }}
@@ -836,18 +841,18 @@ QLabel[textStyle="titre"] {{ font-size: 24px; font-weight: 600; }}
 QLabel[textStyle="sous-titre"] {{ font-size: 17px; font-weight: 600; }}
 QLabel[textStyle="corps"] {{ font-size: 15px; }}
 QLabel[textStyle="legende"] {{ font-size: 13px; color: {C.ENCRE_ATTENUEE}; }}
-QLabel[textStyle="libelle"] {{ font-size: 13px; font-weight: 600; }}
+QLabel[textStyle="label"] {{ font-size: 13px; font-weight: 600; }}
 QLabel[textStyle="section"] {{ font-size: 13px; font-weight: 600; color: {C.ENCRE_ATTENUEE}; }}
 QLabel[textStyle="donnee"] {{ font-family: {mono}; font-size: 15px; font-weight: 500; }}
 QLabel[textStyle="cadran"] {{ font-family: {mono}; font-size: 32px; font-weight: 500; }}
-QLabel[textStyle="symbole"] {{ font-family: "Astraeos Symboles"; font-size: 20px; }}
+QLabel[textStyle="symbol"] {{ font-family: "Astraeos Symboles"; font-size: 20px; }}
 QLabel[strong="true"] {{ font-weight: 600; }}
 QLabel[tone="attenuee"] {{ color: {C.ENCRE_ATTENUEE}; }}
 QLabel[tone="or"] {{ color: {C.OR}; }}
 QLabel[tone="lune"] {{ color: {C.LUNE}; }}
 QLabel[tone="alerte"] {{ color: {C.SIGNAL_ALERTE}; }}
 
-QLabel[pastille="neutre"], QLabel[pastille="info"], QLabel[pastille="ok"], QLabel[pastille="alerte"] {{
+QLabel[badge="neutre"], QLabel[badge="info"], QLabel[badge="ok"], QLabel[badge="alerte"] {{
     font-size: 13px; font-weight: 600; border-radius: 12px; padding: 0px 8px;
 }}
 {pills}
@@ -861,31 +866,31 @@ QPushButton:focus {{ border: 2px solid {C.OR}; padding: 0px 15px; }}
 QPushButton:checked {{ background: {C.ENCRE}; border-color: {C.ENCRE}; color: {C.CIEL_000}; }}
 QPushButton:checked:hover {{ background: {pressed_hover}; }}
 QPushButton:disabled {{ color: {off}; border-color: {off}; }}
-QPushButton[variante="principal"] {{ background: {C.OR}; color: {C.SUR_OR}; border-color: {C.OR}; }}
-QPushButton[variante="principal"]:hover {{ background: {or_hover}; border-color: {or_hover}; }}
-QPushButton[variante="principal"]:pressed {{ background: {or_press}; border-color: {or_press}; }}
-QPushButton[variante="principal"]:focus {{ border: 2px solid {C.ENCRE}; }}
-QPushButton[variante="discret"] {{ border-color: transparent; }}
-QPushButton[variante="discret"]:hover {{ background: {C.CIEL_200}; border-color: {C.CIEL_200}; }}
-QPushButton[variante="danger"] {{ color: {C.SIGNAL_ALERTE}; border-color: {C.SIGNAL_ALERTE}; }}
-QPushButton[variante="danger"]:hover {{ background: {C.SIGNAL_ALERTE}; color: {C.CIEL_000}; }}
-QPushButton[taille="compact"] {{ border-radius: 4px; padding: 0px 12px; font-size: 13px; }}
+QPushButton[variant="principal"] {{ background: {C.OR}; color: {C.SUR_OR}; border-color: {C.OR}; }}
+QPushButton[variant="principal"]:hover {{ background: {or_hover}; border-color: {or_hover}; }}
+QPushButton[variant="principal"]:pressed {{ background: {or_press}; border-color: {or_press}; }}
+QPushButton[variant="principal"]:focus {{ border: 2px solid {C.ENCRE}; }}
+QPushButton[variant="discret"] {{ border-color: transparent; }}
+QPushButton[variant="discret"]:hover {{ background: {C.CIEL_200}; border-color: {C.CIEL_200}; }}
+QPushButton[variant="danger"] {{ color: {C.SIGNAL_ALERTE}; border-color: {C.SIGNAL_ALERTE}; }}
+QPushButton[variant="danger"]:hover {{ background: {C.SIGNAL_ALERTE}; color: {C.CIEL_000}; }}
+QPushButton[density="compact"] {{ border-radius: 4px; padding: 0px 12px; font-size: 13px; }}
 
-QToolButton#boutonIcone {{ background: transparent; border: 1px solid transparent; border-radius: 20px; }}
-QToolButton#boutonIcone[taille="compact"] {{ border-radius: 16px; }}
-QToolButton#boutonIcone[variante="secondaire"] {{ border-color: {C.ENCRE_ATTENUEE}; }}
-QToolButton#boutonIcone:hover {{ background: {C.CIEL_200}; }}
-QToolButton#boutonIcone:focus {{ border: 2px solid {C.OR}; }}
-QToolButton#boutonIcone:checked {{ background: {C.ENCRE}; border-color: {C.ENCRE}; }}
+QToolButton#iconButton {{ background: transparent; border: 1px solid transparent; border-radius: 20px; }}
+QToolButton#iconButton[density="compact"] {{ border-radius: 16px; }}
+QToolButton#iconButton[variant="secondaire"] {{ border-color: {C.ENCRE_ATTENUEE}; }}
+QToolButton#iconButton:hover {{ background: {C.CIEL_200}; }}
+QToolButton#iconButton:focus {{ border: 2px solid {C.OR}; }}
+QToolButton#iconButton:checked {{ background: {C.ENCRE}; border-color: {C.ENCRE}; }}
 
-QPushButton#optionTheme {{
+QPushButton#themeOption {{
     background: transparent; border: none; border-radius: 4px; padding: 0px 10px;
     color: {C.ENCRE_ATTENUEE}; font-size: 13px; font-weight: 400;
 }}
-QPushButton#optionTheme:hover {{ background: {C.CIEL_200}; color: {C.ENCRE}; }}
-QPushButton#optionTheme:checked {{ background: {C.ENCRE}; color: {C.CIEL_000}; font-weight: 600; }}
-QPushButton#optionTheme:focus {{ border: 2px solid {C.OR}; }}
-QFrame#selecteurTheme {{ background: {C.CIEL_100}; border: 1px solid {C.CIEL_200}; border-radius: 10px; }}
+QPushButton#themeOption:hover {{ background: {C.CIEL_200}; color: {C.ENCRE}; }}
+QPushButton#themeOption:checked {{ background: {C.ENCRE}; color: {C.CIEL_000}; font-weight: 600; }}
+QPushButton#themeOption:focus {{ border: 2px solid {C.OR}; }}
+QFrame#themeSelector {{ background: {C.CIEL_100}; border: 1px solid {C.CIEL_200}; border-radius: 10px; }}
 
 QLineEdit, QComboBox, QDateTimeEdit {{
     background: {C.CIEL_100}; border: 1px solid {C.ENCRE_ATTENUEE}; border-radius: 4px;
@@ -893,17 +898,17 @@ QLineEdit, QComboBox, QDateTimeEdit {{
     selection-background-color: {C.CIEL_200}; selection-color: {C.ENCRE};
 }}
 QLineEdit:focus, QComboBox:focus, QDateTimeEdit:focus {{ border: 2px solid {C.OR}; }}
-QFrame#champBoite {{ background: {C.CIEL_100}; border: 1px solid {C.ENCRE_ATTENUEE}; border-radius: 4px; }}
-QFrame#champBoite[hover="true"] {{ border-color: {C.ENCRE}; }}
-QFrame#champBoite[focus="true"] {{ border: 2px solid {C.OR}; }}
-QFrame#champBoite[erreur="true"] {{ border-color: {C.SIGNAL_ALERTE}; }}
-QFrame#champBoite[desactive="true"] {{ border-color: {off}; }}
-QFrame#champBoite QLineEdit, QFrame#champBoite QComboBox, QFrame#champBoite QDateTimeEdit {{
+QFrame#fieldBox {{ background: {C.CIEL_100}; border: 1px solid {C.ENCRE_ATTENUEE}; border-radius: 4px; }}
+QFrame#fieldBox[hover="true"] {{ border-color: {C.ENCRE}; }}
+QFrame#fieldBox[focus="true"] {{ border: 2px solid {C.OR}; }}
+QFrame#fieldBox[error="true"] {{ border-color: {C.SIGNAL_ALERTE}; }}
+QFrame#fieldBox[inactive="true"] {{ border-color: {off}; }}
+QFrame#fieldBox QLineEdit, QFrame#fieldBox QComboBox, QFrame#fieldBox QDateTimeEdit {{
     background: transparent; border: none; padding: 0px 12px;
 }}
-QLineEdit[numerique="true"], QDateTimeEdit {{ font-family: {mono}; font-weight: 500; }}
+QLineEdit[numeric="true"], QDateTimeEdit {{ font-family: {mono}; font-weight: 500; }}
 QDateTimeEdit[readOnly="true"] {{ color: {C.ENCRE_ATTENUEE}; }}
-QLabel#champUnite {{ padding-right: 12px; }}
+QLabel#fieldUnit {{ padding-right: 12px; }}
 /* Drop-down lists in list mode: height fitted to the content, a scroll bar
    only when the list is long (Qt's "menu" mode hid choices behind scroll
    arrows). */
@@ -1013,7 +1018,7 @@ class _TooltipLayer:
         self.canvas.blit(self.canvas.figure.bbox)
 
 
-# ── Classe principale ─────────────────────────────────────────────────────────
+# ── Main class ────────────────────────────────────────────────────────────────
 
 class AstroApp(QMainWindow):
     """Main window of Céleste."""
@@ -1070,7 +1075,7 @@ class AstroApp(QMainWindow):
         self.calculate()
 
     # ──────────────────────────────────────────────────────────────────────────
-    # CONSTRUCTION DE L'INTERFACE
+    # BUILDING THE INTERFACE
     # ──────────────────────────────────────────────────────────────────────────
 
     def _build_ui(self):
@@ -1145,8 +1150,8 @@ class AstroApp(QMainWindow):
         self.dt_edit.setToolTip(t("side.datetime_tip"))
         self._set_datetime(_utc_now())
         self.dt_edit.dateTimeChanged.connect(lambda _dt: self._schedule_recalc())
-        self.field_date = ChampSaisie(t("side.datetime"), self.dt_edit)
-        self.btn_now = _bouton_icone("now", t("side.now_tip"))
+        self.field_date = InputField(t("side.datetime"), self.dt_edit)
+        self.btn_now = _icon_button("now", t("side.now_tip"))
         self.btn_now.clicked.connect(self.set_now)
         lay.addLayout(self._with_button(self.field_date, self.btn_now))
 
@@ -1164,22 +1169,22 @@ class AstroApp(QMainWindow):
         self.entry_place.setCompleter(self._place_completer)
         self.entry_place.textEdited.connect(self._on_place_typed)
         self.entry_place.returnPressed.connect(self._on_place_return)
-        lay.addWidget(ChampSaisie(t("side.place"), self.entry_place))
+        lay.addWidget(InputField(t("side.place"), self.entry_place))
 
         validator = QRegularExpressionValidator(QRegularExpression(_COORD_REGEX))
         self.entry_lat = QLineEdit(_coord_text(_pref_float("default_lat", 49.6333)))
         self.entry_lon = QLineEdit(_coord_text(_pref_float("default_lon", -1.6167)))
-        self.field_lat = ChampSaisie(t("side.latitude"), self.entry_lat, unite="°",
-                                     numerique=True)
-        self.field_lon = ChampSaisie(t("side.longitude"), self.entry_lon, unite="°",
-                                     numerique=True)
+        self.field_lat = InputField(t("side.latitude"), self.entry_lat, unit="°",
+                                     numeric=True)
+        self.field_lon = InputField(t("side.longitude"), self.entry_lon, unit="°",
+                                     numeric=True)
         for edit, key in ((self.entry_lat, "latitude"), (self.entry_lon, "longitude")):
             edit.setValidator(validator)
             edit.setToolTip(t(f"side.{key}_tip"))
             edit.returnPressed.connect(self.calculate)
             edit.textEdited.connect(self._on_coords_edited)
         lay.addWidget(self.field_lat)
-        btn_geo = _bouton_icone("geolocate", t("side.geoloc_tip"))
+        btn_geo = _icon_button("geolocate", t("side.geoloc_tip"))
         btn_geo.clicked.connect(lambda _checked=False: self.geolocate())
         lay.addLayout(self._with_button(self.field_lon, btn_geo))
 
@@ -1187,7 +1192,7 @@ class AstroApp(QMainWindow):
         self.entry_elev.setValidator(QRegularExpressionValidator(QRegularExpression(r"^-?\d{0,4}$")))
         self.entry_elev.setToolTip(t("side.elevation_tip"))
         self.entry_elev.returnPressed.connect(self.calculate)
-        lay.addWidget(ChampSaisie(t("side.elevation"), self.entry_elev, unite="m", numerique=True))
+        lay.addWidget(InputField(t("side.elevation"), self.entry_elev, unit="m", numeric=True))
 
         # IANA time zone (summer time included), typed or chosen; "Automatic" follows the place
         self.tz_menu = QComboBox()
@@ -1204,33 +1209,33 @@ class AstroApp(QMainWindow):
         self._select_zone(self.tz_name)
         self.tz_menu.setToolTip(t("side.timezone_tip"))
         self.tz_menu.currentIndexChanged.connect(self._on_zone_change)
-        lay.addWidget(ChampSaisie(t("side.timezone"), self.tz_menu))
+        lay.addWidget(InputField(t("side.timezone"), self.tz_menu))
 
         self.combo_fav = QComboBox()
         self.combo_fav.setPlaceholderText(t("side.favorites_placeholder"))
         self.combo_fav.setMinimumContentsLength(6)
         self._refresh_favorites_combo()
         self.combo_fav.activated.connect(self._apply_favorite)
-        fav_add = _bouton_icone("favorite_add", t("side.fav_save_tip"))
+        fav_add = _icon_button("favorite_add", t("side.fav_save_tip"))
         fav_add.clicked.connect(self.save_location)
-        fav_del = _bouton_icone("delete", t("side.fav_delete_tip"))
+        fav_del = _icon_button("delete", t("side.fav_delete_tip"))
         fav_del.clicked.connect(self.delete_location)
-        lay.addLayout(self._with_button(ChampSaisie(t("side.favorites"), self.combo_fav),
+        lay.addLayout(self._with_button(InputField(t("side.favorites"), self.combo_fav),
                                         fav_add, fav_del))
 
         # Actions: Calculate is the only gold area of the screen
         lay.addSpacing(4)
-        self.btn_calc = _bouton(t("side.calculate"), "calculate", "principal")
+        self.btn_calc = _button(t("side.calculate"), "calculate", "principal")
         self.btn_calc.setToolTip(tf("side.calculate_tip", key="F5"))
         self.btn_calc.clicked.connect(self.calculate)
         lay.addWidget(self.btn_calc)
-        self.btn_live = _bouton(t("side.live"), "live", "secondaire", checkable=True)
+        self.btn_live = _button(t("side.live"), "live", "secondaire", checkable=True)
         self.btn_live.setToolTip(tf("side.live_tip", key="Ctrl+L"))
         self.btn_live.toggled.connect(self.toggle_live)
         lay.addWidget(self.btn_live)
 
         lay.addStretch()
-        self.theme_selector = SelecteurTheme(Config.THEME, self._on_theme_selected)
+        self.theme_selector = ThemeSelector(Config.THEME, self._on_theme_selected)
         lay.addWidget(self.theme_selector)
         lay.addWidget(_label(tf("app.version", version=APP_VERSION), "legende"))
         return side
@@ -1272,10 +1277,10 @@ class AstroApp(QMainWindow):
         # The values read at a glance
         cards = QHBoxLayout()
         cards.setSpacing(16)
-        self.card_sun_alt = CarteDonnee(t("cards.sun_alt"), SYMBOL["Sun"], "or")
-        self.card_sun_rise = CarteDonnee(t("cards.sun_rise"), SYMBOL["Sun"], "or")
-        self.card_moon_alt = CarteDonnee(t("cards.moon_alt"), SYMBOL["Moon"], "lune")
-        self.card_moon_illum = CarteDonnee(t("cards.moon_illum"), SYMBOL["Moon"], "lune")
+        self.card_sun_alt = DataCard(t("cards.sun_alt"), SYMBOL["Sun"], "or")
+        self.card_sun_rise = DataCard(t("cards.sun_rise"), SYMBOL["Sun"], "or")
+        self.card_moon_alt = DataCard(t("cards.moon_alt"), SYMBOL["Moon"], "lune")
+        self.card_moon_illum = DataCard(t("cards.moon_illum"), SYMBOL["Moon"], "lune")
         for card in (self.card_sun_alt, self.card_sun_rise, self.card_moon_alt,
                      self.card_moon_illum):
             cards.addWidget(card, stretch=1)
@@ -1289,7 +1294,7 @@ class AstroApp(QMainWindow):
         outer.setSpacing(6)
         head = QHBoxLayout()
         head.setSpacing(8)
-        head.addWidget(_label(SYMBOL["star"], "symbole", tone="or"))
+        head.addWidget(_label(SYMBOL["star"], "symbol", tone="or"))
         head.addWidget(_label(t("tonight.title"), "sous-titre"))
         head.addStretch()
         outer.addLayout(head)
@@ -1302,7 +1307,7 @@ class AstroApp(QMainWindow):
         row = QHBoxLayout()
         row.setSpacing(16)
 
-        # Soleil
+        # Sun
         card, body, self._lbl_sun_state = self._body_card(SYMBOL["Sun"], "or", t("sun.title"))
         self.sun_labels = {}
         r = self._section_rows(body, 0, t("sun.section_position"), [
@@ -1319,9 +1324,9 @@ class AstroApp(QMainWindow):
         ], self.sun_labels)
         row.addWidget(card, stretch=1)
 
-        # Lune
+        # Moon
         card, body, self._lbl_moon_state = self._body_card(SYMBOL["Moon"], "lune", t("moon.title"))
-        btn_calendar = _bouton(t("calendar.button"), "calendar", "secondaire", compact=True)
+        btn_calendar = _button(t("calendar.button"), "calendar", "secondaire", compact=True)
         btn_calendar.setToolTip(t("calendar.button_tip"))
         btn_calendar.clicked.connect(lambda _=False: self._show_moon_calendar())
         card.layout().itemAt(0).layout().insertWidget(3, btn_calendar)
@@ -1336,7 +1341,7 @@ class AstroApp(QMainWindow):
         r += 1
         phase_row = QHBoxLayout()
         phase_row.setSpacing(16)
-        self._phase_disc = PhaseLune(56)
+        self._phase_disc = MoonPhase(56)
         phase_row.addWidget(self._phase_disc)
         phase_text = QVBoxLayout()
         phase_text.setSpacing(8)
@@ -1364,7 +1369,7 @@ class AstroApp(QMainWindow):
         lay.addStretch()
         self.tabs.addTab(scroll, t("tabs.ephemeris"))
 
-    def _body_card(self, symbole, accent, title):
+    def _body_card(self, symbol, accent, title):
         """Card of a body: (card, data grid, state badge)."""
         card = _card()
         outer = QVBoxLayout(card)
@@ -1372,10 +1377,10 @@ class AstroApp(QMainWindow):
         outer.setSpacing(12)
         head = QHBoxLayout()
         head.setSpacing(8)
-        head.addWidget(_label(symbole, "symbole", tone=accent))
+        head.addWidget(_label(symbol, "symbol", tone=accent))
         head.addWidget(_label(title, "sous-titre"))
         head.addStretch()
-        badge = _pastille()
+        badge = _badge()
         head.addWidget(badge)
         outer.addLayout(head)
         grid = QGridLayout()
@@ -1390,7 +1395,7 @@ class AstroApp(QMainWindow):
     def _section_rows(grid, row, title, fields, labels):
         """
         Adds a heading (text, QLabel or None), then a "label … value" line per
-        field (compact CarteDonnee); returns the next row.
+        field (compact DataCard); returns the next row.
         Field: (key, translation key[, emphasised]).
         """
         if title is not None:
@@ -1450,7 +1455,7 @@ class AstroApp(QMainWindow):
     def _build_skymap_tab(self):
         bar = QHBoxLayout()
         bar.setSpacing(12)
-        bar.addWidget(_label(t("skymap.mag_limit"), "libelle"))
+        bar.addWidget(_label(t("skymap.mag_limit"), "label"))
         self._mag_slider = QSlider(Qt.Orientation.Horizontal)
         self._mag_slider.setRange(10, 70)          # magnitude × 10
         self._mag_slider.setFixedWidth(240)
@@ -1494,7 +1499,7 @@ class AstroApp(QMainWindow):
         options = [("all", t("planets.group_all"), t("planets.group_all_tip"))]
         options += [(key, t(f"planets.group_{key}"), t(f"planets.group_{key}_tip"))
                     for key, _names in _BODY_GROUPS]
-        self._planet_selector = SelecteurTheme(self._planet_group, self._on_planet_group, options,
+        self._planet_selector = ThemeSelector(self._planet_group, self._on_planet_group, options,
                                                t("planets.group_legend"))
         self._planet_selector.setMaximumWidth(620)
         self._planet_visible = QCheckBox(t("planets.visible_only"))
@@ -1577,11 +1582,11 @@ class AstroApp(QMainWindow):
         bar = QHBoxLayout()
         bar.setContentsMargins(8, 4, 8, 0)
         bar.setSpacing(4)
-        back = _bouton_icone("step_back", t("planets.orrery_back"), compact=True)
+        back = _icon_button("step_back", t("planets.orrery_back"), compact=True)
         back.clicked.connect(lambda: self._orrery_step(-1))
-        self._orrery_play = _bouton_icone("play", t("planets.orrery_play"), compact=True)
+        self._orrery_play = _icon_button("play", t("planets.orrery_play"), compact=True)
         self._orrery_play.clicked.connect(self._toggle_orrery)
-        forward = _bouton_icone("step_forward", t("planets.orrery_forward"), compact=True)
+        forward = _icon_button("step_forward", t("planets.orrery_forward"), compact=True)
         forward.clicked.connect(lambda: self._orrery_step(+1))
         self._orrery_speed = QComboBox()
         for key, days in (("day", 1.0), ("week", 7.0), ("month", 30.0), ("year", 365.25)):
@@ -1589,7 +1594,7 @@ class AstroApp(QMainWindow):
         self._orrery_speed.setCurrentIndex(1)
         self._orrery_speed.setToolTip(t("planets.orrery_speed_tip"))
         self._orrery_date = _label("", "donnee")
-        reset = _bouton(t("planets.orrery_reset"), "reset", "discret", compact=True)
+        reset = _button(t("planets.orrery_reset"), "reset", "discret", compact=True)
         reset.setToolTip(t("planets.orrery_reset_tip"))
         reset.clicked.connect(self._reset_orrery)
         for widget in (back, self._orrery_play, forward, self._orrery_speed):
@@ -1808,7 +1813,7 @@ class AstroApp(QMainWindow):
             menu.setCurrentIndex(max(0, menu.findData(prefs.get(pref))))
             menu.currentIndexChanged.connect(lambda _i, k=key: self._on_coord_choice(k))
             self.coord_menus[key] = menu
-            row.addWidget(ChampSaisie(t(f"coordinates.{key}"), menu), stretch=1)
+            row.addWidget(InputField(t(f"coordinates.{key}"), menu), stretch=1)
         lay.addLayout(row)
 
         table = QTableWidget(len(AstroEngine.BODIES), len(self._COORD_COLUMNS))
@@ -1842,7 +1847,7 @@ class AstroApp(QMainWindow):
         lay.addWidget(table)
         self._coord_note = _label("", "legende", wrap=True)
         lay.addWidget(self._coord_note)
-        propose = _bouton(t("links.body_more"), variante="discret", compact=True)
+        propose = _button(t("links.body_more"), variant="discret", compact=True)
         propose.setToolTip(t("links.body_tip"))
         propose.clicked.connect(lambda _checked=False: _open_url(_issue_url("body")))
         self._propose_body = propose
@@ -1941,18 +1946,18 @@ class AstroApp(QMainWindow):
 
         bar = QHBoxLayout()
         bar.setSpacing(8)
-        btn_ecl = _bouton(t("events.search_eclipses"), "search")
+        btn_ecl = _button(t("events.search_eclipses"), "search")
         btn_ecl.clicked.connect(self._search_eclipses_gui)
-        btn_conj = _bouton(t("events.search_conjunctions"), "search")
+        btn_conj = _button(t("events.search_conjunctions"), "search")
         btn_conj.clicked.connect(self._search_conjunctions_gui)
-        btn_sat = _bouton(t("satellites.search"), "search")
+        btn_sat = _button(t("satellites.search"), "search")
         btn_sat.setToolTip(t("satellites.search_tip"))
         btn_sat.clicked.connect(self._search_satellites_gui)
         bar.addWidget(btn_ecl)
         bar.addWidget(btn_conj)
         bar.addWidget(btn_sat)
         bar.addStretch()
-        self._btn_ics = _bouton(t("events.export_ics"), "export")
+        self._btn_ics = _button(t("events.export_ics"), "export")
         self._btn_ics.setToolTip(t("events.export_tip"))
         self._btn_ics.setEnabled(False)
         self._btn_ics.clicked.connect(self._export_ics)
@@ -2027,25 +2032,25 @@ class AstroApp(QMainWindow):
         self._anglefmt_combo.currentIndexChanged.connect(self._on_anglefmt_change)
         row = QHBoxLayout()
         row.setSpacing(16)
-        row.addWidget(ChampSaisie(t("settings.language"), self._lang_combo), stretch=1)
-        row.addWidget(ChampSaisie(t("settings.time_format"), self._timefmt_combo), stretch=1)
-        row.addWidget(ChampSaisie(t("settings.angle_format"), self._anglefmt_combo), stretch=1)
+        row.addWidget(InputField(t("settings.language"), self._lang_combo), stretch=1)
+        row.addWidget(InputField(t("settings.time_format"), self._timefmt_combo), stretch=1)
+        row.addWidget(InputField(t("settings.angle_format"), self._anglefmt_combo), stretch=1)
         box.addLayout(row)
         box.addWidget(_label(t("settings.theme_hint"), "legende", wrap=True))
 
         # Starting place
         box = section(t("settings.default_place_section"))
         self._place_entry = QLineEdit(_clean_place(prefs.get("default_place")))
-        box.addWidget(ChampSaisie(t("settings.default_place_name"), self._place_entry))
+        box.addWidget(InputField(t("settings.default_place_name"), self._place_entry))
         coords = QVBoxLayout()
         coords.setSpacing(4)
-        coords.addWidget(_label(t("settings.default_place_coords"), "libelle"))
+        coords.addWidget(_label(t("settings.default_place_coords"), "label"))
         self._default_coords_lbl = _label("", "donnee")
         coords.addWidget(self._default_coords_lbl)
         box.addLayout(coords)
         self._update_default_place_label()
         buttons = QHBoxLayout()
-        btn_use = _bouton(t("settings.use_current"), "place")
+        btn_use = _button(t("settings.use_current"), "place")
         btn_use.setToolTip(t("settings.use_current_tip"))
         btn_use.clicked.connect(self._save_default_place)
         buttons.addWidget(btn_use)
@@ -2058,7 +2063,7 @@ class AstroApp(QMainWindow):
 
         # Real time
         box = section(t("settings.live_section"))
-        box.addWidget(_label(t("settings.live_interval"), "libelle"))
+        box.addWidget(_label(t("settings.live_interval"), "label"))
         iv = QHBoxLayout()
         iv.setSpacing(12)
         self._iv_slider = QSlider(Qt.Orientation.Horizontal)
@@ -2076,7 +2081,7 @@ class AstroApp(QMainWindow):
         box = section(t("settings.reset_section"))
         box.addWidget(_label(t("settings.reset_hint"), "legende", wrap=True))
         buttons = QHBoxLayout()
-        btn_reset = _bouton(t("settings.reset_btn"), variante="danger")
+        btn_reset = _button(t("settings.reset_btn"), variant="danger")
         btn_reset.clicked.connect(self._reset_settings)
         buttons.addWidget(btn_reset)
         buttons.addStretch()
@@ -2088,7 +2093,7 @@ class AstroApp(QMainWindow):
         box.addWidget(_label(t("settings.credits"), "legende", wrap=True))
         row = QHBoxLayout()
         row.setSpacing(12)
-        self._btn_update = _bouton(t("update.check_now"), "now", "secondaire", compact=True)
+        self._btn_update = _button(t("update.check_now"), "now", "secondaire", compact=True)
         self._btn_update.setToolTip(t("update.check_now_tip"))
         self._btn_update.clicked.connect(lambda _checked=False: self.check_updates())
         row.addWidget(self._btn_update)
@@ -2107,7 +2112,7 @@ class AstroApp(QMainWindow):
             row = QHBoxLayout()
             row.setSpacing(8)
             for key, url in links:
-                btn = _bouton(t(f"links.{key}"), variante="secondaire", compact=True)
+                btn = _button(t(f"links.{key}"), variant="secondaire", compact=True)
                 btn.setToolTip(t(f"links.{key}_tip"))
                 btn.clicked.connect(lambda _checked=False, u=url: _open_url(u))
                 self._link_buttons[key] = btn
@@ -2126,7 +2131,7 @@ class AstroApp(QMainWindow):
         self.setStatusBar(bar)
         self._lbl_pos = QLabel("—")
         self._lbl_stars = QLabel("")
-        self._lbl_live = _pastille(t("status.live_on"), "info")
+        self._lbl_live = _badge(t("status.live_on"), "info")
         self._lbl_live.setVisible(False)
         self._lbl_time = QLabel("")
         bar.addWidget(self._lbl_pos)
@@ -2279,7 +2284,7 @@ class AstroApp(QMainWindow):
         self.statusBar().showMessage(t("settings.reset_done"), 6000)
 
     # ──────────────────────────────────────────────────────────────────────────
-    # FAVORIS
+    # FAVOURITES
     # ──────────────────────────────────────────────────────────────────────────
 
     def _load_favorites(self):
@@ -2395,7 +2400,7 @@ class AstroApp(QMainWindow):
         self.statusBar().showMessage(tf("favs.deleted", name=name), 5000)
 
     # ──────────────────────────────────────────────────────────────────────────
-    # DATE, FUSEAU, FORMAT DE L'HEURE
+    # DATE, TIME ZONE, TIME FORMAT
     # ──────────────────────────────────────────────────────────────────────────
 
     def _set_datetime(self, dte):
@@ -2413,7 +2418,7 @@ class AstroApp(QMainWindow):
         return datetime(d.year(), d.month(), d.day(), tm.hour(), tm.minute(), tm.second())
 
     def current_inputs(self):
-        """(date TU, latitude, longitude) saisies ; ValueError si invalides."""
+        """The typed (UT date, latitude, longitude); ValueError when invalid."""
         lat = _parse_coord(self.entry_lat.text(), 90.0)
         lon = _parse_coord(self.entry_lon.text(), 180.0)
         return self._edit_datetime(), lat, lon
@@ -2611,7 +2616,7 @@ class AstroApp(QMainWindow):
         on = self.live_mode
         self.dt_edit.setReadOnly(on)
         _repolish(self.dt_edit)
-        self.field_date.set_desactive(on)
+        self.field_date.set_inactive(on)
         self.btn_now.setEnabled(not on)
         self._lbl_live.setVisible(on)
 
@@ -2620,7 +2625,7 @@ class AstroApp(QMainWindow):
         self.calculate()
 
     # ──────────────────────────────────────────────────────────────────────────
-    # CALCUL PRINCIPAL
+    # MAIN CALCULATION
     # ──────────────────────────────────────────────────────────────────────────
 
     def _warn_invalid_coords(self):
@@ -2634,10 +2639,10 @@ class AstroApp(QMainWindow):
             try:
                 _parse_coord(edit.text(), limit)
                 _set_invalid(edit, False)
-                field.set_erreur(None)
+                field.set_error(None)
             except ValueError:
                 _set_invalid(edit, True)
-                field.set_erreur(t(key))
+                field.set_error(t(key))
                 ok = False
         return ok
 
@@ -2744,19 +2749,19 @@ class AstroApp(QMainWindow):
 
     def _update_data_cards(self):
         sd, md = self.sun_data, self.moon_data
-        self.card_sun_alt.set_valeur(
+        self.card_sun_alt.set_value(
             _num(sd["alt"], 1, signed=True), "°",
             f"{tf('cards.azimuth', value=_deg(sd['az'], 1))} · {t('sun.state_' + self._sun_phase())}")
         rise, sunset = self.sun_events.get("rise"), self.sun_events.get("set")
-        self.card_sun_rise.set_valeur(
+        self.card_sun_rise.set_value(
             self._format_event(rise), "",
             tf("cards.set_at", time=self._format_event(sunset)))
-        self.card_moon_alt.set_valeur(
+        self.card_moon_alt.set_value(
             _num(md["alt"], 1, signed=True), "°",
             f"{tf('cards.rise_at', time=self._format_event(self.moon_events.get('rise')))} · "
             f"{tf('cards.set_at', time=self._format_event(self.moon_events.get('set')))}")
         key = Formatters.PHASES[Formatters.phase_index(md["phase"])][0]
-        self.card_moon_illum.set_valeur(_num(md["illum"], 0), "%", t(f"phases.{key}"))
+        self.card_moon_illum.set_value(_num(md["illum"], 0), "%", t(f"phases.{key}"))
 
     def _update_sun_card(self):
         sd, lb, ev = self.sun_data, self.sun_labels, self.sun_events
@@ -2772,7 +2777,7 @@ class AstroApp(QMainWindow):
         lb["day_length"].setText(self._day_length())
         self._sun_events_title.setText(self._events_title())
         phase = self._sun_phase()
-        _set_pastille(self._lbl_sun_state, t(f"sun.state_{phase}"),
+        _set_badge(self._lbl_sun_state, t(f"sun.state_{phase}"),
                       "info" if phase == "day" else "neutre")
 
     def _update_tonight(self, dte, lat, lon, elev):
@@ -2847,7 +2852,7 @@ class AstroApp(QMainWindow):
             lines.append((t("tonight.no_upcoming"), "attenuee"))
         return lines
 
-    # ── Calendrier lunaire ────────────────────────────────────────────────────
+    # ── Lunar calendar ────────────────────────────────────────────────────────
 
     def _show_moon_calendar(self, year=None, month=None):
         """Window (non-modal): the Moon day by day over a month, seen from here."""
@@ -2865,8 +2870,8 @@ class AstroApp(QMainWindow):
             lay.setContentsMargins(24, 24, 24, 16)
             lay.setSpacing(12)
             head = QHBoxLayout()
-            prev = _bouton_icone("previous", t("calendar.previous"))
-            nxt = _bouton_icone("next", t("calendar.next"))
+            prev = _icon_button("previous", t("calendar.previous"))
+            nxt = _icon_button("next", t("calendar.next"))
             prev.clicked.connect(lambda: self._fill_moon_calendar(-1))
             nxt.clicked.connect(lambda: self._fill_moon_calendar(+1))
             dlg._title = _label("", "sous-titre")
@@ -2911,7 +2916,7 @@ class AstroApp(QMainWindow):
         loc = _locale()
         name = loc.standaloneMonthName(month, QLocale.FormatType.LongFormat)
         dlg._title.setText(f"{name[:1].upper()}{name[1:]} {year}")
-        first = loc.firstDayOfWeek().value                # 1 lundi … 7 dimanche
+        first = loc.firstDayOfWeek().value                # 1 Monday … 7 Sunday
         for col in range(7):
             day = (first - 1 + col) % 7 + 1
             head = _label(loc.standaloneDayName(day, QLocale.FormatType.ShortFormat), "legende",
@@ -2931,7 +2936,7 @@ class AstroApp(QMainWindow):
             top.addWidget(_label(str(d["date"].day), "corps", tone="or" if d["date"] == today else None,
                                  strong=True))
             top.addStretch()
-            disc = PhaseLune(26)
+            disc = MoonPhase(26)
             disc.set_phase(d["phase"], southern=southern)
             top.addWidget(disc)
             box.addLayout(top)
@@ -2972,9 +2977,9 @@ class AstroApp(QMainWindow):
             lb[key].setText(self._format_event(ev.get(key)))
         self._moon_events_title.setText(self._events_title())
         if md["alt"] > 0:
-            _set_pastille(self._lbl_moon_state, t("common.above_horizon"), "info")
+            _set_badge(self._lbl_moon_state, t("common.above_horizon"), "info")
         else:
-            _set_pastille(self._lbl_moon_state, t("common.below_horizon"), "neutre")
+            _set_badge(self._lbl_moon_state, t("common.below_horizon"), "neutre")
 
     def _update_planet_table(self):
         table = self.planet_table
@@ -3026,7 +3031,7 @@ class AstroApp(QMainWindow):
             f"{tf('status.local', time=self._fmt_clock(local), offset=self._zone_text())}")
 
     # ──────────────────────────────────────────────────────────────────────────
-    # GRAPHIQUES
+    # CHARTS
     # ──────────────────────────────────────────────────────────────────────────
 
     def _on_tab_changed(self, _index):
@@ -3060,7 +3065,7 @@ class AstroApp(QMainWindow):
             "moon": t("chart.moon"),
         }
         labels.update({p: t(f"chart.phase_{p}") for p in charts.DAY_PHASES})
-        now_h = (dte - start).total_seconds() / 3600       # depuis minuit local
+        now_h = (dte - start).total_seconds() / 3600       # since local midnight
         self._traj_ax, tip = charts.draw_trajectory(
             self.fig_traj, self.hours, self.sun_altitudes, self.moon_altitudes,
             now_h, self.sun_data["alt"], self.moon_data["alt"], labels, offset)
@@ -3158,7 +3163,7 @@ class AstroApp(QMainWindow):
             return
         step = self.hours[1] - self.hours[0]
         i = max(0, min(len(self.hours) - 1, int(round(event.xdata / step))))
-        hour = self.hours[i]                                  # depuis minuit local
+        hour = self.hours[i]                                  # since local midnight
         base, offset = datetime(2000, 1, 1), self._midnight_offset()
         ut = self._fmt_clock(base + timedelta(hours=hour - offset))
         first = f"{ut} {t('chart.ut')}"
@@ -3369,7 +3374,7 @@ class AstroApp(QMainWindow):
             grid.addWidget(val, r, 1)
         lay.addWidget(card)
         buttons = QDialogButtonBox()
-        close = _bouton(t("detail.close"))
+        close = _button(t("detail.close"))
         buttons.addButton(close, QDialogButtonBox.ButtonRole.RejectRole)
         buttons.rejected.connect(dlg.reject)
         lay.addWidget(buttons)
@@ -3404,7 +3409,7 @@ class AstroApp(QMainWindow):
             self._evt_layout.addWidget(_label(note, "legende", wrap=True))
         self._evt_layout.addSpacing(8)
 
-    def _event_card(self, symbole, accent, title, when, pills=(), details=(), action=None, lines=()):
+    def _event_card(self, symbol, accent, title, when, pills=(), details=(), action=None, lines=()):
         """Event card: symbol, title, badges, date; details below; *action*:
         (text, function) of a button on the right."""
         card = _card()
@@ -3415,14 +3420,14 @@ class AstroApp(QMainWindow):
         lay.setSpacing(6)
         top = QHBoxLayout()
         top.setSpacing(8)
-        top.addWidget(_label(symbole, "symbole", tone=accent))
+        top.addWidget(_label(symbol, "symbol", tone=accent))
         top.addWidget(_label(title, "corps", strong=True))
-        for text, ton in pills:
-            top.addWidget(_pastille(text, ton))
+        for text, tone in pills:
+            top.addWidget(_badge(text, tone))
         top.addStretch()
         top.addWidget(_label(when, "donnee"))
         if action:
-            btn = _bouton(action[0], "place", "secondaire", compact=True)
+            btn = _button(action[0], "place", "secondaire", compact=True)
             btn.setToolTip(action[2] if len(action) > 2 else t("eclipse_map.button_tip"))
             btn.clicked.connect(action[1])
             top.addWidget(btn)
@@ -3803,23 +3808,23 @@ class AstroApp(QMainWindow):
         a = ev["bodies"][0]
         pills, details, lines, action = [], [], [], None
         if kind == "season":
-            symbole = SYMBOL["Sun"]
+            symbol = SYMBOL["Sun"]
         elif kind == "meteor_shower":
-            symbole = SYMBOL["meteors"]
+            symbol = SYMBOL["meteors"]
             (m1, d1), (m2, d2) = ev["activity"]
             details += [tf("meteors.zhr", value=ev["zhr"]), tf("meteors.speed", value=ev["velocity"]),
                         tf("meteors.activity", start=f"{d1:02d}/{m1:02d}", end=f"{d2:02d}/{m2:02d}")]
         elif kind.startswith("comet_"):
-            symbole = SYMBOL[a]
+            symbol = SYMBOL[a]
             if kind != "comet_brightest":
                 key = "events.distance_au" if kind == "comet_perihelion" else "events.distance_earth"
                 details.append(tf(key, value=_num(ev["distance_au"], 3)))
             details.append(tf("events.magnitude", value=_num(ev["mag"], 1)))
         elif kind in ("perihelion", "aphelion"):
-            symbole = SYMBOL["Earth"]
+            symbol = SYMBOL["Earth"]
             details.append(tf("events.distance_au", value=_num(ev["distance_au"], 5)))
         elif kind in ("perigee", "apogee"):
-            symbole = SYMBOL["Moon"]
+            symbol = SYMBOL["Moon"]
             details.append(tf("events.distance_km", value=_num(ev["distance_km"])))
             if kind == "perigee" and ev.get("syzygy") == "full":
                 pills.append((t("events.supermoon"), "info"))
@@ -3828,13 +3833,13 @@ class AstroApp(QMainWindow):
         else:
             sep = ev["separation"]
             if kind == "opposition":
-                symbole = SYMBOL["opposition"]
+                symbol = SYMBOL["opposition"]
                 details.append(tf("events.elongation", value=_num(sep, 1)))
             elif kind == "greatest_elongation":
-                symbole = SYMBOL[a]
+                symbol = SYMBOL[a]
                 details.append(tf("events.elongation", value=_num(sep, 1)))
             else:
-                symbole = SYMBOL["conjunction"]
+                symbol = SYMBOL["conjunction"]
                 b = ev["bodies"][1]
                 side = (tf(f"events.{ev['side']}_of_sun", a=_planet_name(a)) if b == "Sun"
                         else tf(f"events.{ev['side']}_of", a=self._body_name(a), b=self._body_name(b)))
@@ -3871,7 +3876,7 @@ class AstroApp(QMainWindow):
             title = self._event_title(ev, symbol=kind != "greatest_elongation")
         else:
             title = self._event_title(ev)
-        self._event_card(symbole, "attenuee", title, self._event_when(ev["date"]), pills, details,
+        self._event_card(symbol, "attenuee", title, self._event_when(ev["date"]), pills, details,
                          action, lines)
         self._ics_add(ev["date"], None, self._event_title(ev, symbol=False), details + lines)
 

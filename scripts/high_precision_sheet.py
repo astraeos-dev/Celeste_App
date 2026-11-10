@@ -5,7 +5,7 @@ A side script, independent of the application: it uses Skyfield and the JPL DE42
 which Skyfield downloads by itself at the first run (de421.bsp, ~17 MB).
 
     pip install skyfield fpdf2
-    python scripts/fiche_haute_precision.py
+    python scripts/high_precision_sheet.py
 """
 from skyfield.api import load, wgs84
 from skyfield import almanac
@@ -13,7 +13,7 @@ from fpdf import FPDF
 import math
 
 # --- CONFIGURATION ---
-DATE_CALCUL = "2026-03-23"
+DATE = "2026-03-23"
 LATITUDE = 49.6337
 LONGITUDE = -1.6221
 ALTITUDE = 5.0
@@ -91,7 +91,7 @@ def generate_pro_pdf():
               * A S T R O N O M I C A L   B U L L E T I N *
 ======================================================================
  Place        : CHERBOURG-EN-COTENTIN (Lat: {LATITUDE} N, Lon: {abs(LONGITUDE)} W)
- Date         : {DATE_CALCUL}
+ Date         : {DATE}
  Computation  : Skyfield engine (offline) - apparent topocentric
 ----------------------------------------------------------------------
 
@@ -135,7 +135,7 @@ def generate_pro_pdf():
     for line in ascii_content.split('\n'):
         pdf.cell(0, 5, txt=line, ln=True, align='L')
         
-    filename = f"Ephemerides_Pro_Cherbourg_{DATE_CALCUL}.pdf"
+    filename = f"Ephemeris_Pro_Cherbourg_{DATE}.pdf"
     pdf.output(filename)
     print(f"\n[DONE] The PDF '{filename}' is ready.")
 

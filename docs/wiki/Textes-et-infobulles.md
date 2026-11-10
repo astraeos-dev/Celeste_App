@@ -24,7 +24,7 @@ Une clé `section.nom` désigne l'entrée `"nom"` de la section `"section"` du J
 1. **Trouver la clé** : cherchez le texte affiché dans `locales/fr.json` (Ctrl+F dans l'éditeur, ou
    `git grep "Détecter ma position" locales/fr.json`).
 2. **Voir où il sert**, si besoin : `git grep "side.geoloc_tip"` — ici, le bouton de géolocalisation dans
-   `gui.py` (`_bouton_icone("geolocate", t("side.geoloc_tip"))`).
+   `gui.py` (`_icon_button("geolocate", t("side.geoloc_tip"))`).
 3. **Modifier la valeur dans les quatre fichiers** `fr`, `en`, `es`, `de`.
 4. **Vérifier** : `python -m pytest -q tests/test_i18n.py`, puis lancer l'application.
 

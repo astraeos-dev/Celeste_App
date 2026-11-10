@@ -29,7 +29,7 @@ a = Analysis(
     pathex=["."],
     datas=datas,
     hiddenimports=["PyQt6.QtPositioning", "PyQt6.QtSvg"],
-    excludes=["tkinter", "pytest", "pandas"],          # pandas : import facultatif de Skyfield
+    excludes=["tkinter", "pytest", "pandas"],          # pandas: an optional import of Skyfield
 )
 pyz = PYZ(a.pure)
 exe = EXE(

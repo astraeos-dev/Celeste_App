@@ -182,24 +182,24 @@ class TestCalculation:
         window._planet_selector.buttons["planets"].click()
 
     def test_invalid_latitude_is_flagged_without_dialog(self, window):
-        """The error shows under the field (ChampSaisie), without a window."""
+        """The error shows under the field (InputField), without a window."""
         before = dict(window.sun_data)
         window.entry_lat.setText("123")
         window.calculate()
         assert window.entry_lat.property("invalid") is True
-        assert window.field_lat.erreur.isVisibleTo(window)
-        assert "−90" in window.field_lat.erreur.text()
+        assert window.field_lat.error.isVisibleTo(window)
+        assert "−90" in window.field_lat.error.text()
         assert window.sun_data == before
         window.entry_lat.setText("49,6333")
         window.calculate()
         assert window.entry_lat.property("invalid") is False
-        assert not window.field_lat.erreur.isVisibleTo(window)
+        assert not window.field_lat.error.isVisibleTo(window)
 
     def test_data_cards(self, window):
         """The highlighted values in the cadran style, numbers in the French style."""
-        assert window.card_sun_rise.valeur.text() == "06:55"
-        assert window.card_sun_alt.unite.text() == "°"
-        assert "," in window.card_moon_alt.valeur.text()
+        assert window.card_sun_rise.value.text() == "06:55"
+        assert window.card_sun_alt.unit.text() == "°"
+        assert "," in window.card_moon_alt.value.text()
         assert window.card_moon_illum.detail.text() == "Dernier quartier"
 
     def test_timezone_shifts_local_times(self, window):
@@ -588,7 +588,7 @@ class TestAstraeosRules:
         """A single primary button (gold fill) in the window."""
         from PyQt6.QtWidgets import QPushButton
         principal = [b for b in window.findChildren(QPushButton)
-                     if b.property("variante") == "principal" and b.isVisibleTo(window)]
+                     if b.property("variant") == "principal" and b.isVisibleTo(window)]
         assert principal == [window.btn_calc]
 
     def test_live_mode_is_a_pressed_toggle(self, window):
@@ -1252,7 +1252,7 @@ class TestFirstLaunch:
 # ──────────────────────────────────────────────────────────────────────
 
 class TestUpdates:
-    RELEASE = {"version": "99.0", "tag": "v99.0", "notes": "Nouveautés",
+    RELEASE = {"version": "99.0", "tag": "v99.0", "notes": "What's new",
                "page": "https://github.com/astraeos-dev/Celeste_App/releases/tag/v99.0",
                "setup_url": "https://example.test/Celeste-99.0-Setup.exe",
                "setup_name": "Celeste-99.0-Setup.exe", "setup_size": 10, "sha256_url": "x"}
@@ -1292,10 +1292,10 @@ class TestUpdates:
 
     def test_notes_in_plain_text(self, window, offline):
         """The note of the Release (CHANGELOG.md) shows without Markdown tags."""
-        offline["release"] = dict(self.RELEASE, notes="- Étoiles **filantes**\n  dans `Évènements`")
+        offline["release"] = dict(self.RELEASE, notes="- Meteor **showers**\n  in the `Events` tab")
         window.check_updates()
         box = window._update_dialog
-        assert box.informativeText().startswith("• Étoiles filantes dans Évènements")
+        assert box.informativeText().startswith("• Meteor showers in the Events tab")
         box.close()
 
     def test_from_the_sources_git_pull(self, window, offline, monkeypatch):

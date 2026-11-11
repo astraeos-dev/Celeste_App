@@ -1,6 +1,6 @@
 # Ajouter une comète
 
-Céleste suit les comètes qui deviennent faciles à voir de 2027 à 2029 : **C/2026 O1 (PANSTARRS)** (magnitude 8,6
+Céleste suit les comètes qui deviennent faciles à voir de 2027 à 2029 : **C/2025 A6 (Lemmon)** (passée près de la Terre en octobre 2025), **C/2026 O1 (PANSTARRS)** (magnitude 8,6
 en juin 2027), **45P/Honda-Mrkos-Pajdušáková** (8,2 fin août 2027), **C/2026 C1 (Tsuchinshan)** (6,6 en novembre
 2028, très au sud) et **19P/Borrelly** (9,6 en décembre 2028). Elles ont leur groupe dans l'onglet Planètes,
 leur fiche, leur place sur la carte du ciel quand elles passent la magnitude limite, leurs évènements (périhélie,
@@ -25,44 +25,38 @@ par date de périhélie ; demandez ensuite à Horizons sa magnitude prévue (`QU
 comète qui ne passe pas sous la magnitude 11 intéressera peu. Écartez celles qui restent près du Soleil
 (élongation, colonne `S-O-T`, inférieure à 20°).
 
-## 2. La table : `scripts/make_comets.py`
+## 2. Une seule ligne : `scripts/make_comets.py`
 
-Ajoutez une ligne à `COMETS` : le **nom dans Céleste** (un seul mot, une majuscule puis des minuscules, à cause
-de `AstroEngine._target`), la commande Horizons et la désignation de la base de données :
+Depuis la version 4.9, une comète se déclare **à un seul endroit**. Ajoutez une ligne à `COMETS` : le **nom dans
+Céleste** (un seul mot, une majuscule puis des minuscules, à cause de `AstroEngine._target`), la commande Horizons,
+la désignation de la base de données, la désignation complète (fiche, évènements) et la désignation courte
+(tableaux, « Ce soir ») :
 
 ```python
 COMETS = {
     ...
-    "Encke": ("DES=2P;CAP;NOFRAG;", "2P"),
+    "Encke": ("DES=2P;CAP;NOFRAG;", "2P", "2P/Encke", "2P/Encke"),
 }
 ```
 
 Ajustez au besoin `START` et `STOP` pour couvrir son passage, puis lancez `python scripts/make_comets.py`
-(quelques secondes, réseau). Relancez-le aussi de temps en temps : l'orbite d'une comète découverte depuis peu
-repose sur quelques mois d'observations, et JPL l'affine.
+(quelques secondes, réseau) et validez `assets/comets.npz` avec le script. La table emporte les noms : le moteur
+(`COMETS`, `COMET_DESIGNATIONS`, `COMET_SHORT`), le groupe « Comètes », le symbole ☄, la carte du ciel, les
+évènements et « Ce soir » suivent sans autre modification.
 
-## 3. Le moteur : `engine.py`
+Relancez le script de temps en temps : l'orbite d'une comète découverte depuis peu repose sur quelques mois
+d'observations, et JPL l'affine.
 
-```python
-COMETS = ("Panstarrs", "Honda", "Tsuchinshan", "Borrelly", "Encke")
-COMET_DESIGNATIONS = {..., "Encke": "2P/Encke"}
-```
-
-Rien d'autre : `_target`, la magnitude (`observations`), `comets_at()`, `find_comet_events()` et `tonight()`
-suivent la liste.
-
-## 4. L'interface : `gui.py`
-
-Ajoutez sa désignation courte à `_COMET_SHORT` (`"Encke": "2P/Encke"`), affichée dans les tableaux et « Ce soir » ;
-la désignation complète sert dans la fiche et les évènements. Le symbole ☄ et le groupe « Comètes » suivent
-`COMETS`, et le message « aucune comète suivie » se construit tout seul.
+**Pourquoi je ne la vois pas ?** Une comète n'est dessinée sur la carte du ciel que si elle est au-dessus de
+l'horizon et plus brillante que la magnitude limite ; « Ce soir » ne la cite que sous la magnitude 10. Elle est
+toujours dans l'onglet Planètes, groupe « Comètes », avec sa magnitude du moment : C/2025 A6 (Lemmon), brillante
+en octobre 2025, est à la magnitude 20 fin 2026. Mettez la date de son passage pour la retrouver.
 
 ## 5. Tester
 
 Dans `tests/test_engine.py`, `TestComets.test_position_and_magnitude` compare à JPL Horizons (quantités 1 et 9,
 astrométrique, `EXTRA_PREC=YES`) : ajoutez une ou deux dates de la nouvelle comète, dont son périhélie. Les
-comètes actuelles y sont à moins de 0,01″, la magnitude à 0,001 près. Mettez à jour les ensembles de noms de
-`TestComets` dans `tests/test_gui.py`.
+comètes actuelles y sont à moins de 0,01″, la magnitude à 0,001 près. Les tests de l'interface suivent la liste tout seuls.
 
 Voir [Tester ses modifications](Tester-ses-modifications.md).
 

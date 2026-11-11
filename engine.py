@@ -134,10 +134,24 @@ _MINOR_TABLE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets"
 # Comets followed by Céleste, those that become easy to see from 2027 to 2029:
 # JPL Horizons tables over the years of their apparition only, 2025 to 2031
 # (assets/comets.npz, scripts/make_comets.py); outside, they are not shown.
-COMETS = ("Panstarrs", "Honda", "Tsuchinshan", "Borrelly")
-COMET_DESIGNATIONS = {"Panstarrs": "C/2026 O1 (PANSTARRS)", "Honda": "45P/Honda-Mrkos-Pajdušáková",
-                      "Tsuchinshan": "C/2026 C1 (Tsuchinshan)", "Borrelly": "19P/Borrelly"}
+# The table carries their names: scripts/make_comets.py is the only place where
+# a comet is declared.
 _COMET_TABLE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "comets.npz")
+
+
+def _comet_names():
+    """(names, {name: full designation}, {name: short designation}) from the table."""
+    try:
+        with np.load(_COMET_TABLE) as table:
+            names = tuple(str(n) for n in table["names"])
+            full = dict(zip(names, (str(d) for d in table["designations"])))
+            short = dict(zip(names, (str(d) for d in table["short"])))
+    except (OSError, KeyError, ValueError):
+        return (), {}, {}
+    return names, full, short
+
+
+COMETS, COMET_DESIGNATIONS, COMET_SHORT = _comet_names()
 
 # The Messier catalogue: 110 nebulae, clusters and galaxies (assets/messier.csv,
 # from OpenNGC, CC BY-SA 4.0; scripts/make_messier.py)

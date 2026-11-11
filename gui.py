@@ -72,7 +72,7 @@ import updater  # noqa: E402
 from config import APP_VERSION, FONT_MONO, FONT_SANS, THEME_NAMES, Config, mix  # noqa: E402
 from constellations import STAR_CONSTELLATION  # noqa: E402
 from engine import (  # noqa: E402
-    COMET_DESIGNATIONS, COMETS, EPHEMERIS_YEARS, GALILEAN_MOONS, MINOR_PLANET_NUMBERS, MINOR_PLANETS, PLANETS,
+    COMET_DESIGNATIONS, COMET_SHORT, COMETS, EPHEMERIS_YEARS, GALILEAN_MOONS, MINOR_PLANET_NUMBERS, MINOR_PLANETS, PLANETS,
     AstroEngine,
     constellation_names, messier_catalog,
 )
@@ -314,16 +314,11 @@ def _clean_place(name):
     return (name or "").replace("\U0001f4cd", "").strip()
 
 
-# Comets: their short designation (tables, "Tonight"); the full one with *numbered*
-_COMET_SHORT = {"Panstarrs": "C/2026 O1", "Honda": "45P/Honda", "Tsuchinshan": "C/2026 C1",
-                "Borrelly": "19P/Borrelly","Lemmon": "C/2025 A6"}
-
-
 def _planet_name(name, symbol=False, numbered=False):
     """Name of a planet; *numbered*: with the number of a minor planet, "(1) Ceres";
     a comet: its designation, the same in every language (full with *numbered*)."""
     if name in COMET_DESIGNATIONS:
-        text = COMET_DESIGNATIONS[name] if numbered else _COMET_SHORT.get(name, COMET_DESIGNATIONS[name])
+        text = COMET_DESIGNATIONS[name] if numbered else COMET_SHORT.get(name, COMET_DESIGNATIONS[name])
         return f"{SYMBOL[name]} {text}" if symbol else text
     text = t(f"planets.{name.lower()}")
     if numbered and name in MINOR_PLANET_NUMBERS:
@@ -1946,7 +1941,7 @@ class AstroApp(QMainWindow):
         if self._planet_group == "comets":
             first, last = AstroEngine.comet_years()
             self._planet_empty.setText(tf("planets.no_comet", first=first, last=last,
-                                          comets=", ".join(_COMET_SHORT.get(c, c) for c in COMETS)))
+                                          comets=", ".join(COMET_SHORT.get(c, c) for c in COMETS)))
         else:
             self._planet_empty.setText(t("planets.none_visible"))
         header = table.horizontalHeader()

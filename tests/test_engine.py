@@ -860,6 +860,7 @@ class TestComets:
         ("Tsuchinshan", datetime(2028, 11, 10, 4), 307.159489161, -76.723977498, 6.637),   # brightest
         ("Borrelly", datetime(2028, 12, 7, 5), 37.809650992, -4.834328672, 9.627),
         ("Tsuchinshan", datetime(2026, 11, 7), 189.445907295, 0.308347604, 17.874),       # far away
+        ("Lemmon", datetime(2025, 10, 25, 5), 230.110176434, 19.340565008, 7.600),         # near the Earth
     ])
     def test_position_and_magnitude(self, name, when, ra, dec, mag):
         from engine import _sky

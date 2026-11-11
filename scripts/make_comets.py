@@ -21,13 +21,18 @@ import urllib.request
 
 import numpy as np
 
-# name in Céleste: (Horizons command, SBDB designation)
+# This list is the only place where a comet is declared: the table carries the
+# names, and engine.py and the interface read them from it.
+# name in Céleste (one word, a capital then lower case):
+#     (Horizons command, SBDB designation, full designation, short designation)
+# The full designation shows in the data window and the events, the short one in
+# the tables and "Tonight".
 COMETS = {
-    "Panstarrs": ("DES=C/2026 O1;", "C/2026 O1"),
-    "Honda": ("DES=45P;CAP;NOFRAG;", "45P"),
-    "Tsuchinshan": ("DES=C/2026 C1;", "C/2026 C1"),
-    "Borrelly": ("DES=19P;CAP;NOFRAG;", "19P"),
-    "Lemmon": ("DES=C/2025 A6;", "C/2025 A6"),
+    "Panstarrs": ("DES=C/2026 O1;", "C/2026 O1", "C/2026 O1 (PANSTARRS)", "C/2026 O1"),
+    "Honda": ("DES=45P;CAP;NOFRAG;", "45P", "45P/Honda-Mrkos-Pajdušáková", "45P/Honda"),
+    "Tsuchinshan": ("DES=C/2026 C1;", "C/2026 C1", "C/2026 C1 (Tsuchinshan)", "C/2026 C1"),
+    "Borrelly": ("DES=19P;CAP;NOFRAG;", "19P", "19P/Borrelly", "19P/Borrelly"),
+    "Lemmon": ("DES=C/2025 A6;", "C/2025 A6", "C/2025 A6 (Lemmon)", "C/2025 A6"),
 }
 START, STOP, STEP = "2025-01-01", "2031-12-31", 2
 OUT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "comets.npz")
@@ -57,9 +62,16 @@ def magnitude_parameters(designation):
     return float(phys["M1"]), float(phys["K1"])
 
 
+def names():
+    """The names of the comets and their designations, as the table stores them."""
+    return {"names": np.array(list(COMETS)),
+            "designations": np.array([c[2] for c in COMETS.values()]),
+            "short": np.array([c[3] for c in COMETS.values()])}
+
+
 def main():
-    table = {}
-    for name, (command, designation) in COMETS.items():
+    table = names()
+    for name, (command, designation, _full, _short) in COMETS.items():
         jd0, r, v = states(command)
         m1, k1 = magnitude_parameters(designation)
         table[f"{name}_start"] = np.array([jd0, STEP])

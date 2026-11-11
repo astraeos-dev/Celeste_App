@@ -30,6 +30,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 pytest.importorskip("PyQt6.QtWidgets", reason="PyQt6 or the Qt libraries are missing")
 pytest.importorskip("matplotlib")
 
+from engine import COMETS  # noqa: E402
 from matplotlib.backend_bases import MouseEvent  # noqa: E402
 from PyQt6.QtCore import QEvent, Qt  # noqa: E402
 from PyQt6.QtWidgets import (  # noqa: E402
@@ -834,7 +835,7 @@ class TestComets:
         window._on_planet_group("comets")
         rows = {name: items for name, items in window._planet_items.items()
                 if not window.planet_table.isRowHidden(items["col_planet"].row())}
-        assert set(rows) == {"Panstarrs", "Honda", "Tsuchinshan", "Borrelly"}
+        assert set(rows) == set(COMETS)
         honda = rows["Honda"]["col_planet"]
         assert honda.text() == "\u2604\ufe0e 45P/Honda" and honda.toolTip().startswith("45P/Honda-Mrkos-Pajdušáková")
         assert rows["Honda"]["col_mag"].text() == "8,2"
@@ -844,7 +845,7 @@ class TestComets:
         self._at(window, qapp, datetime(2035, 6, 1))
         window._on_planet_group("comets")
         assert all(window.planet_table.isRowHidden(window._planet_items[n]["col_planet"].row())
-                   for n in ("Panstarrs", "Honda", "Tsuchinshan", "Borrelly"))
+                   for n in COMETS)
         assert not window._planet_empty.isHidden() and "C/2026 C1" in window._planet_empty.text()
         window._on_planet_group("planets")
 

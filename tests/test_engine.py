@@ -1333,14 +1333,36 @@ class TestObservations:
 
 
 class TestStarCatalog:
-    def test_every_star_of_the_figures_is_in_the_catalogue(self):
-        """The constellation lines need the position of each of their stars."""
-        from constellations import CONSTELLATIONS
+    def test_down_to_magnitude_6_5(self):
+        """v4.9: the 8,404 stars of the Bright Star Catalogue down to magnitude 6.5,
+        the brightest first; the 513 brighter than 4 are those of the earlier versions."""
+        from constellations import STARS
         from star_catalog import CATALOG
+        assert len(CATALOG) == 8404 and CATALOG[0][6] == "Sirius"
+        magnitudes = [c[3] for c in CATALOG]
+        assert magnitudes == sorted(magnitudes) and magnitudes[-1] == 6.5
+        assert sum(1 for m in magnitudes if m < 4.0) == 513
         names = {c[6] for c in CATALOG if c[6]}
-        for edges in CONSTELLATIONS.values():
-            for a, b in edges:
-                assert a in names and b in names, (a, b)
+        assert set(STARS) <= names and len(names) == 83
+        polaris = next(c for c in CATALOG if c[6] == "Polaris")
+        assert polaris[0] == "α UMi" and abs(polaris[2] - 89.264) < 0.001
+
+    def test_figures_of_the_88_constellations(self):
+        """Their lines end on stars of the catalogue (d3-celestial; within 0.1°)."""
+        import charts
+        from engine import constellation_names
+        from star_catalog import CATALOG
+        figures = charts.constellation_figures()
+        assert set(figures) == set(constellation_names()) and len(figures) == 88
+        assert sum(len(line) - 1 for f in figures.values() for line in f["lines"]) == 735
+        stars = [(c[1], c[2]) for c in CATALOG if c[3] < 6.0]
+        for key in ("Ori", "UMa", "Cru"):
+            for line in figures[key]["lines"]:
+                for ra, dec in line:
+                    assert min(AstroEngine.angular_separation(ra, dec, sra, sdec) for sra, sdec in stars) < 0.1, key
+        betelgeuse = next(c for c in CATALOG if c[6] == "Betelgeuse")
+        assert any(AstroEngine.angular_separation(ra, dec, betelgeuse[1], betelgeuse[2]) < 0.05
+                   for line in figures["Ori"]["lines"] for ra, dec in line)
 
     def test_proper_motion_moves_arcturus(self):
         """Arcturus, −1.09″ and −2.00″ a year: 1′ from its J2000 place in 2026."""

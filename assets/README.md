@@ -43,3 +43,11 @@ name), extracted by `scripts/make_messier.py` from **OpenNGC** (github.com/matti
 © Mattia Verga, licence [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). This file is shared under
 the same licence. Seven magnitudes OpenNGC lacks (M22, M35, M62, M69, M70, M71, M107) come from the SEDS Messier
 database (messier.seds.org); M102 is taken to be NGC 5866.
+
+## Constellation figures
+
+`constellations.json`: the lines of the 88 constellations and the point where each is named (J2000), taken by
+`scripts/make_constellations.py` from **d3-celestial** (github.com/ofrohn/d3-celestial, files
+`data/constellations.lines.json` and `data/constellations.json`), © 2015 Olaf Frohn, BSD 3-Clause licence: see
+`LICENSE-d3-celestial.txt`. The French, Spanish and German names of the constellations in `locales/` come from the
+same files; the English interface uses the Latin names of the IAU.

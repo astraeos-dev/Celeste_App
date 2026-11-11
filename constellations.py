@@ -1,8 +1,10 @@
 """
-constellations.py — Star catalog and constellation figures for the sky map
-==========================================================================
-Bright stars (right ascension, declination, magnitude), the lines drawn
-between them, and a reverse lookup from a star to its constellations.
+constellations.py — Usual names of the bright stars
+====================================================
+The stars that carry a usual name on the sky map (right ascension,
+declination, magnitude): scripts/make_star_catalog.py gives these names to the
+stars of the catalogue. The figures of the constellations are in
+assets/constellations.json (scripts/make_constellations.py).
 """
 
 # Bright stars: {name: (RA hours, Dec degrees, visual magnitude)}
@@ -65,62 +67,3 @@ STARS_EXTRA = {
 
 # Every star drawn on the sky map
 STARS = {**BRIGHT_STARS, **STARS_EXTRA}
-
-# Constellations: {name: list of (star_a, star_b)}
-# Star names must match keys in STARS. The names are also the translation
-# keys of the "constellations" section of the locale files.
-CONSTELLATIONS = {
-    "Orion": [
-        ("Betelgeuse", "Bellatrix"),
-        ("Bellatrix", "Mintaka"),
-        ("Mintaka", "Alnilam"),
-        ("Alnilam", "Alnitak"),
-        ("Alnitak", "Saiph"),
-        ("Saiph", "Rigel"),
-        ("Rigel", "Bellatrix"),
-    ],
-    "Ursa Major": [
-        ("Dubhe", "Merak"),
-        ("Merak", "Phecda"),
-        ("Phecda", "Megrez"),
-        ("Megrez", "Alioth"),
-        ("Alioth", "Mizar"),
-        ("Mizar", "Alkaid"),
-    ],
-    "Cassiopeia": [
-        ("Caph", "Schedar"),
-        ("Schedar", "Navi"),
-        ("Navi", "Ruchbah"),
-        ("Ruchbah", "Segin"),
-    ],
-    "Gemini": [
-        ("Castor", "Pollux"),
-        ("Pollux", "Alhena"),
-    ],
-    "Leo": [
-        ("Regulus", "Denebola"),
-    ],
-    "Scorpius": [
-        ("Dschubba", "Antares"),
-        ("Antares", "Shaula"),
-        ("Antares", "Sargas"),
-    ],
-    "Summer Triangle": [
-        ("Vega", "Deneb"),
-        ("Deneb", "Altair"),
-        ("Altair", "Vega"),
-    ],
-    "Ursa Minor": [
-        ("Polaris", "Kochab"),
-    ],
-}
-
-# Reverse lookup: star name → list of constellations
-STAR_CONSTELLATION = {}
-for _const_name, _edges in CONSTELLATIONS.items():
-    for _a, _b in _edges:
-        STAR_CONSTELLATION.setdefault(_a, []).append(_const_name)
-        STAR_CONSTELLATION.setdefault(_b, []).append(_const_name)
-# Deduplicate
-for _k in STAR_CONSTELLATION:
-    STAR_CONSTELLATION[_k] = list(dict.fromkeys(STAR_CONSTELLATION[_k]))

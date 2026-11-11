@@ -70,7 +70,6 @@ import satellites  # noqa: E402
 import settings as prefs  # noqa: E402
 import updater  # noqa: E402
 from config import APP_VERSION, FONT_MONO, FONT_SANS, THEME_NAMES, Config, mix  # noqa: E402
-from constellations import STAR_CONSTELLATION  # noqa: E402
 from engine import (  # noqa: E402
     COMET_DESIGNATIONS, COMET_SHORT, COMETS, EPHEMERIS_YEARS, GALILEAN_MOONS, MINOR_PLANET_NUMBERS, MINOR_PLANETS, PLANETS,
     AstroEngine,
@@ -2091,7 +2090,7 @@ class AstroApp(QMainWindow):
                 cells += [_az(ang["lon"], fmt), _dec(ang["lat"], fmt)]
             for c, text in enumerate(cells):
                 self.coord_table.item(r, c).setText(text)
-            self.coord_table.item(r, 7).setToolTip(obs["constellation_name"] if obs else "")
+            self.coord_table.item(r, 7).setToolTip(t(f"constellations.{obs['constellation']}") if obs else "")
         self._coord_note.setText(" ".join((
             t(f"coordinates.note_cartesian_{cartesian}"),
             t(f"coordinates.note_angular_{angular if angular != 'ecliptic' else 'ecliptic_' + from_body}"),
@@ -3352,6 +3351,10 @@ class AstroApp(QMainWindow):
         key = places.normalize("".join(_GREEK.get(ch, ch) for ch in text))
         return re.sub(r"\b(?:messier|m) (?=\d)", "m", key)
 
+    @staticmethod
+    def _star_label(star):
+        return star["name"] if star["name"] == star["designation"] else f"{star['name']} ({star['designation']})"
+
     def _target_label(self, ref):
         kind = ref[0]
         if kind in ("sun", "moon"):
@@ -3362,19 +3365,23 @@ class AstroApp(QMainWindow):
             return t(f"constellations.{ref[1]}")
         if kind == "messier":
             return _messier_label(next(o for o in messier_catalog() if o["m"] == ref[1]))
-        star = next(s for s in self._sky_scene["catalog"] if s["designation"] == ref[1])
-        return star["name"] if star["name"] == ref[1] else f"{star['name']} ({ref[1]})"
+        return self._star_label(next(s for s in self._sky_scene["catalog"] if s["designation"] == ref[1]))
 
     def _sky_targets(self):
-        """Everything the search knows, [(label, reference)]: the Sun, the Moon, the
-        planets, minor planets and comets, the Messier objects, the constellations
-        drawn and the stars of the catalogue."""
-        refs = [("sun",), ("moon",)]
-        refs += [("planet", p["name"]) for p in self.planets + self.minor_planets]
-        refs += [("messier", o["m"]) for o in self._deep_sky_all]
-        refs += [("figure", key) for key in self._sky_scene["figures"]]
-        refs += [("star", s["designation"]) for s in self._sky_scene["catalog"]]
-        return [(self._target_label(ref), ref) for ref in refs]
+        """Everything the search knows, [(label, search key, reference)]: the Sun, the
+        Moon, the planets, minor planets and comets, the Messier objects, the
+        constellations and the stars of the catalogue (their keys computed once)."""
+        targets = [(self._target_label(ref), None, ref) for ref in [("sun",), ("moon",)]
+                   + [("planet", p["name"]) for p in self.planets + self.minor_planets]]
+        targets += [(_messier_label(o), None, ("messier", o["m"])) for o in self._deep_sky_all]
+        targets += [(t(f"constellations.{key}"), None, ("figure", key)) for key in self._sky_scene["figures"]]
+        targets = [(label, self._find_key(label), ref) for label, _key, ref in targets]
+        if AstroApp._STAR_TARGETS is None:
+            stars = [(self._star_label(s), ("star", s["designation"])) for s in self._sky_scene["catalog"]]
+            AstroApp._STAR_TARGETS = [(label, self._find_key(label), ref) for label, ref in stars]
+        return targets + AstroApp._STAR_TARGETS
+
+    _STAR_TARGETS = None            # the stars do not change: their labels and keys are built once
 
     def _find_targets(self, text, limit=10):
         """The targets whose name matches *text*: the exact name (or its first
@@ -3384,8 +3391,7 @@ class AstroApp(QMainWindow):
         if not query or self._sky_scene is None:
             return []
         ranked = []
-        for index, (label, ref) in enumerate(self._sky_targets()):
-            key = self._find_key(label)
+        for index, (label, key, ref) in enumerate(self._sky_targets()):
             words = key.split()
             if key == query or words[0] == query:
                 rank = 0
@@ -3659,14 +3665,9 @@ class AstroApp(QMainWindow):
             designation = obj.get("designation", "")
             if designation and designation != obj["name"]:
                 rows.append((t("detail.designation"), designation))
-            consts = STAR_CONSTELLATION.get(obj["name"], [])
-            if consts:
-                rows.append((t("detail.constellation"),
-                             ", ".join(t(f"constellations.{c}") for c in consts)))
-            elif designation and not designation.startswith("HR"):
-                latin = constellation_names().get(designation.split()[-1])
-                if latin:
-                    rows.append((t("detail.constellation"), latin))
+            abbreviation = designation.split()[-1] if designation and not designation.startswith("HR") else ""
+            if abbreviation in constellation_names():
+                rows.append((t("detail.constellation"), f"{t('constellations.' + abbreviation)} ({abbreviation})"))
             rows.append((t("detail.mag"), _num(obj["mag"], 2)))
         elif kind == "planet":
             title = f"{sym[obj['name']]} {_planet_name(obj['name'], numbered=full)}"
@@ -3682,9 +3683,8 @@ class AstroApp(QMainWindow):
             title = _messier_label(obj)
             rows.append((t("detail.type"), t(f"messier.type_{obj['type']}")))
             rows.append((t("detail.designation"), obj["id"]))
-            latin = constellation_names().get(obj["const"])
-            if latin:
-                rows.append((t("detail.constellation"), latin))
+            if obj["const"] in constellation_names():
+                rows.append((t("detail.constellation"), f"{t('constellations.' + obj['const'])} ({obj['const']})"))
             rows.append((t("detail.mag"), _num(obj["mag"], 1)))
             if obj.get("major"):
                 size = f"{_num(obj['major'], 0)}′"
@@ -3734,7 +3734,7 @@ class AstroApp(QMainWindow):
         d = AstroEngine.body_details(AstroEngine.julian_century_j2000(self._dte), body)
         rows = [] if obj.get("mag") is not None else [(t("detail.mag"), _num(d["mag"], 2))]
         if d.get("constellation"):
-            rows.append((t("detail.constellation"), f"{d['constellation_name']} ({d['constellation']})"))
+            rows.append((t("detail.constellation"), f"{t('constellations.' + d['constellation'])} ({d['constellation']})"))
         if d["diameter_arcsec"]:
             rows.append((t("detail.diameter"), self._diameter(d["diameter_arcsec"])))
         if d["illuminated"] is not None and obj["kind"] != "moon":

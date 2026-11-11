@@ -560,6 +560,31 @@
     "short_Tiangong": "Tiangong",
     "short_Hubble": "Hubble"
   },
+  "jupiter": {
+    "title": "Galileische Monde",
+    "Io": "Io",
+    "Europa": "Europa",
+    "Ganymede": "Ganymed",
+    "Callisto": "Kallisto",
+    "west": "{r} R westlich · {sep}",
+    "east": "{r} R östlich · {sep}",
+    "transit": "vor Jupiter",
+    "occulted": "hinter Jupiter",
+    "eclipsed": "im Schatten Jupiters",
+    "shadow": "sein Schatten auf Jupiter",
+    "note_north": "Abstände vom Mittelpunkt Jupiters, in Planetenradien (R) und am Himmel. Norden oben, Osten links, wie im Fernglas.",
+    "note_south": "Abstände vom Mittelpunkt Jupiters, in Planetenradien (R) und am Himmel. Süden oben, Westen links, wie im Fernglas."
+  },
+  "saturn": {
+    "title": "Ringe",
+    "tilt": "Neigung",
+    "size": "Scheinbare Größe",
+    "north_face": "Nordseite",
+    "south_face": "Südseite",
+    "unlit": "unbeleuchtet",
+    "note_north": "Außenrand des A-Rings. Norden oben.",
+    "note_south": "Außenrand des A-Rings. Süden oben."
+  },
   "history": {
     "empty": "Noch keine Berechnung",
     "clear": "Verlauf löschen",

@@ -1290,6 +1290,75 @@ class TestFirstLaunch:
 
 
 # ──────────────────────────────────────────────────────────────────────
+# Jupiter's moons and Saturn's rings in their data windows (v4.8)
+# ──────────────────────────────────────────────────────────────────────
+
+class TestMoonsAndRings:
+    @staticmethod
+    def _texts(card):
+        return [label.text() for label in card.findChildren(QLabel)]
+
+    def test_jupiter_moons(self, window):
+        """16 January 2026, 18:00 UT: Io crosses the disc with its shadow, the others are west."""
+        window._set_datetime(datetime(2026, 1, 16, 18, 0))
+        window.calculate()
+        card = window._companions_card(window._body_object("Jupiter"))
+        texts = self._texts(card)
+        assert texts[0] == "Lunes galiléennes"
+        assert texts[1:9] == ["I  Io", "devant Jupiter · son ombre sur Jupiter",
+                              "II  Europe", "5,5 R à l'ouest · 2′ 08″",
+                              "III  Ganymède", "12,5 R à l'ouest · 4′ 50″",
+                              "IV  Callisto", "16,9 R à l'ouest · 6′ 33″"]
+        assert "Nord en haut, est à gauche" in texts[9]
+        points, scale = window._moons_drawing.positions()
+        centre = window._moons_drawing.width() / 2
+        assert abs(points["Io"][0] - centre) < scale                       # on the disc
+        assert centre < points["Europa"][0] < points["Ganymede"][0] < points["Callisto"][0]   # west: right
+
+    def test_hidden_moon_and_southern_sky(self, window):
+        """16 February 2026, 16:00 UT: Io is behind Jupiter. From Sydney the view is upside down."""
+        window._set_datetime(datetime(2026, 2, 16, 16, 0))
+        window.entry_lat.setText("-33,8688")
+        window.entry_lon.setText("151,2093")
+        window.calculate()
+        card = window._companions_card(window._body_object("Jupiter"))
+        texts = self._texts(card)
+        assert texts[2] == "derrière Jupiter" and "Sud en haut, ouest à gauche" in texts[9]
+        drawing = window._moons_drawing
+        points, _scale = drawing.positions()
+        assert "Io" not in points and len(points) == 3
+        centre = drawing.width() / 2
+        for moon in drawing.moons[1:]:
+            assert (points[moon["name"]][0] < centre) == (moon["x"] > 0)   # west: left
+        drawing.grab()                                                     # it draws
+
+    def test_saturn_rings(self, window):
+        window._set_datetime(datetime(2026, 11, 5, 0, 0))
+        window.calculate()
+        card = window._companions_card(window._body_object("Saturn"))
+        texts = self._texts(card)
+        assert texts[:5] == ["Anneaux", "Inclinaison", "6,5° · face sud", "Taille apparente", "43,9″ × 5,0″"]
+        assert abs(window._rings_drawing.tilt + 6.4771) < 0.01
+        window._rings_drawing.grab()
+
+    def test_rings_seen_from_their_unlit_side(self, window):
+        """25 March 2025: the Earth has just crossed the ring plane, the Sun has not."""
+        window._set_datetime(datetime(2025, 3, 25, 0, 0))
+        window.calculate()
+        texts = self._texts(window._companions_card(window._body_object("Saturn")))
+        assert texts[2] == "0,1° · face sud, non éclairée"
+
+    def test_in_the_data_window_of_these_two_planets_only(self, window, qapp):
+        assert window._companions_card(window._body_object("Mars")) is None
+        assert window._companions_card(window._body_object("sun")) is None
+        assert window._companions_card(None) is None
+        dlg = window._build_detail_dialog(window._body_object("Jupiter"))
+        assert "Lunes galiléennes" in [label.text() for label in dlg.findChildren(QLabel)]
+        dlg.close()
+        _destroy(qapp, dlg)
+
+
+# ──────────────────────────────────────────────────────────────────────
 # History of the calculations (v4.8)
 # ──────────────────────────────────────────────────────────────────────
 

@@ -72,7 +72,8 @@ import updater  # noqa: E402
 from config import APP_VERSION, FONT_MONO, FONT_SANS, THEME_NAMES, Config, mix  # noqa: E402
 from constellations import STAR_CONSTELLATION  # noqa: E402
 from engine import (  # noqa: E402
-    COMET_DESIGNATIONS, COMETS, EPHEMERIS_YEARS, MINOR_PLANET_NUMBERS, MINOR_PLANETS, PLANETS, AstroEngine,
+    COMET_DESIGNATIONS, COMETS, EPHEMERIS_YEARS, GALILEAN_MOONS, MINOR_PLANET_NUMBERS, MINOR_PLANETS, PLANETS,
+    AstroEngine,
     constellation_names, messier_catalog,
 )
 from i18n import (  # noqa: E402
@@ -734,6 +735,103 @@ class MoonPhase(QWidget):
         p.setBrush(Qt.BrushStyle.NoBrush)
         p.setPen(QPen(QColor(Config.LUNE), 1.2))
         p.drawEllipse(disc)
+        p.end()
+
+
+class JupiterMoons(QWidget):
+    """
+    Jupiter and its four Galilean moons along its equator, to scale, as an
+    almanac draws them: north up and east to the left, as binoculars show them
+    north of the equator; turned upside down with *southern*. A moon behind
+    the disc is not drawn; one in Jupiter's shadow is a hollow dot.
+    """
+    SPAN = 28.0                     # radii of Jupiter on each side (Callisto reaches 26.6)
+
+    def __init__(self, moons, southern=False):
+        super().__init__()
+        self.moons = moons
+        self.southern = southern
+        self.setMinimumSize(336, 56)
+        self.setFixedHeight(56)
+
+    def positions(self):
+        """{name: (x, y) in pixels} of the moons drawn, and the scale (pixels per radius)."""
+        scale = (self.width() - 16) / (2 * self.SPAN)
+        turn = -1.0 if self.southern else 1.0
+        cx, cy = self.width() / 2.0, 22.0
+        return {m["name"]: (cx + turn * m["x"] * scale, cy - turn * m["y"] * scale)
+                for m in self.moons if m["state"] != "occulted"}, scale
+
+    def paintEvent(self, _event):
+        points, scale = self.positions()
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        cx, cy = self.width() / 2.0, 22.0
+        p.setPen(QPen(QColor(Config.CIEL_200), 1))
+        p.drawLine(QPointF(8, cy), QPointF(self.width() - 8, cy))
+        p.setPen(QPen(QColor(Config.ENCRE), 1.2))
+        p.setBrush(QColor(Config.CIEL_100))
+        p.drawEllipse(QPointF(cx, cy), scale, scale * 0.935)
+        font = QFont(self.font())
+        font.setPixelSize(11)
+        p.setFont(font)
+        for i, moon in enumerate(self.moons):
+            if moon["name"] not in points:
+                continue
+            x, y = points[moon["name"]]
+            p.setPen(QPen(QColor(Config.LUNE), 1.2))
+            p.setBrush(QColor(Config.CIEL_100 if moon["state"] == "eclipsed" else Config.LUNE))
+            p.drawEllipse(QPointF(x, y), 2.5, 2.5)
+            p.setPen(QColor(Config.ENCRE_ATTENUEE))
+            p.drawText(QRectF(x - 12, cy + 8 + 12 * (i % 2), 24, 12), int(Qt.AlignmentFlag.AlignCenter),
+                       ("I", "II", "III", "IV")[i])
+        p.setPen(QColor(Config.ENCRE_ATTENUEE))
+        west, east = t("skymap.cardinal_w"), t("skymap.cardinal_e")
+        left, right = (west, east) if self.southern else (east, west)
+        p.drawText(QRectF(0, 0, 24, 12), int(Qt.AlignmentFlag.AlignLeft), left)
+        p.drawText(QRectF(self.width() - 24, 0, 24, 12), int(Qt.AlignmentFlag.AlignRight), right)
+        p.end()
+
+
+class SaturnRings(QWidget):
+    """
+    Saturn and its rings at their tilt of the moment (*tilt* in degrees,
+    positive when the north face is seen): the globe, the outer edge of ring A,
+    the Cassini division and the inner edge of ring B; north up, the reverse
+    with *southern*.
+    """
+    RINGS = (136775.0 / 60268.0, 119875.0 / 60268.0, 92000.0 / 60268.0)   # in radii of Saturn
+
+    def __init__(self, tilt, southern=False):
+        super().__init__()
+        self.tilt = -tilt if southern else tilt
+        self.setMinimumSize(200, 76)
+        self.setFixedHeight(76)
+
+    def paintEvent(self, _event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        cx, cy, radius = self.width() / 2.0, self.height() / 2.0, 24.0
+        opening = math.sin(math.radians(self.tilt))
+        pens = (QPen(QColor(Config.ENCRE), 1.2), QPen(QColor(Config.ENCRE_ATTENUEE), 1),
+                QPen(QColor(Config.ENCRE), 1.2))
+
+        def ring(k, start, span):
+            a = self.RINGS[k] * radius
+            b = max(abs(a * opening), 0.3)
+            p.setPen(pens[k])
+            p.setBrush(Qt.BrushStyle.NoBrush)
+            p.drawArc(QRectF(cx - a, cy - b, 2 * a, 2 * b), start * 16, span * 16)
+
+        # the far half of the rings, the globe over it, then the near half over the globe
+        far = 0 if opening >= 0 else 180                  # seen from the north: the far half is the upper one
+        for k in range(3):
+            ring(k, far, 180)
+        p.setPen(QPen(QColor(Config.ENCRE), 1.2))
+        p.setBrush(QColor(Config.CIEL_100))
+        p.drawEllipse(QPointF(cx, cy), radius, radius * 0.902)
+        for k in range(3):
+            ring(k, far + 180, 180)
         p.end()
 
 
@@ -3496,12 +3594,70 @@ class AstroApp(QMainWindow):
             val.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
             grid.addWidget(val, r, 1)
         lay.addWidget(card)
+        extra = self._companions_card(obj)
+        if extra is not None:
+            lay.addWidget(extra)
         buttons = QDialogButtonBox()
         close = _button(t("detail.close"))
         buttons.addButton(close, QDialogButtonBox.ButtonRole.RejectRole)
         buttons.rejected.connect(dlg.reject)
         lay.addWidget(buttons)
         return dlg
+
+    def _companions_card(self, obj):
+        """Second card of the data window: Jupiter's moons, Saturn's rings; None for the others."""
+        if not obj or obj.get("kind") != "planet" or obj.get("name") not in ("Jupiter", "Saturn") \
+                or self._dte is None:
+            return None
+        tc = AstroEngine.julian_century_j2000(self._dte)
+        southern = self._lat is not None and self._lat < 0
+        card = _card()
+        lay = QVBoxLayout(card)
+        lay.setContentsMargins(16, 12, 16, 12)
+        lay.setSpacing(8)
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(24)
+        grid.setVerticalSpacing(6)
+        if obj["name"] == "Jupiter":
+            moons = AstroEngine.galilean_moons(tc)
+            radius = AstroEngine.body_details(tc, "Jupiter")["diameter_arcsec"] / 2.0
+            lay.addWidget(_label(t("jupiter.title"), "label"))
+            self._moons_drawing = JupiterMoons(moons, southern)
+            lay.addWidget(self._moons_drawing)
+            rows = [(f"{numeral}  {t('jupiter.' + moon['name'])}", self._moon_text(moon, radius))
+                    for numeral, moon in zip(("I", "II", "III", "IV"), moons)]
+            note = t("jupiter.note_south" if southern else "jupiter.note_north")
+        else:
+            rings = AstroEngine.saturn_rings(tc)
+            lay.addWidget(_label(t("saturn.title"), "label"))
+            self._rings_drawing = SaturnRings(rings["tilt"], southern)
+            lay.addWidget(self._rings_drawing)
+            face = t("saturn.north_face" if rings["tilt"] >= 0 else "saturn.south_face")
+            if not rings["lit"]:
+                face = f"{face}, {t('saturn.unlit')}"
+            rows = [(t("saturn.tilt"), f"{_deg(abs(rings['tilt']), 1)} · {face}"),
+                    (t("saturn.size"), f"{self._diameter(rings['major_arcsec'])} × "
+                                       f"{self._diameter(rings['minor_arcsec'])}")]
+            note = t("saturn.note_south" if southern else "saturn.note_north")
+        for r, (key, value) in enumerate(rows):
+            grid.addWidget(_label(key, "legende"), r, 0)
+            val = _label(value, "donnee")
+            val.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            val.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            grid.addWidget(val, r, 1)
+        lay.addLayout(grid)
+        lay.addWidget(_label(note, "legende", wrap=True))
+        return card
+
+    def _moon_text(self, moon, radius_arcsec):
+        """"4,9 R à l'ouest · 1′ 32″", "devant Jupiter", "dans l'ombre de Jupiter"…"""
+        if moon["state"] == "free":
+            side = "jupiter.west" if moon["x"] > 0 else "jupiter.east"
+            text = tf(side, r=_num(abs(moon["x"]), 1),
+                      sep=self._diameter(math.hypot(moon["x"], moon["y"]) * radius_arcsec))
+        else:
+            text = t(f"jupiter.{moon['state']}")
+        return f"{text} · {t('jupiter.shadow')}" if moon["shadow"] else text
 
     def _show_object_detail(self, obj):
         """Detailed card of a body of the sky map."""

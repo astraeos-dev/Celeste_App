@@ -1433,3 +1433,101 @@ class TestEclipseMap:
         i = int(np.argmin(np.abs(scene["lats"] - lat)))
         j = int(np.argmin(np.abs(scene["lons"] - lon)))
         assert scene["at_greatest"][i, j] > 85.0
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Jupiter's moons and Saturn's rings (v4.8), against JPL Horizons
+# ──────────────────────────────────────────────────────────────────────
+
+class TestGalileanMoons:
+    """Reference: geocentric apparent positions of Jupiter and its moons (Horizons),
+    turned into radii of Jupiter along (x, west +) and across (y, north +) its equator."""
+
+    @staticmethod
+    def _at(*date):
+        return AstroEngine.galilean_moons(AstroEngine.julian_century_j2000(datetime(*date)))
+
+    @pytest.mark.parametrize("date, expected", [
+        ((2026, 1, 30, 4, 0), [(-3.260, 0.123), (8.401, -0.036), (14.752, -0.063), (24.620, -0.258)]),
+        ((2026, 6, 30, 20, 0), [(5.767, 0.018), (-7.546, -0.066), (9.818, 0.217), (26.159, -0.098)]),
+        ((2026, 11, 17, 20, 0), [(4.778, -0.015), (9.017, 0.019), (-10.139, 0.018), (-10.600, -0.113)]),
+    ])
+    def test_positions(self, date, expected):
+        moons = self._at(*date)
+        assert [m["name"] for m in moons] == ["Io", "Europa", "Ganymede", "Callisto"]
+        for moon, (x, y), tolerance in zip(moons, expected, (0.03, 0.05, 0.09, 0.15)):
+            assert abs(moon["x"] - x) < tolerance, moon["name"]
+            assert abs(moon["y"] - y) < 0.18, moon["name"]          # the tilt of the orbits is left out
+            assert moon["state"] == "free"
+
+    @pytest.mark.parametrize("moon, date, state", [
+        (0, (2026, 1, 16, 18, 0), "transit"), (0, (2026, 2, 16, 16, 0), "occulted"),
+        (0, (2026, 3, 8, 5, 0), "eclipsed"),
+        (1, (2026, 1, 11, 19, 0), "transit"), (1, (2026, 2, 25, 3, 0), "occulted"),
+        (1, (2026, 2, 18, 3, 0), "eclipsed"),
+        (2, (2026, 1, 21, 10, 0), "transit"), (2, (2026, 3, 30, 9, 0), "occulted"),
+        (2, (2026, 2, 22, 19, 0), "eclipsed"),
+        (3, (2026, 1, 10, 8, 0), "transit"), (3, (2026, 4, 11, 22, 0), "occulted"),
+        (3, (2026, 1, 1, 21, 0), "eclipsed"),
+    ])
+    def test_in_front_behind_and_in_the_shadow(self, moon, date, state):
+        """Horizons' visibility codes t (transit), O (occulted) and u (umbral eclipse)."""
+        assert self._at(*date)[moon]["state"] == state
+
+    def test_eclipsed_away_from_the_disc(self):
+        """Before opposition the shadow lies west of Jupiter: Io vanishes 1.35 radius from the centre."""
+        io = self._at(2026, 3, 8, 5, 0)[0]
+        assert io["state"] == "eclipsed" and 1.2 < abs(io["x"]) < 1.5
+
+    def test_shadow_on_the_disc(self):
+        """Near opposition (10 January 2026) a moon in transit carries its shadow with it."""
+        io = self._at(2026, 1, 16, 18, 0)[0]
+        assert io["state"] == "transit" and io["shadow"] is True
+        assert self._at(2026, 1, 30, 4, 0)[0]["shadow"] is False
+
+    def test_orbits_keep_their_size(self):
+        """In 40 days each moon reaches its greatest elongation: 5.9, 9.4, 15.0 and 26.4 radii
+        (semi-major axes of 421 800, 671 100, 1 070 400 and 1 882 700 km)."""
+        reach = [0.0] * 4
+        for hour in range(0, 24 * 40, 3):
+            for i, moon in enumerate(AstroEngine.galilean_moons(
+                    AstroEngine.julian_century_j2000(datetime(2026, 1, 1) + timedelta(hours=hour)))):
+                reach[i] = max(reach[i], abs(moon["x"]))
+        for found, km in zip(reach, (421800, 671100, 1070400, 1882700)):
+            assert abs(found - km / 71492.0) < 0.25
+
+
+class TestSaturnRings:
+    """Reference: Horizons' sub-observer latitude (planetodetic), brought back to the ring plane."""
+
+    @staticmethod
+    def _centric(planetodetic):
+        return math.degrees(math.atan(math.tan(math.radians(planetodetic)) * (54364.0 / 60268.0) ** 2))
+
+    @pytest.mark.parametrize("date, horizons", [
+        ((2020, 1, 1), 28.187555), ((2025, 3, 15), 0.610845), ((2026, 11, 5), -7.943098),
+        ((2030, 3, 19), -26.870039), ((2032, 5, 17), -31.983054),
+    ])
+    def test_tilt(self, date, horizons):
+        rings = AstroEngine.saturn_rings(AstroEngine.julian_century_j2000(datetime(*date)))
+        assert abs(rings["tilt"] - self._centric(horizons)) < 0.001
+
+    def test_size(self):
+        """5 November 2026: Saturn's disc is 19.36″ (Horizons), ring A reaches 136 775 / 60 268 of it."""
+        rings = AstroEngine.saturn_rings(AstroEngine.julian_century_j2000(datetime(2026, 11, 5)))
+        assert abs(rings["major_arcsec"] - 19.36456 * 136775.0 / 60268.0) < 0.01
+        assert abs(rings["minor_arcsec"] - rings["major_arcsec"] * math.sin(math.radians(6.4771))) < 0.01
+        assert rings["lit"] is True and rings["sun_tilt"] < 0          # the south face, sunlit
+
+    def test_edge_on_in_march_2025(self):
+        """The Earth crossed the ring plane on 23 March 2025; the Sun was still north of it:
+        for a few weeks the face seen was the unlit one."""
+        before = AstroEngine.saturn_rings(AstroEngine.julian_century_j2000(datetime(2025, 3, 15)))
+        after = AstroEngine.saturn_rings(AstroEngine.julian_century_j2000(datetime(2025, 3, 25)))
+        assert before["tilt"] > 0 > after["tilt"] and abs(after["tilt"]) < 0.1
+        assert before["lit"] is True and after["lit"] is False and after["sun_tilt"] > 0
+        assert after["minor_arcsec"] < 0.1
+
+    def test_widest_in_2032(self):
+        rings = AstroEngine.saturn_rings(AstroEngine.julian_century_j2000(datetime(2032, 5, 17)))
+        assert 26.9 < abs(rings["tilt"]) < 27.0

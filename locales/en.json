@@ -560,6 +560,31 @@
     "short_Tiangong": "Tiangong",
     "short_Hubble": "Hubble"
   },
+  "jupiter": {
+    "title": "Galilean moons",
+    "Io": "Io",
+    "Europa": "Europa",
+    "Ganymede": "Ganymede",
+    "Callisto": "Callisto",
+    "west": "{r} R west · {sep}",
+    "east": "{r} R east · {sep}",
+    "transit": "in front of Jupiter",
+    "occulted": "behind Jupiter",
+    "eclipsed": "in Jupiter's shadow",
+    "shadow": "its shadow on Jupiter",
+    "note_north": "Distances from the centre of Jupiter, in radii of the planet (R) and on the sky. North up, east to the left, as in binoculars.",
+    "note_south": "Distances from the centre of Jupiter, in radii of the planet (R) and on the sky. South up, west to the left, as in binoculars."
+  },
+  "saturn": {
+    "title": "Rings",
+    "tilt": "Tilt",
+    "size": "Apparent size",
+    "north_face": "north face",
+    "south_face": "south face",
+    "unlit": "unlit",
+    "note_north": "Outer edge of ring A. North up.",
+    "note_south": "Outer edge of ring A. South up."
+  },
   "history": {
     "empty": "No calculation yet",
     "clear": "Clear the history",

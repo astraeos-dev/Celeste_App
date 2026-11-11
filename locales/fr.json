@@ -560,6 +560,31 @@
     "short_Tiangong": "Tiangong",
     "short_Hubble": "Hubble"
   },
+  "jupiter": {
+    "title": "Lunes galiléennes",
+    "Io": "Io",
+    "Europa": "Europe",
+    "Ganymede": "Ganymède",
+    "Callisto": "Callisto",
+    "west": "{r} R à l'ouest · {sep}",
+    "east": "{r} R à l'est · {sep}",
+    "transit": "devant Jupiter",
+    "occulted": "derrière Jupiter",
+    "eclipsed": "dans l'ombre de Jupiter",
+    "shadow": "son ombre sur Jupiter",
+    "note_north": "Distances au centre de Jupiter, en rayons de la planète (R) et sur le ciel. Nord en haut, est à gauche, comme aux jumelles.",
+    "note_south": "Distances au centre de Jupiter, en rayons de la planète (R) et sur le ciel. Sud en haut, ouest à gauche, comme aux jumelles."
+  },
+  "saturn": {
+    "title": "Anneaux",
+    "tilt": "Inclinaison",
+    "size": "Taille apparente",
+    "north_face": "face nord",
+    "south_face": "face sud",
+    "unlit": "non éclairée",
+    "note_north": "Bord extérieur de l'anneau A. Nord en haut.",
+    "note_south": "Bord extérieur de l'anneau A. Sud en haut."
+  },
   "history": {
     "empty": "Aucun calcul pour l'instant",
     "clear": "Effacer l'historique",

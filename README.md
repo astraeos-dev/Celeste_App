@@ -60,6 +60,12 @@ The interface is translated into French, English, Spanish and German.
 - **Data window** — a click on a body (sky map, Planets and Coordinates tabs) opens its card: magnitude,
   constellation, apparent diameter, illuminated fraction and phase angle, light time, distance from the Sun,
   coordinates, rise, culmination and set
+- **Jupiter's moons and Saturn's rings** — in their data windows: Io, Europa, Ganymede and Callisto drawn to scale
+  around Jupiter, with those in front of the planet, behind it or in its shadow; the rings of Saturn at their tilt of
+  the moment, the face seen and their apparent size
+- **Search on the sky map** — the name of a star (Vega, "alpha cyg"), a planet, a comet, a Messier object ("m31",
+  "andromeda") or a constellation: the object is circled in gold, with its altitude and direction, or its next rise
+  when it is below the horizon
 - **Minor planets** — Ceres, Pallas, Juno, Vesta, the dwarf planets Pluto, Eris, Haumea and Makemake, and Sedna, to
   choose in the Planets tab, in the Coordinates tab and, when bright enough for the limiting magnitude, on the sky map:
   positions from JPL Horizons (to 0.001″), magnitudes from the H, G system; their Minor Planet Center number
@@ -100,13 +106,14 @@ The interface is translated into French, English, Spanish and German.
 - **Automatic update** — a newly published version is offered at startup, installed in one click
 - **Links** — Settings › About: website, source code, coffee, and requests on GitHub (problem, feature, body to add)
   pre-filled with the version and the system
-- **Favourites** — saved places (36 preloaded cities)
+- **Favourites** — saved places; 36 preloaded cities, named in the interface language, with their elevation
+- **History** — the last 20 calculations (date, place, time zone), back in one click (`Ctrl+H`)
 - **Time zones** — IANA time zones, summer time included; "Automatic" follows the place
 - **Multilingual interface** — French, English, Spanish, German; the system's language by default, immediate change in
   the settings (or `--lang`)
 - **Themes** — Nuit (dark), Jour (light) and Observation (red on black, to keep night vision), chosen at the bottom of
   the side panel without restarting (or `--theme`)
-- **Keyboard shortcuts** — `F5` calculate, `Ctrl+L` real time
+- **Keyboard shortcuts** — `F5` calculate, `Ctrl+L` real time, `Ctrl+H` history
 - **Persistent settings** — theme, language, time format, starting place, limiting magnitude, real-time interval
   (`~/.celeste/settings.json`, outside the repository)
 
@@ -162,6 +169,10 @@ Changing the date computes everything again after a moment.
 - **Calculate** (`F5`) — runs the calculations for the typed date and place
 - **Follow in real time** (`Ctrl+L`) — toggle button: follows the current time while it stays pressed (interval
   adjustable in the settings)
+- **History** (`Ctrl+H`) — the last calculations, the most recent first; choosing one brings back its date, place,
+  elevation and time zone. A calculation is kept once you have stayed on it for a few seconds: stepping through the
+  dates only keeps the date you stop on, and the real-time mode stays out. "Clear the history" empties it
+  (`~/.celeste/history.json`)
 - **Nuit · Jour · Observation** — theme selector, at the bottom of the side panel
 
 **Events:** the buttons of the tab search for the eclipses of the next 12 lunations, the events of the coming year and
@@ -193,6 +204,7 @@ A satellite pass is counted when the satellite rises at least 10° above the hor
 - The sky map puts the zenith at the centre and the horizon on the circle, north up; the slider sets the limiting
   magnitude of the stars
 - Hover over a body of the map to identify it, click to show its card
+- Type a name in "Find an object…" to circle it on the map; emptying the field removes the circle
 
 ---
 
@@ -237,10 +249,11 @@ Celeste_App/
 ├── updater.py           # Updates: latest GitHub Release, checked download, installation
 ├── settings.py          # Persistent preferences (~/.celeste/settings.json)
 ├── places.py            # Offline place search (GeoNames cities)
+├── history.py           # The last calculations (~/.celeste/history.json)
 ├── satellites.py        # Orbital elements (TLE) of the satellites: download, checks, cache
 ├── constellations.py    # Constellation figures and the names of their stars
 ├── star_catalog.py      # 513 bright stars (Yale Bright Star Catalogue, magnitude < 4), generated
-├── favorites_default.json # Preloaded places (36 cities), copied to ~/.celeste at the first save
+├── favorites_default.json # Preloaded places (36 cities, their names in each language), until a favourite is saved
 ├── locales/             # Translations (fr.json is the reference)
 ├── fonts/               # IBM Plex Sans, IBM Plex Mono and Astraeos Symboles fonts (OFL licence)
 ├── assets/              # Astræos symbol and icon (SVG), land, minor planets, comets, cities, Messier objects
@@ -251,7 +264,7 @@ Celeste_App/
 ├── requirements-dev.txt # Development dependencies (pytest)
 ├── CHANGELOG.md         # Changes of each version, the source of the release notes
 ├── docs/wiki/           # How-to guides (in French), published to the GitHub wiki
-└── tests/               # Unit tests (engine, charts, interface, themes, i18n, updates, utilities)
+└── tests/               # Unit tests (engine, charts, interface, themes, i18n, updates, history, utilities)
 ```
 
 ### Model: `AstroEngine`
@@ -298,6 +311,9 @@ is downloaded from the JPL/NAIF server at the first launch, then checked (size a
 | `upcoming_events(dte, lat, lon, elevation_m, tz)` | The next three events visible from here within 30 days |
 | `moon_calendar(year, month, lat, lon, elevation_m, tz)` | The Moon day by day over a month: phase, fraction, rise, set, main phases |
 | `messier_catalog()` / `deep_sky_horizontal(t, lat, lon)` | The 110 Messier objects (OpenNGC) and their position seen from the place |
+| `galilean_moons(t)` | Io, Europa, Ganymede and Callisto around Jupiter (Meeus, chap. 44): position in radii of Jupiter, transit, occultation, eclipse, shadow on the disc; within 0.15 radius of JPL Horizons |
+| `saturn_rings(t)` | Tilt of Saturn's rings towards the Earth and the Sun (IAU pole), apparent axes, sunlit face or not; the tilt within 0.0001° of JPL Horizons |
+| `next_rise(dte, lat, lon, body, elevation_m)` | The first rise of a body after an instant |
 | `satellite_passes(elements, dte_start, lat, lon, elevation_m, num_days)` | Visible satellite passes (SGP4): lit by the Sun, dark sky, Earth's shadow |
 | `comets_at(t)` / `find_comet_events(dte_start, num_days)` | Comets within their tables at a date; their perihelion, closest approach and greatest brightness |
 | `find_meteor_showers(dte_start, num_days)` | Peaks of the major meteor showers (`METEOR_SHOWERS`, IMO calendar), at the solar longitude of their peak |
@@ -323,7 +339,9 @@ only the chart of the shown tab is redrawn; the others are when they are opened.
   satellite orbits (SGP4)
 - **F. R. Stephenson, L. V. Morrison and C. Y. Hohenkerk** (2016), Proc. R. Soc. A 472 — historical ΔT; IERS after
 - **Jean Meeus**, *Astronomical Algorithms*, 2nd edition, Willmann-Bell, 1998 — chapter 54 (eclipse rules), chapters
-  13 and 16 (coordinate transformations, refraction)
+  13 and 16 (coordinate transformations, refraction), chapter 44 (Jupiter's Galilean moons, lower-accuracy method)
+- **B. A. Archinal et al.** (2018), *Report of the IAU Working Group on Cartographic Coordinates and Rotational
+  Elements: 2015*, Celest. Mech. Dyn. Astron. 130, 22 — pole of Saturn, for the tilt of its rings
 - **Explanatory Supplement to the Astronomical Almanac** (1992), chapter 8 — Besselian elements of solar eclipses
 - **André Danjon** — enlargement of the Earth's shadow by the atmosphere (1/85 of the Earth's radius), used for lunar
   eclipses
@@ -411,6 +429,7 @@ launch, SmartScreen shows "Windows protected your PC" (*More info*, then *Run an
 - [x] **Comets** — position, magnitude, perihelion and closest approach
 - [x] **Deep sky** — the Messier catalogue
 - [x] **Satellites** — visible passes of the ISS, Tiangong and Hubble
+- [x] **Jupiter and Saturn** — the four Galilean moons, the tilt of the rings
 
 ### Interface and visualisation
 
@@ -419,6 +438,7 @@ launch, SmartScreen shows "Windows protected your PC" (*More info*, then *Run an
 - [x] Planets on the sky map (tooltip and card on click)
 - [x] **Twilight colours** — background of the path chart coloured by the time of day
 - [x] **Interactive sky map** — full card of a star on click
+- [x] **Search on the sky map** — a star, a planet, a Messier object or a constellation by its name
 - [x] **Astræos design** — Nuit, Jour and Observation themes without restarting, IBM Plex fonts, vector icons
 
 ### Ease of use
@@ -428,14 +448,14 @@ launch, SmartScreen shows "Windows protected your PC" (*More info*, then *Run an
 - [x] Observer's elevation (lowered horizon), topocentric positions, exact phase of the Moon
 - [x] **Multilingual interface** — FR / EN / ES / DE
 - [x] **Persistent settings** — language, theme, place, real-time interval (`~/.celeste/settings.json`)
-- [ ] **Calculation history** — last calculations reloadable in one click
+- [x] **Calculation history** — last calculations reloadable in one click
 - [x] **Place search** — geocoding by city name
 - [x] **Monthly lunar calendar** — month view with the phase of each day
 
 ### Engineering and quality
 
 - [x] **Unit tests** — pytest on the engine, the charts, the interface (off screen), the themes, the updates,
-  `utils.py` and `i18n.py` (12 files, ~550 cases)
+  `utils.py` and `i18n.py` (13 files, ~640 cases)
 - [x] **Windows executable** — standalone `Celeste.exe` (PyInstaller), ephemeris downloaded at the first launch
 
 ---

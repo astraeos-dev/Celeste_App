@@ -47,6 +47,12 @@ v4.3:
   • Sedna among MINOR_PLANETS; MINOR_PLANET_NUMBERS, the Minor Planet
     Center's numbers ("(136199) Eris")
 
+v4.8:
+  • galilean_moons() — Io, Europa, Ganymede and Callisto around Jupiter (Meeus,
+    chap. 44): position, transit, occultation, eclipse, shadow on the disc
+  • saturn_rings() — tilt and apparent size of Saturn's rings (IAU pole)
+  • next_rise() — the first rise of a body after an instant
+
 v4.7:
   • messier_catalog(), deep_sky_horizontal() — the 110 Messier objects (OpenNGC);
     tonight() lists the night's best ones

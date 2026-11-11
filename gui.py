@@ -17,7 +17,7 @@ v3.3 — Interface following the Astræos design system:
     cadran…), the variants (principal, secondaire, discret), the tones
     (neutre, alerte, attenuee) and the themes (nuit, jour, observation)
   ★ Translated texts (fr, en, es, de); numbers in the language's style
-  ★ Shortcuts: F5 calculate, Ctrl+L real time
+  ★ Shortcuts: F5 calculate, Ctrl+L real time, Ctrl+H history
 
 Layout:
   - Side panel     : date, place, time zone, favourites, actions, theme

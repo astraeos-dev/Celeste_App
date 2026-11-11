@@ -11,6 +11,7 @@ Le projet suit le modèle **modèle-vue-contrôleur** : le moteur calcule, l'int
 | [`i18n.py`](https://github.com/astraeos-dev/Celeste_App/blob/master/i18n.py) | `t("clé")`, `tf("clé", valeur=…)`, choix de la langue |
 | [`updater.py`](https://github.com/astraeos-dev/Celeste_App/blob/master/updater.py) | Mises à jour : dernière Release GitHub, téléchargement vérifié (SHA-256), installation silencieuse |
 | [`places.py`](https://github.com/astraeos-dev/Celeste_App/blob/master/places.py) | Recherche de lieu hors ligne : villes de GeoNames (`assets/cities.tsv.gz`), ville la plus proche d'un point |
+| [`history.py`](https://github.com/astraeos-dev/Celeste_App/blob/master/history.py) | Historique : les 20 derniers calculs (date, lieu, fuseau) dans `~/.celeste/history.json` |
 | [`satellites.py`](https://github.com/astraeos-dev/Celeste_App/blob/master/satellites.py) | Orbites des satellites (TLE) : téléchargement CelesTrak ou AMSAT, sommes de contrôle, copie dans `~/.celeste` |
 | [`settings.py`](https://github.com/astraeos-dev/Celeste_App/blob/master/settings.py) | Préférences enregistrées (`~/.celeste/settings.json`) et leurs valeurs par défaut |
 | [`config.py`](https://github.com/astraeos-dev/Celeste_App/blob/master/config.py) | Couleurs des thèmes Astræos, polices, **`APP_VERSION`** |
@@ -35,6 +36,8 @@ Le projet suit le modèle **modèle-vue-contrôleur** : le moteur calcule, l'int
 - **Objets de Messier** : `assets/messier.csv`, tiré d'OpenNGC (CC BY-SA 4.0) par `scripts/make_messier.py`, ramenés à
   la date comme les étoiles.
 - **Satellites** : éléments orbitaux (TLE) téléchargés par `satellites.py`, propagés par SGP4 (Skyfield).
+- **Lunes de Jupiter** : méthode simplifiée de Meeus (chap. 44), à 0,15 rayon de Jupiter de JPL Horizons au pire (`galilean_moons`).
+  **Anneaux de Saturne** : pôle de Saturne de l'UAI et DE440 (`saturn_rings`), inclinaison à 0,0001° d'Horizons.
 - **Étoiles filantes** : liste de travail de l'IMO (`METEOR_SHOWERS`) ; le maximum est l'instant où le Soleil atteint
   la longitude de la table, chaque année ([fiche](Ajouter-une-pluie-d-etoiles-filantes.md)).
 

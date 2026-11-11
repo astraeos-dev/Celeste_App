@@ -112,7 +112,7 @@ def main(argv=None):
     window = AstroApp()
     window.show()
     if args.self_test:
-        window.calculate()
+        window._calculate_quietly()                       # stays out of the user's history
         from engine import AstroEngine
         from config import APP_VERSION
         AstroEngine.find_eclipses(window._dte, num_months=1)

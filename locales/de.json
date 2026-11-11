@@ -35,6 +35,8 @@
     "calculate_tip": "Für das eingegebene Datum und den Ort berechnen ({key})",
     "live": "Live verfolgen",
     "live_tip": "Der aktuellen Uhrzeit folgen, mit automatischer Aktualisierung ({key})",
+    "history": "Verlauf",
+    "history_tip": "Eine der letzten Berechnungen zurückholen: Datum, Ort und Zeitzone ({key})",
     "lat_error": "Eine Breite zwischen −90 und 90 eingeben",
     "lon_error": "Eine Länge zwischen −180 und 180 eingeben"
   },
@@ -286,7 +288,13 @@
     "cardinal_w": "W",
     "cardinal_nw": "NW",
     "messier": "Messier-Objekte",
-    "messier_tip": "Die 110 Nebel, Sternhaufen und Galaxien des Messier-Katalogs über dem Horizont; die hellsten tragen ihre Nummer"
+    "messier_tip": "Die 110 Nebel, Sternhaufen und Galaxien des Messier-Katalogs über dem Horizont; die hellsten tragen ihre Nummer",
+    "find_placeholder": "Objekt suchen…",
+    "find_tip": "Einen Stern, einen Planeten, ein Messier-Objekt oder ein Sternbild nach Namen suchen: Wega, Jupiter, M31, Orion…",
+    "found": "{name}: Höhe {alt}, Richtung {dir} (Azimut {az}), auf der Karte golden umkreist.",
+    "found_below": "{name} steht unter dem Horizont ({alt}).",
+    "found_below_rise": "{name} steht unter dem Horizont ({alt}); Aufgang um {time}.",
+    "not_found": "Kein Objekt namens „{name}“."
   },
   "detail": {
     "title": "Steckbrief — {name}",
@@ -557,6 +565,36 @@
     "short_ISS": "ISS",
     "short_Tiangong": "Tiangong",
     "short_Hubble": "Hubble"
+  },
+  "jupiter": {
+    "title": "Galileische Monde",
+    "Io": "Io",
+    "Europa": "Europa",
+    "Ganymede": "Ganymed",
+    "Callisto": "Kallisto",
+    "west": "{r} R westlich · {sep}",
+    "east": "{r} R östlich · {sep}",
+    "transit": "vor Jupiter",
+    "occulted": "hinter Jupiter",
+    "eclipsed": "im Schatten Jupiters",
+    "shadow": "sein Schatten auf Jupiter",
+    "note_north": "Abstände vom Mittelpunkt Jupiters, in Planetenradien (R) und am Himmel. Norden oben, Osten links, wie im Fernglas.",
+    "note_south": "Abstände vom Mittelpunkt Jupiters, in Planetenradien (R) und am Himmel. Süden oben, Westen links, wie im Fernglas."
+  },
+  "saturn": {
+    "title": "Ringe",
+    "tilt": "Neigung",
+    "size": "Scheinbare Größe",
+    "north_face": "Nordseite",
+    "south_face": "Südseite",
+    "unlit": "unbeleuchtet",
+    "note_north": "Außenrand des A-Rings. Norden oben.",
+    "note_south": "Außenrand des A-Rings. Süden oben."
+  },
+  "history": {
+    "empty": "Noch keine Berechnung",
+    "clear": "Verlauf löschen",
+    "cleared": "Verlauf gelöscht."
   },
   "favs": {
     "save_title": "Zu den Favoriten hinzufügen",

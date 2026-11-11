@@ -35,6 +35,8 @@
     "calculate_tip": "Calculate for the date and place entered ({key})",
     "live": "Follow live",
     "live_tip": "Follow the current time, updated automatically ({key})",
+    "history": "History",
+    "history_tip": "Bring back one of the last calculations: date, place and time zone ({key})",
     "lat_error": "Enter a latitude between −90 and 90",
     "lon_error": "Enter a longitude between −180 and 180"
   },
@@ -286,7 +288,13 @@
     "cardinal_w": "W",
     "cardinal_nw": "NW",
     "messier": "Messier objects",
-    "messier_tip": "The 110 nebulae, clusters and galaxies of the Messier catalogue above the horizon; the brightest ones carry their number"
+    "messier_tip": "The 110 nebulae, clusters and galaxies of the Messier catalogue above the horizon; the brightest ones carry their number",
+    "find_placeholder": "Find an object…",
+    "find_tip": "Look for a star, a planet, a Messier object or a constellation by its name: Vega, Jupiter, M31, Orion…",
+    "found": "{name}: altitude {alt}, direction {dir} (azimuth {az}), circled in gold on the map.",
+    "found_below": "{name} is below the horizon ({alt}).",
+    "found_below_rise": "{name} is below the horizon ({alt}); it rises at {time}.",
+    "not_found": "No object named “{name}”."
   },
   "detail": {
     "title": "Details — {name}",
@@ -557,6 +565,36 @@
     "short_ISS": "ISS",
     "short_Tiangong": "Tiangong",
     "short_Hubble": "Hubble"
+  },
+  "jupiter": {
+    "title": "Galilean moons",
+    "Io": "Io",
+    "Europa": "Europa",
+    "Ganymede": "Ganymede",
+    "Callisto": "Callisto",
+    "west": "{r} R west · {sep}",
+    "east": "{r} R east · {sep}",
+    "transit": "in front of Jupiter",
+    "occulted": "behind Jupiter",
+    "eclipsed": "in Jupiter's shadow",
+    "shadow": "its shadow on Jupiter",
+    "note_north": "Distances from the centre of Jupiter, in radii of the planet (R) and on the sky. North up, east to the left, as in binoculars.",
+    "note_south": "Distances from the centre of Jupiter, in radii of the planet (R) and on the sky. South up, west to the left, as in binoculars."
+  },
+  "saturn": {
+    "title": "Rings",
+    "tilt": "Tilt",
+    "size": "Apparent size",
+    "north_face": "north face",
+    "south_face": "south face",
+    "unlit": "unlit",
+    "note_north": "Outer edge of ring A. North up.",
+    "note_south": "Outer edge of ring A. South up."
+  },
+  "history": {
+    "empty": "No calculation yet",
+    "clear": "Clear the history",
+    "cleared": "History cleared."
   },
   "favs": {
     "save_title": "Add to favourites",

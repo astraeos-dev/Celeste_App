@@ -47,6 +47,12 @@ v4.3:
   • Sedna among MINOR_PLANETS; MINOR_PLANET_NUMBERS, the Minor Planet
     Center's numbers ("(136199) Eris")
 
+v4.8:
+  • galilean_moons() — Io, Europa, Ganymede and Callisto around Jupiter (Meeus,
+    chap. 44): position, transit, occultation, eclipse, shadow on the disc
+  • saturn_rings() — tilt and apparent size of Saturn's rings (IAU pole)
+  • next_rise() — the first rise of a body after an instant
+
 v4.7:
   • messier_catalog(), deep_sky_horizontal() — the 110 Messier objects (OpenNGC);
     tonight() lists the night's best ones
@@ -196,6 +202,16 @@ _RADII_KM = {"sun": 696000.0, "moon": 1737.4, "Mercury": 2440.5, "Venus": 6051.8
              "Juno": 127.0, "Vesta": 262.7, "Eris": 1163.0, "Haumea": 780.0, "Makemake": 715.0,
              "Sedna": 498.0}
 _LIGHT_SECONDS_PER_AU = 499.004784
+
+# Jupiter's Galilean moons and Saturn's rings
+GALILEAN_MOONS = ("Io", "Europa", "Ganymede", "Callisto")
+_JUPITER_POLAR = 66854.0 / 71492.0          # polar / equatorial radius
+# mean longitude at J2000.0 (°) and daily motion (°/day), measured from the
+# inferior conjunction (Meeus, Astronomical Algorithms, chap. 44)
+_GALILEAN_LONGITUDES = ((163.8069, 203.4058646), (358.4140, 101.2916335),
+                        (5.7176, 50.2345180), (224.8092, 21.4879800))
+_SATURN_RING_KM = 136775.0                  # outer edge of ring A
+_SATURN_POLE = (40.589, -0.036, 83.537, -0.004)   # IAU: α0, δ0 (°, ICRF) and their change per century
 _HORIZON_DIP        = 1.76 / 60.0               # degrees per √metre
 
 # Solar eclipse geometry (Besselian elements); lengths in Earth equatorial radii
@@ -931,6 +947,33 @@ class AstroEngine:
         return events
 
     @classmethod
+    def next_rise(cls, dte, lat, lon, body, elevation_m=0.0, hours=25.0):
+        """
+        The first rise of *body* after *dte* (UT datetime), within *hours*:
+        find_events() gives the first rise of the local day, which may be past
+        (Jupiter can rise at 00:00 and again at 23:57 on the same day).
+
+        Returns:
+            datetime (UT, tzinfo of *dte* kept) or None when the body does not
+            rise in that time (polar day or night).
+        """
+        sky = _sky()
+        t0 = cls._time_ut(cls.julian_century_j2000(dte))
+        t1 = cls._time_ut(cls.julian_century_j2000(dte + timedelta(hours=hours)))
+        observer = sky["earth"] + wgs84.latlon(lat, lon, elevation_m=elevation_m)
+        target = cls._target(body)
+        horizon = None
+        if elevation_m > 0:
+            km = sky["earth"].at(t0).observe(target).distance().km
+            horizon = -(_HORIZON_REFRACTION + math.degrees(math.asin(_BODY_RADIUS_KM.get(body, 0.0) / km))
+                        + _HORIZON_DIP * math.sqrt(elevation_m))
+        times, crosses = almanac.find_risings(observer, target, t0, t1, horizon)
+        for time, really in zip(times, crosses):
+            if really:
+                return cls._jd_to_datetime(time.ut1, dte)
+        return None
+
+    @classmethod
     def altitudes(cls, dtes, lat, lon, elevation_m=0.0):
         """
         Altitudes of the Sun (geometric centre) and of the Moon (seen from the
@@ -1196,6 +1239,117 @@ class AstroEngine:
             out.update(helio_au=r if body != "moon" else None, phase_angle=phase,
                        illuminated=None if body in COMETS else 50.0 * (1.0 + math.cos(math.radians(phase))))
         return out
+
+    @classmethod
+    def galilean_moons(cls, t):
+        """
+        Io, Europa, Ganymede and Callisto around Jupiter, seen from the Earth
+        (Meeus, Astronomical Algorithms, chap. 44, lower-accuracy method).
+
+        Against JPL Horizons (1995, 2026, 2060): positions within 0.15 radius
+        of Jupiter along its equator (3″; 0.03 radius for Io) and 0.18 across
+        it (the method leaves out the tilt of the orbits); the state agrees
+        99.6 % of the time, the differences being within minutes of a moon
+        reaching the limb or the shadow.
+
+        Args:
+            t (float): Julian centuries of UT since J2000.0.
+
+        Returns:
+            list[dict], in the order of GALILEAN_MOONS: name, x and y (in
+            equatorial radii of Jupiter from its centre; x positive towards
+            the west along the equator, y towards the north), state ("free",
+            "transit" in front of the disc, "occulted" behind it, "eclipsed"
+            in Jupiter's shadow) and shadow (True when the moon's shadow falls
+            on the disc).
+        """
+        def sin(x):
+            return math.sin(math.radians(x))
+
+        def cos(x):
+            return math.cos(math.radians(x))
+
+        d = float(cls._time_ut(t).tt) - 2451545.0
+        v = 172.74 + 0.00111588 * d
+        m = 357.529 + 0.9856003 * d                       # mean anomalies of the Earth and of Jupiter
+        n = 20.020 + 0.0830853 * d + 0.329 * sin(v)
+        j = 66.115 + 0.9025179 * d - 0.329 * sin(v)
+        a = 1.915 * sin(m) + 0.020 * sin(2 * m)           # equations of the centre
+        b = 5.555 * sin(n) + 0.168 * sin(2 * n)
+        k = j + a - b
+        earth_sun = 1.00014 - 0.01671 * cos(m) - 0.00014 * cos(2 * m)
+        jupiter_sun = 5.20872 - 0.25208 * cos(n) - 0.00611 * cos(2 * n)
+        delta = math.sqrt(jupiter_sun ** 2 + earth_sun ** 2 - 2 * jupiter_sun * earth_sun * cos(k))
+        psi = math.degrees(math.asin(earth_sun / delta * sin(k)))         # phase angle
+        lam = 34.35 + 0.083091 * d + 0.329 * sin(v) + b
+        sun_tilt = 3.12 * sin(lam + 42.8)                 # latitudes of the Sun and of the Earth
+        earth_tilt = (sun_tilt - 2.22 * sin(psi) * cos(lam + 22)          # above Jupiter's equator
+                      - 1.30 * (jupiter_sun - delta) / delta * sin(lam - 100.5))
+
+        def seen(distance, phase, tilt):
+            """(x, y, nearer than Jupiter) of the four moons from *distance* AU."""
+            days = d - distance / 173.0                   # light time
+            u = [l0 + rate * days + phase - b for l0, rate in _GALILEAN_LONGITUDES]
+            g = 331.18 + 50.310482 * days
+            h = 87.45 + 21.569231 * days
+            u12, u23 = 2 * (u[0] - u[1]), 2 * (u[1] - u[2])
+            u = [u[0] + 0.473 * sin(u12), u[1] + 1.065 * sin(u23), u[2] + 0.165 * sin(g), u[3] + 0.843 * sin(h)]
+            r = [5.9057 - 0.0244 * cos(u12), 9.3966 - 0.0882 * cos(u23),
+                 14.9883 - 0.0216 * cos(g), 26.3627 - 0.1939 * cos(h)]
+            return [(ri * sin(ui), -ri * cos(ui) * sin(tilt), cos(ui) > 0) for ri, ui in zip(r, u)]
+
+        def on_disc(x, y):
+            return x * x + (y / _JUPITER_POLAR) ** 2 < 1.0
+
+        moons = []
+        for name, (x, y, front), (xs, ys, sunward) in zip(GALILEAN_MOONS, seen(delta, psi, earth_tilt),
+                                                          seen(jupiter_sun, 0.0, sun_tilt)):
+            if on_disc(x, y) and not front:
+                state = "occulted"
+            elif on_disc(xs, ys) and not sunward:
+                state = "eclipsed"
+            else:
+                state = "transit" if on_disc(x, y) else "free"
+            moons.append({"name": name, "x": x, "y": y, "state": state,
+                          "shadow": on_disc(xs, ys) and sunward})
+        return moons
+
+    @classmethod
+    def saturn_rings(cls, t):
+        """
+        Saturn's rings seen from the Earth's centre (DE440 and the IAU pole of
+        Saturn): the tilt agrees with JPL Horizons' sub-observer latitude to
+        0.0001° from 2020 to 2040.
+
+        Args:
+            t (float): Julian centuries of UT since J2000.0.
+
+        Returns:
+            dict: tilt (°: the Earth's latitude above the ring plane, positive
+            when the north face is seen), sun_tilt (° : the same for the Sun),
+            lit (True when the face seen is the sunlit one), major_arcsec and
+            minor_arcsec (apparent axes of the outer edge of ring A).
+        """
+        sky = _sky()
+        time = cls._time_ut(t)
+        target = cls._target("Saturn")
+        astrometric = sky["earth"].at(time).observe(target)
+        delta = astrometric.distance()
+        centuries = (float(time.tt) - 2451545.0) / 36525.0
+        ra0, dra, dec0, ddec = _SATURN_POLE
+        ra, dec = math.radians(ra0 + dra * centuries), math.radians(dec0 + ddec * centuries)
+        pole = np.array([math.cos(dec) * math.cos(ra), math.cos(dec) * math.sin(ra), math.sin(dec)])
+        emitted = time - delta.au * _LIGHT_SECONDS_PER_AU / 86400.0
+        from_sun = (target.at(emitted) - sky["sun"].at(emitted)).position.au
+        from_earth = astrometric.position.au
+
+        def latitude(direction):                          # of the observer the vector comes from
+            return math.degrees(math.asin(-float(np.dot(pole, direction)) / float(np.linalg.norm(direction))))
+
+        tilt, sun_tilt = latitude(from_earth), latitude(from_sun)
+        major = 2.0 * math.degrees(math.asin(_SATURN_RING_KM / float(delta.km))) * 3600.0
+        return {"tilt": tilt, "sun_tilt": sun_tilt, "lit": tilt * sun_tilt > 0,
+                "major_arcsec": major, "minor_arcsec": major * abs(math.sin(math.radians(tilt)))}
 
     # ──────────────────────────────────────────────────────────────────
     # ECLIPSE PROJECTED ON THE GROUND

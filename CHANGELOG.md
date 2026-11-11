@@ -7,6 +7,16 @@ Write for them: short sentences, as dashes, no bold or code (the window of versi
 markup as it is), about 800 characters at most (the window cuts the rest, GitHub does not). See the wiki page
 "Publier une version".
 
+## 4.8
+
+- History: the History button (Ctrl+H) lists your last calculations and brings one back in a click, with its date,
+  place and time zone.
+- Jupiter: its data window shows the four Galilean moons, with those passing in front of the planet, behind it or
+  in its shadow. Saturn: the tilt and the size of its rings.
+- Sky map: type the name of a star, a planet, a Messier object or a constellation to find it, circled in gold.
+- The preloaded favourites are named in your language (London, Londres…) and know their elevation.
+- A field reached with the keyboard is outlined in gold again.
+
 ## 4.7.1
 
 - Updates hold up when GitHub answers badly (errors 503 or 504, as during its incidents): Céleste asks two ways,

@@ -65,6 +65,8 @@ def window(qapp, tmp_path, monkeypatch):
     monkeypatch.setattr(gui, "_FAVORITES_FILE", str(favorites))
     import satellites
     monkeypatch.setattr(satellites, "CACHE", str(tmp_path / "satellites.tle"))    # none on disk
+    import history
+    monkeypatch.setattr(history, "FILE", str(tmp_path / "history.json"))          # empty
     Config.apply_theme("nuit")
     switch_lang("fr")
     gui.apply_theme(qapp)
@@ -591,6 +593,23 @@ class TestAstraeosRules:
                      if b.property("variant") == "principal" and b.isVisibleTo(window)]
         assert principal == [window.btn_calc]
 
+    def test_focused_field_shows_the_gold_ring(self, window, qapp):
+        """v4.8: the box of a field with the keyboard focus is outlined in gold (the
+        property was named "focus", Qt's own read-only one, and never changed)."""
+        from PyQt6.QtCore import Qt
+        from PyQt6.QtGui import QFocusEvent
+        from config import Config
+        for field in (window.field_lat, window.field_date):
+            box = field.box
+            assert box.grab().toImage().pixelColor(0, 20).name() == Config.ENCRE_ATTENUEE
+            qapp.sendEvent(field.input, QFocusEvent(QEvent.Type.FocusIn, Qt.FocusReason.TabFocusReason))
+            _pump(qapp, 3)
+            assert box.property("focused") is True
+            assert box.grab().toImage().pixelColor(0, 20).name() == Config.OR
+            qapp.sendEvent(field.input, QFocusEvent(QEvent.Type.FocusOut, Qt.FocusReason.TabFocusReason))
+            _pump(qapp, 3)
+            assert box.grab().toImage().pixelColor(0, 20).name() == Config.ENCRE_ATTENUEE
+
     def test_live_mode_is_a_pressed_toggle(self, window):
         """Real time: toggle pressed and "Live" badge."""
         window.btn_live.toggle()
@@ -1090,10 +1109,33 @@ class TestUserFiles:
         monkeypatch.setattr(gui, "_LEGACY_FAVORITES_FILE", str(tmp_path / "absent.json"))
         favorites = window._load_favorites()
         assert len(favorites) == 36 and "Paris" in favorites
+        assert favorites["Mexico"] == {"lat": 19.4326, "lon": -99.1332, "elev": 2240}
         window.favorites = {"Ici": {"lat": 1.0, "lon": 2.0, "elev": 0}}
         window._save_favorites()
         assert json.loads((tmp_path / "user" / "favorites.json").read_text(encoding="utf-8")) == \
             window.favorites
+
+    def test_preloaded_places_in_the_interface_language(self, window, tmp_path, monkeypatch, qapp):
+        """v4.8: London, Londres, Londres, London; a language without its own name: English."""
+        import gui
+        monkeypatch.setattr(gui, "_FAVORITES_FILE", str(tmp_path / "user" / "favorites.json"))
+        monkeypatch.setattr(gui, "_LEGACY_FAVORITES_FILE", str(tmp_path / "legacy.json"))
+        names = {lang: list(gui._default_favorites(lang)) for lang in ("fr", "en", "es", "de", "it")}
+        assert all(len(n) == len(set(n)) == 36 for n in names.values())
+        assert [n[14] for n in names.values()] == ["Londres", "London", "Londres", "London", "London"]
+        assert "Pékin" in names["fr"] and "Beijing" in names["en"] and "Pekín" in names["es"] \
+            and "Peking" in names["de"]
+        assert all("names" not in place for place in gui._default_favorites("en").values())
+        # the window follows the language, and keeps the chosen place
+        window._rebuild()
+        window.combo_fav.setCurrentIndex(window.combo_fav.findText("Londres"))
+        window._apply_favorite(window.combo_fav.currentIndex())
+        assert window.location_name == "Londres" and window.entry_elev.text() == "25"
+        window._lang_combo.setCurrentIndex(window._lang_combo.findData("en"))
+        _pump(qapp)
+        assert window.combo_fav.currentText() == "London" and window.location_name == "London"
+        assert window.combo_fav.findText("Londres") < 0
+        assert window.entry_lat.text() == "51.5074"
 
 
 class TestEclipseMap:
@@ -1245,6 +1287,261 @@ class TestFirstLaunch:
         assert main.ensure_ephemeris() is False
         assert loaded == [] and len(errors) == 1
         assert "no network" in errors[0] and str(tmp_user(engine)) in errors[0]
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Search by name on the sky map (v4.8)
+# ──────────────────────────────────────────────────────────────────────
+
+class TestSkySearch:
+    @staticmethod
+    def _find(window, text):
+        window.tabs.setCurrentIndex(2)
+        window._find_entry.setText(text)
+        window._on_find_return()
+
+    @staticmethod
+    def _rings(window):
+        """Gold circles drawn on the map: [(x, y, radius)]."""
+        from matplotlib.colors import to_hex
+        from matplotlib.patches import Circle
+        from config import Config
+        return [(c.center[0], c.center[1], c.radius) for c in window._sky_ax.patches
+                if isinstance(c, Circle) and to_hex(c.get_edgecolor()) == Config.OR]
+
+    @pytest.mark.parametrize("text, first", [
+        ("vega", "Vega (α Lyr)"), ("VÉGA", "Vega (α Lyr)"), ("alpha cy", "Deneb (α Cyg)"),
+        ("m 31", "M31 Galaxie d'Andromède"), ("Messier 31", "M31 Galaxie d'Andromède"),
+        ("andro", "M31 Galaxie d'Andromède"), ("m3", "M3"), ("jup", "Jupiter"), ("cérès", "Cérès"),
+        ("lune", "Lune"), ("cassio", "Cassiopée"), ("orion", "Orion"), ("epsilon car", "ε Car"),
+    ])
+    def test_names_found(self, window, text, first):
+        assert window._find_targets(text)[0][0] == first
+
+    def test_suggestions(self, window):
+        assert [label for label, _ref in window._find_targets("ourse")] == ["Grande Ourse", "Petite Ourse"]
+        assert window._find_targets("") == [] and window._find_targets("zzz") == []
+        window._on_find_typed("m3")
+        assert window._find_model.stringList()[:3] == ["M3", "M30", "M31 Galaxie d'Andromède"]
+        assert len(window._find_model.stringList()) == 10
+        window._find_completer.popup().hide()
+
+    def test_star_is_circled(self, window):
+        self._find(window, "véga")
+        assert window._sky_found == ("star", "α Lyr") and window._find_entry.text() == "Vega (α Lyr)"
+        assert window._chart_hints["sky"].text() == \
+            "Vega (α Lyr) : hauteur 32,9°, direction NO (azimut 293,1°), cerclé d'or sur la carte."
+        vega = next(s for s in window._sky_scene["stars"] if s["name"] == "Vega")
+        (x, y, radius), = self._rings(window)
+        assert (x, y) == (vega["x"], vega["y"]) and radius < 0.05
+
+    def test_constellation_gets_a_wide_circle(self, window):
+        self._find(window, "cassio")
+        assert window._sky_found == ("figure", "Cassiopeia")
+        (_x, _y, radius), = self._rings(window)
+        assert radius > 0.1 and "Cassiopée : hauteur 76,8°" in window._chart_hints["sky"].text()
+
+    def test_below_the_horizon(self, window):
+        self._find(window, "sirius")
+        assert window._chart_hints["sky"].text() == "Sirius (α CMa) est sous l'horizon (−18,8°)."
+        assert self._rings(window) == []
+        self._find(window, "jupiter")                            # a planet: with its rise
+        assert window._chart_hints["sky"].text().startswith("Jupiter est sous l'horizon (−")
+        assert window._chart_hints["sky"].text().endswith(" ; lever à 23:57.")
+
+    def test_object_too_faint_to_be_drawn(self, window, qapp):
+        """Ceres (magnitude 8.9) is not on the map at the limit 6: circled, and it answers the pointer."""
+        assert "Ceres" not in [o.get("name") for o in window._sky_objects]
+        self._find(window, "ceres")
+        (x, y, _radius), = self._rings(window)
+        ceres = next(o for o in window._sky_objects if o.get("name") == "Ceres")
+        assert (ceres["x"], ceres["y"]) == (x, y) and ceres["kind"] == "planet"
+        window._messier_box.setChecked(False)                    # the Messier objects hidden
+        _pump(qapp, 3)
+        self._find(window, "m31")
+        assert window._sky_found == ("messier", 31) and len(self._rings(window)) == 1
+        assert [o["m"] for o in window._sky_objects if o["kind"] == "deep_sky"] == [31]
+
+    def test_follows_the_date_and_the_language(self, window, qapp):
+        self._find(window, "lune")
+        assert "Lune est sous l'horizon" in window._chart_hints["sky"].text()
+        window._set_datetime(datetime(2026, 11, 2, 3, 0))        # the Moon has risen
+        window.calculate()
+        assert "Lune : hauteur" in window._chart_hints["sky"].text() and len(self._rings(window)) == 1
+        window._lang_combo.setCurrentIndex(window._lang_combo.findData("en"))
+        _pump(qapp)
+        window.tabs.setCurrentIndex(2)
+        _pump(qapp, 3)
+        assert window._find_entry.text() == "Moon" and window._sky_found == ("moon",)
+        assert window._chart_hints["sky"].text().startswith("Moon: altitude ")
+        assert len(self._rings(window)) == 1
+
+    def test_unknown_name_and_clearing(self, window):
+        self._find(window, "véga")
+        self._find(window, "zzz")
+        assert window._chart_hints["sky"].text() == "Aucun astre nommé « zzz »."
+        assert window._sky_found == ("star", "α Lyr")            # the last object found stays circled
+        window._find_entry.setText("")
+        assert window._sky_found is None and self._rings(window) == []
+        assert window._chart_hints["sky"].text().startswith("Zénith au centre")
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Jupiter's moons and Saturn's rings in their data windows (v4.8)
+# ──────────────────────────────────────────────────────────────────────
+
+class TestMoonsAndRings:
+    @staticmethod
+    def _texts(card):
+        return [label.text() for label in card.findChildren(QLabel)]
+
+    def test_jupiter_moons(self, window):
+        """16 January 2026, 18:00 UT: Io crosses the disc with its shadow, the others are west."""
+        window._set_datetime(datetime(2026, 1, 16, 18, 0))
+        window.calculate()
+        card = window._companions_card(window._body_object("Jupiter"))
+        texts = self._texts(card)
+        assert texts[0] == "Lunes galiléennes"
+        assert texts[1:9] == ["I  Io", "devant Jupiter · son ombre sur Jupiter",
+                              "II  Europe", "5,5 R à l'ouest · 2′ 08″",
+                              "III  Ganymède", "12,5 R à l'ouest · 4′ 50″",
+                              "IV  Callisto", "16,9 R à l'ouest · 6′ 33″"]
+        assert "Nord en haut, est à gauche" in texts[9]
+        points, scale = window._moons_drawing.positions()
+        centre = window._moons_drawing.width() / 2
+        assert abs(points["Io"][0] - centre) < scale                       # on the disc
+        assert centre < points["Europa"][0] < points["Ganymede"][0] < points["Callisto"][0]   # west: right
+
+    def test_hidden_moon_and_southern_sky(self, window):
+        """16 February 2026, 16:00 UT: Io is behind Jupiter. From Sydney the view is upside down."""
+        window._set_datetime(datetime(2026, 2, 16, 16, 0))
+        window.entry_lat.setText("-33,8688")
+        window.entry_lon.setText("151,2093")
+        window.calculate()
+        card = window._companions_card(window._body_object("Jupiter"))
+        texts = self._texts(card)
+        assert texts[2] == "derrière Jupiter" and "Sud en haut, ouest à gauche" in texts[9]
+        drawing = window._moons_drawing
+        points, _scale = drawing.positions()
+        assert "Io" not in points and len(points) == 3
+        centre = drawing.width() / 2
+        for moon in drawing.moons[1:]:
+            assert (points[moon["name"]][0] < centre) == (moon["x"] > 0)   # west: left
+        drawing.grab()                                                     # it draws
+
+    def test_saturn_rings(self, window):
+        window._set_datetime(datetime(2026, 11, 5, 0, 0))
+        window.calculate()
+        card = window._companions_card(window._body_object("Saturn"))
+        texts = self._texts(card)
+        assert texts[:5] == ["Anneaux", "Inclinaison", "6,5° · face sud", "Taille apparente", "43,9″ × 5,0″"]
+        assert abs(window._rings_drawing.tilt + 6.4771) < 0.01
+        window._rings_drawing.grab()
+
+    def test_rings_seen_from_their_unlit_side(self, window):
+        """25 March 2025: the Earth has just crossed the ring plane, the Sun has not."""
+        window._set_datetime(datetime(2025, 3, 25, 0, 0))
+        window.calculate()
+        texts = self._texts(window._companions_card(window._body_object("Saturn")))
+        assert texts[2] == "0,1° · face sud, non éclairée"
+
+    def test_in_the_data_window_of_these_two_planets_only(self, window, qapp):
+        assert window._companions_card(window._body_object("Mars")) is None
+        assert window._companions_card(window._body_object("sun")) is None
+        assert window._companions_card(None) is None
+        dlg = window._build_detail_dialog(window._body_object("Jupiter"))
+        assert "Lunes galiléennes" in [label.text() for label in dlg.findChildren(QLabel)]
+        dlg.close()
+        _destroy(qapp, dlg)
+
+
+# ──────────────────────────────────────────────────────────────────────
+# History of the calculations (v4.8)
+# ──────────────────────────────────────────────────────────────────────
+
+class TestHistory:
+    def test_a_calculation_enters_after_a_moment(self, window):
+        """Not at once: the user may only be passing through this date."""
+        import history
+        assert window.history == [] and window._history_timer.isActive()
+        assert window._history_timer.interval() == 3000
+        window._commit_history()                                # what the timer does
+        assert [window._history_label(e) for e in window.history] == \
+            ["01/11/2026 21:30 TU · Cherbourg-en-Cotentin"]
+        assert history.load() == window.history                 # written at once
+        assert window.history[0]["tz"] == "UTC" and window.history[0]["elev"] == 0
+
+    def test_only_the_date_the_user_stops_on(self, window):
+        for day in (2, 3, 4):
+            window._set_datetime(datetime(2026, 11, day, 21, 30))
+            window.calculate()
+        window._commit_history()
+        assert [e["date"] for e in window.history] == ["2026-11-04T21:30:00"]
+
+    def test_start_rebuild_and_real_time_stay_out(self, window, qapp):
+        window._commit_history()
+        assert len(window.history) == 1
+        window._rebuild()                                        # new theme or language
+        assert window._history_pending is None and not window._history_timer.isActive()
+        window.btn_live.setChecked(True)                         # each tick calculates
+        _pump(qapp, 3)
+        assert window._history_pending is None
+        window.btn_live.setChecked(False)
+        import gui
+        other = gui.AstroApp()                                   # the calculation of the start
+        assert other._history_pending is None and len(other.history) == 1
+        other.close()
+        _destroy(qapp, other)
+
+    def test_menu_brings_a_calculation_back(self, window, qapp):
+        window._commit_history()
+        window.tz_name = "Asia/Tokyo"
+        window._select_zone("Asia/Tokyo")
+        window._set_datetime(datetime(2027, 8, 2, 9, 0))
+        window._apply_favorite(window.combo_fav.findText("Tokyo"))
+        window._show_history_menu()                              # the calculation shown comes first
+        actions = window._history_menu.actions()
+        assert [a.text() for a in actions if not a.isSeparator()] == [
+            "02/08/2027 09:00 TU · Tokyo", "01/11/2026 21:30 TU · Cherbourg-en-Cotentin",
+            "Effacer l'historique"]
+        window.btn_live.setChecked(True)                         # bringing one back leaves real time
+        actions[1].trigger()
+        assert not window.live_mode
+        assert window.current_inputs() == (DTE, 49.6333, -1.6167)
+        assert window.location_name == "Cherbourg-en-Cotentin" and window.tz_name == "UTC"
+        assert window.tz_menu.currentData() == "UTC" and window.combo_fav.currentIndex() == -1
+        assert window.card_sun_rise.value.text() == "06:55"      # and it is calculated
+        assert [e["name"] for e in window.history] == ["Cherbourg-en-Cotentin", "Tokyo"]
+        window._history_menu.close()
+        window._restore_calculation(window.history[1])
+        assert window.combo_fav.currentText() == "Tokyo" and window.tz_name == "Asia/Tokyo"
+        assert window.entry_lat.text() == "35,6762"
+
+    def test_unnamed_place_and_clear(self, window):
+        window.entry_lat.setText("10,5")
+        window.entry_lon.setText("-20,25")
+        window._on_coords_edited("")
+        window.calculate()
+        window._commit_history()
+        assert window._history_label(window.history[0]).endswith("TU · 10,5000° N, 20,2500° O")
+        window._clear_history()
+        import history
+        assert window.history == [] and history.load() == []
+        window._show_history_menu()
+        only = window._history_menu.actions()
+        assert [a.text() for a in only] == ["Aucun calcul pour l'instant"] and not only[0].isEnabled()
+        window._history_menu.close()
+
+    def test_a_calculation_made_just_before_closing_is_kept(self, window):
+        import history
+        assert history.load() == []
+        window.close()
+        assert [e["date"] for e in history.load()] == ["2026-11-01T21:30:00"]
+
+    def test_button_and_shortcut(self, window):
+        assert window.btn_history.text() == "Historique"
+        assert "Ctrl+H" in window.btn_history.toolTip()
+        assert window.btn_history.property("variant") == "discret"
 
 
 # ──────────────────────────────────────────────────────────────────────

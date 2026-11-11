@@ -35,6 +35,8 @@
     "calculate_tip": "Calcular para la fecha y el lugar introducidos ({key})",
     "live": "Seguir en tiempo real",
     "live_tip": "Seguir la hora actual, con actualización automática ({key})",
+    "history": "Historial",
+    "history_tip": "Recuperar uno de los últimos cálculos: fecha, lugar y huso horario ({key})",
     "lat_error": "Introduzca una latitud entre −90 y 90",
     "lon_error": "Introduzca una longitud entre −180 y 180"
   },
@@ -286,7 +288,13 @@
     "cardinal_w": "O",
     "cardinal_nw": "NO",
     "messier": "Objetos Messier",
-    "messier_tip": "Las 110 nebulosas, cúmulos y galaxias del catálogo Messier sobre el horizonte; los más brillantes llevan su número"
+    "messier_tip": "Las 110 nebulosas, cúmulos y galaxias del catálogo Messier sobre el horizonte; los más brillantes llevan su número",
+    "find_placeholder": "Buscar un astro…",
+    "find_tip": "Buscar una estrella, un planeta, un objeto de Messier o una constelación por su nombre: Vega, Júpiter, M31, Orión…",
+    "found": "{name}: altura {alt}, dirección {dir} (acimut {az}), rodeado de oro en el mapa.",
+    "found_below": "{name} está bajo el horizonte ({alt}).",
+    "found_below_rise": "{name} está bajo el horizonte ({alt}); sale a las {time}.",
+    "not_found": "Ningún astro llamado «{name}»."
   },
   "detail": {
     "title": "Ficha — {name}",
@@ -557,6 +565,36 @@
     "short_ISS": "ISS",
     "short_Tiangong": "Tiangong",
     "short_Hubble": "Hubble"
+  },
+  "jupiter": {
+    "title": "Lunas galileanas",
+    "Io": "Ío",
+    "Europa": "Europa",
+    "Ganymede": "Ganimedes",
+    "Callisto": "Calisto",
+    "west": "{r} R al oeste · {sep}",
+    "east": "{r} R al este · {sep}",
+    "transit": "delante de Júpiter",
+    "occulted": "detrás de Júpiter",
+    "eclipsed": "en la sombra de Júpiter",
+    "shadow": "su sombra sobre Júpiter",
+    "note_north": "Distancias al centro de Júpiter, en radios del planeta (R) y en el cielo. Norte arriba, este a la izquierda, como con prismáticos.",
+    "note_south": "Distancias al centro de Júpiter, en radios del planeta (R) y en el cielo. Sur arriba, oeste a la izquierda, como con prismáticos."
+  },
+  "saturn": {
+    "title": "Anillos",
+    "tilt": "Inclinación",
+    "size": "Tamaño aparente",
+    "north_face": "cara norte",
+    "south_face": "cara sur",
+    "unlit": "no iluminada",
+    "note_north": "Borde exterior del anillo A. Norte arriba.",
+    "note_south": "Borde exterior del anillo A. Sur arriba."
+  },
+  "history": {
+    "empty": "Ningún cálculo por ahora",
+    "clear": "Borrar el historial",
+    "cleared": "Historial borrado."
   },
   "favs": {
     "save_title": "Añadir a favoritos",

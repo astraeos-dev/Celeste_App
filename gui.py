@@ -17,7 +17,7 @@ v3.3 — Interface following the Astræos design system:
     cadran…), the variants (principal, secondaire, discret), the tones
     (neutre, alerte, attenuee) and the themes (nuit, jour, observation)
   ★ Translated texts (fr, en, es, de); numbers in the language's style
-  ★ Shortcuts: F5 calculate, Ctrl+L real time
+  ★ Shortcuts: F5 calculate, Ctrl+L real time, Ctrl+H history
 
 Layout:
   - Side panel     : date, place, time zone, favourites, actions, theme
@@ -40,7 +40,7 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError, available_timezones
 
 from PyQt6.QtCore import (
-    QDate, QDateTime, QEvent, QLocale, QPointF, QRectF, QRegularExpression, QSize,
+    QDate, QDateTime, QEvent, QLocale, QPoint, QPointF, QRectF, QRegularExpression, QSize,
     QStringListModel, Qt, QTime, QTimer, QTimeZone, QUrl,
 )
 from PyQt6.QtGui import (
@@ -51,7 +51,7 @@ from PyQt6.QtPositioning import QGeoPositionInfo, QGeoPositionInfoSource
 from PyQt6.QtWidgets import (
     QAbstractItemView, QApplication, QButtonGroup, QCheckBox, QComboBox, QCompleter,
     QDateTimeEdit, QDialog, QDialogButtonBox, QFileDialog, QFrame, QGridLayout, QProgressDialog,
-    QHBoxLayout, QHeaderView, QInputDialog, QLabel, QLineEdit, QMainWindow,
+    QHBoxLayout, QHeaderView, QInputDialog, QLabel, QLineEdit, QMainWindow, QMenu,
     QMessageBox, QProgressBar, QPushButton, QScrollArea, QSizePolicy, QSlider,
     QStatusBar, QTabWidget, QTableWidget, QTableWidgetItem, QToolButton,
     QVBoxLayout, QWidget,
@@ -63,6 +63,7 @@ from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg  # noqa: E402
 from matplotlib.figure import Figure  # noqa: E402
 
 import charts  # noqa: E402
+import history  # noqa: E402
 import icons  # noqa: E402
 import places  # noqa: E402
 import satellites  # noqa: E402
@@ -71,7 +72,8 @@ import updater  # noqa: E402
 from config import APP_VERSION, FONT_MONO, FONT_SANS, THEME_NAMES, Config, mix  # noqa: E402
 from constellations import STAR_CONSTELLATION  # noqa: E402
 from engine import (  # noqa: E402
-    COMET_DESIGNATIONS, COMETS, EPHEMERIS_YEARS, MINOR_PLANET_NUMBERS, MINOR_PLANETS, PLANETS, AstroEngine,
+    COMET_DESIGNATIONS, COMETS, EPHEMERIS_YEARS, GALILEAN_MOONS, MINOR_PLANET_NUMBERS, MINOR_PLANETS, PLANETS,
+    AstroEngine,
     constellation_names, messier_catalog,
 )
 from i18n import (  # noqa: E402
@@ -92,6 +94,7 @@ _FONTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts")
 
 _AUTO_ZONE = "auto"           # time zone from the place (timezonefinder)
 _GEOLOC_TIMEOUT_MS = 15000    # wait for the device's location service
+_HISTORY_DELAY_MS = 3000      # a calculation enters the history once the user has stayed on it
 
 _ALL_POSITIONING_METHODS = QGeoPositionInfoSource.PositioningMethod.AllPositioningMethods
 
@@ -110,6 +113,11 @@ _QT_DATETIME_FORMAT = "dd/MM/yyyy HH:mm:ss"
 
 # Decimal degrees, with a point or a comma (49.6333 or 49,6333)
 _COORD_REGEX = r"^\s*[+\-−]?\d{0,3}(?:[.,]\d{0,8})?\s*$"
+
+# Greek letters of the star designations, spelled out for the search ("α CMa": "alpha cma")
+_GREEK = dict(zip("αβγδεζηθικλμνξοπρστυφχψω", (
+    "alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta", "iota", "kappa", "lambda",
+    "mu", "nu", "xi", "omicron", "pi", "rho", "sigma", "tau", "upsilon", "phi", "chi", "psi", "omega")))
 
 # Astronomical symbols, followed by U+FE0E (text presentation, never emoji)
 _VS15 = "︎"
@@ -274,6 +282,26 @@ def _fmt_lat(lat):
 
 def _fmt_lon(lon):
     return f"{_num(abs(lon), 4)}° {t('coords.east') if lon >= 0 else t('coords.west')}"
+
+
+def _default_favorites(lang=None):
+    """
+    The preloaded places (favorites_default.json), named in the interface
+    language: a place's key is its French name, and "names" gives the others
+    where they differ. A language without its own name gets the English one.
+    """
+    lang = lang or get_lang()
+    try:
+        with open(_DEFAULT_FAVORITES_FILE, "r", encoding="utf-8") as f:
+            preloaded = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return {}
+    favorites = {}
+    for key, place in preloaded.items():
+        names = place.get("names", {})
+        name = key if lang == "fr" else names.get(lang, names.get("en", key))
+        favorites[name] = {k: v for k, v in place.items() if k != "names"}
+    return favorites
 
 
 def _coord_text(value):
@@ -613,7 +641,9 @@ class InputField(QWidget):
     def eventFilter(self, obj, event):
         kind = event.type()
         if kind in (QEvent.Type.FocusIn, QEvent.Type.FocusOut):
-            _set_prop(self.box, "focus", kind == QEvent.Type.FocusIn)
+            # "focused", not "focus": Qt's own read-only property of that name
+            # cannot be set, and the gold ring never showed
+            _set_prop(self.box, "focused", kind == QEvent.Type.FocusIn)
         elif obj is self.box and kind in (QEvent.Type.Enter, QEvent.Type.Leave):
             _set_prop(self.box, "hover", kind == QEvent.Type.Enter)
         return False
@@ -710,6 +740,103 @@ class MoonPhase(QWidget):
         p.setBrush(Qt.BrushStyle.NoBrush)
         p.setPen(QPen(QColor(Config.LUNE), 1.2))
         p.drawEllipse(disc)
+        p.end()
+
+
+class JupiterMoons(QWidget):
+    """
+    Jupiter and its four Galilean moons along its equator, to scale, as an
+    almanac draws them: north up and east to the left, as binoculars show them
+    north of the equator; turned upside down with *southern*. A moon behind
+    the disc is not drawn; one in Jupiter's shadow is a hollow dot.
+    """
+    SPAN = 28.0                     # radii of Jupiter on each side (Callisto reaches 26.6)
+
+    def __init__(self, moons, southern=False):
+        super().__init__()
+        self.moons = moons
+        self.southern = southern
+        self.setMinimumSize(336, 56)
+        self.setFixedHeight(56)
+
+    def positions(self):
+        """{name: (x, y) in pixels} of the moons drawn, and the scale (pixels per radius)."""
+        scale = (self.width() - 16) / (2 * self.SPAN)
+        turn = -1.0 if self.southern else 1.0
+        cx, cy = self.width() / 2.0, 22.0
+        return {m["name"]: (cx + turn * m["x"] * scale, cy - turn * m["y"] * scale)
+                for m in self.moons if m["state"] != "occulted"}, scale
+
+    def paintEvent(self, _event):
+        points, scale = self.positions()
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        cx, cy = self.width() / 2.0, 22.0
+        p.setPen(QPen(QColor(Config.CIEL_200), 1))
+        p.drawLine(QPointF(8, cy), QPointF(self.width() - 8, cy))
+        p.setPen(QPen(QColor(Config.ENCRE), 1.2))
+        p.setBrush(QColor(Config.CIEL_100))
+        p.drawEllipse(QPointF(cx, cy), scale, scale * 0.935)
+        font = QFont(self.font())
+        font.setPixelSize(11)
+        p.setFont(font)
+        for i, moon in enumerate(self.moons):
+            if moon["name"] not in points:
+                continue
+            x, y = points[moon["name"]]
+            p.setPen(QPen(QColor(Config.LUNE), 1.2))
+            p.setBrush(QColor(Config.CIEL_100 if moon["state"] == "eclipsed" else Config.LUNE))
+            p.drawEllipse(QPointF(x, y), 2.5, 2.5)
+            p.setPen(QColor(Config.ENCRE_ATTENUEE))
+            p.drawText(QRectF(x - 12, cy + 8 + 12 * (i % 2), 24, 12), int(Qt.AlignmentFlag.AlignCenter),
+                       ("I", "II", "III", "IV")[i])
+        p.setPen(QColor(Config.ENCRE_ATTENUEE))
+        west, east = t("skymap.cardinal_w"), t("skymap.cardinal_e")
+        left, right = (west, east) if self.southern else (east, west)
+        p.drawText(QRectF(0, 0, 24, 12), int(Qt.AlignmentFlag.AlignLeft), left)
+        p.drawText(QRectF(self.width() - 24, 0, 24, 12), int(Qt.AlignmentFlag.AlignRight), right)
+        p.end()
+
+
+class SaturnRings(QWidget):
+    """
+    Saturn and its rings at their tilt of the moment (*tilt* in degrees,
+    positive when the north face is seen): the globe, the outer edge of ring A,
+    the Cassini division and the inner edge of ring B; north up, the reverse
+    with *southern*.
+    """
+    RINGS = (136775.0 / 60268.0, 119875.0 / 60268.0, 92000.0 / 60268.0)   # in radii of Saturn
+
+    def __init__(self, tilt, southern=False):
+        super().__init__()
+        self.tilt = -tilt if southern else tilt
+        self.setMinimumSize(200, 76)
+        self.setFixedHeight(76)
+
+    def paintEvent(self, _event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        cx, cy, radius = self.width() / 2.0, self.height() / 2.0, 24.0
+        opening = math.sin(math.radians(self.tilt))
+        pens = (QPen(QColor(Config.ENCRE), 1.2), QPen(QColor(Config.ENCRE_ATTENUEE), 1),
+                QPen(QColor(Config.ENCRE), 1.2))
+
+        def ring(k, start, span):
+            a = self.RINGS[k] * radius
+            b = max(abs(a * opening), 0.3)
+            p.setPen(pens[k])
+            p.setBrush(Qt.BrushStyle.NoBrush)
+            p.drawArc(QRectF(cx - a, cy - b, 2 * a, 2 * b), start * 16, span * 16)
+
+        # the far half of the rings, the globe over it, then the near half over the globe
+        far = 0 if opening >= 0 else 180                  # seen from the north: the far half is the upper one
+        for k in range(3):
+            ring(k, far, 180)
+        p.setPen(QPen(QColor(Config.ENCRE), 1.2))
+        p.setBrush(QColor(Config.CIEL_100))
+        p.drawEllipse(QPointF(cx, cy), radius, radius * 0.902)
+        for k in range(3):
+            ring(k, far + 180, 180)
         p.end()
 
 
@@ -900,7 +1027,7 @@ QLineEdit, QComboBox, QDateTimeEdit {{
 QLineEdit:focus, QComboBox:focus, QDateTimeEdit:focus {{ border: 2px solid {C.OR}; }}
 QFrame#fieldBox {{ background: {C.CIEL_100}; border: 1px solid {C.ENCRE_ATTENUEE}; border-radius: 4px; }}
 QFrame#fieldBox[hover="true"] {{ border-color: {C.ENCRE}; }}
-QFrame#fieldBox[focus="true"] {{ border: 2px solid {C.OR}; }}
+QFrame#fieldBox[focused="true"] {{ border: 2px solid {C.OR}; }}
 QFrame#fieldBox[error="true"] {{ border-color: {C.SIGNAL_ALERTE}; }}
 QFrame#fieldBox[inactive="true"] {{ border-color: {off}; }}
 QFrame#fieldBox QLineEdit, QFrame#fieldBox QComboBox, QFrame#fieldBox QDateTimeEdit {{
@@ -970,8 +1097,11 @@ QCalendarWidget QToolButton {{ background: transparent; border: none; padding: 4
 QCalendarWidget QAbstractItemView {{
     background: {C.CIEL_100}; selection-background-color: {C.ENCRE}; selection-color: {C.CIEL_000};
 }}
-QMenu {{ background: {C.CIEL_100}; border: 1px solid {C.CIEL_200}; }}
+QMenu {{ background: {C.CIEL_100}; border: 1px solid {C.CIEL_200}; padding: 4px 0px; font-size: 15px; }}
+QMenu::item {{ padding: 6px 16px; }}
 QMenu::item:selected {{ background: {C.CIEL_200}; }}
+QMenu::item:disabled {{ color: {C.ENCRE_ATTENUEE}; }}
+QMenu::separator {{ height: 1px; background: {C.CIEL_200}; margin: 4px 0px; }}
 """
 
 
@@ -1057,22 +1187,31 @@ class AstroApp(QMainWindow):
         self._sky_hover          = None
         self._dirty              = set()
         self._last_search        = None
+        self.history             = history.load()
+        self._sky_found          = None      # the object found by name on the sky map (its reference)
+        self._deep_sky_all       = []        # the 110 Messier objects at the computed instant
+        self._history_pending    = None      # the calculation shown, not yet in the history
+        self._history_quiet      = False     # a calculation the user did not ask for (start, rebuild)
 
-        # Timers: real time and delayed recalculation after typing
+        # Timers: real time, delayed recalculation after typing, history
         self._live_timer = QTimer(self)
         self._live_timer.timeout.connect(self._live_tick)
         self._recalc_timer = QTimer(self)
         self._recalc_timer.setSingleShot(True)
         self._recalc_timer.timeout.connect(self.calculate)
+        self._history_timer = QTimer(self)
+        self._history_timer.setSingleShot(True)
+        self._history_timer.timeout.connect(self._commit_history)
 
         # Shortcuts, attached to the window: they survive the rebuilds
         for keys, slot in ((("F5", "Ctrl+Return"), self.calculate),
-                           (("Ctrl+L",), lambda: self.btn_live.toggle())):
+                           (("Ctrl+L",), lambda: self.btn_live.toggle()),
+                           (("Ctrl+H",), lambda: self._show_history_menu())):
             for key in keys:
                 QShortcut(QKeySequence(key), self).activated.connect(slot)
 
         self._build_ui()
-        self.calculate()
+        self._calculate_quietly()
 
     # ──────────────────────────────────────────────────────────────────────────
     # BUILDING THE INTERFACE
@@ -1099,6 +1238,7 @@ class AstroApp(QMainWindow):
         root.addWidget(main, stretch=1)
 
         self._chart_tabs = {}
+        self._chart_hints = {}
         self._build_ephemeris_tab()
         self._build_trajectories_tab()
         self._build_skymap_tab()
@@ -1233,6 +1373,10 @@ class AstroApp(QMainWindow):
         self.btn_live.setToolTip(tf("side.live_tip", key="Ctrl+L"))
         self.btn_live.toggled.connect(self.toggle_live)
         lay.addWidget(self.btn_live)
+        self.btn_history = _button(t("side.history"), "history", "discret")
+        self.btn_history.setToolTip(tf("side.history_tip", key="Ctrl+H"))
+        self.btn_history.clicked.connect(self._show_history_menu)
+        lay.addWidget(self.btn_history)
 
         lay.addStretch()
         self.theme_selector = ThemeSelector(Config.THEME, self._on_theme_selected)
@@ -1438,7 +1582,8 @@ class AstroApp(QMainWindow):
         card_l.addWidget(canvas)
         lay.addWidget(card, stretch=1)
         if hint:
-            lay.addWidget(_label(hint, "legende", wrap=True))
+            self._chart_hints[name] = _label(hint, "legende", wrap=True)
+            lay.addWidget(self._chart_hints[name])
         self._chart_tabs[page] = name
         return page, figure, canvas
 
@@ -1473,6 +1618,28 @@ class AstroApp(QMainWindow):
         self._messier_box.toggled.connect(self._on_messier_toggled)
         bar.addWidget(self._messier_box)
         bar.addStretch()
+        # find a star, a planet, a Messier object or a constellation by its name
+        self._find_entry = QLineEdit()
+        self._find_entry.setPlaceholderText(t("skymap.find_placeholder"))
+        self._find_entry.setToolTip(t("skymap.find_tip"))
+        self._find_entry.setAccessibleName(t("skymap.find_tip"))
+        self._find_entry.setClearButtonEnabled(True)
+        self._find_entry.setFixedWidth(220)
+        self._find_model = QStringListModel(self)
+        self._find_matches = {}
+        self._find_completer = QCompleter(self._find_model, self)
+        self._find_completer.setCompletionMode(QCompleter.CompletionMode.UnfilteredPopupCompletion)
+        self._find_completer.setMaxVisibleItems(10)
+        self._find_completer.activated.connect(self._on_find_chosen)
+        self._find_entry.setCompleter(self._find_completer)
+        self._find_entry.textEdited.connect(self._on_find_typed)
+        self._find_entry.returnPressed.connect(self._on_find_return)
+        self._find_entry.textChanged.connect(lambda text: text or self._clear_found())
+        if self._sky_found is not None:                   # rebuilt: the object found stays circled
+            self._find_entry.blockSignals(True)
+            self._find_entry.setText(self._target_label(self._sky_found))
+            self._find_entry.blockSignals(False)
+        bar.addWidget(self._find_entry)
 
         page, self.fig_sky, self.canvas_sky = self._chart_page(
             "sky", toolbar=bar, hint=t("skymap.hint"))
@@ -2167,6 +2334,8 @@ class AstroApp(QMainWindow):
         tab, the real-time mode and, with *keep_place*, the place."""
         state = self._snapshot()
         apply_theme(QApplication.instance())
+        named_by_favorite = state["fav"] >= 0 and self.location_name == self.combo_fav.currentText()
+        self.favorites = self._load_favorites()          # preloaded places: in the new language
         self._build_ui()
         self._set_datetime(state["dte"])
         if keep_place:
@@ -2174,6 +2343,8 @@ class AstroApp(QMainWindow):
                 edit.setText(_coord_text(value) if isinstance(value, float) else value)
             self.entry_elev.setText(state["elev"])
             self.combo_fav.setCurrentIndex(state["fav"])
+            if named_by_favorite and self.combo_fav.currentIndex() >= 0:
+                self.location_name = self.combo_fav.currentText()
         self._dirty = set()
         self.tabs.setCurrentIndex(state["tab"])
         self.btn_live.blockSignals(True)
@@ -2181,7 +2352,7 @@ class AstroApp(QMainWindow):
         self.btn_live.blockSignals(False)
         self._apply_live_ui()
         self.last_cache_key = ""
-        self.calculate()
+        self._calculate_quietly()
         if self._last_search == "eclipses":
             self._search_eclipses_gui()
         elif self._last_search == "conjunctions":
@@ -2288,14 +2459,15 @@ class AstroApp(QMainWindow):
     # ──────────────────────────────────────────────────────────────────────────
 
     def _load_favorites(self):
-        for path in (_FAVORITES_FILE, _LEGACY_FAVORITES_FILE, _DEFAULT_FAVORITES_FILE):
+        """The user's favourites; until one is saved, the preloaded places."""
+        for path in (_FAVORITES_FILE, _LEGACY_FAVORITES_FILE):
             if os.path.exists(path):
                 try:
                     with open(path, "r", encoding="utf-8") as f:
                         return json.load(f)
                 except (OSError, json.JSONDecodeError):
                     continue
-        return {}
+        return _default_favorites()
 
     def _save_favorites(self):
         try:
@@ -2709,14 +2881,13 @@ class AstroApp(QMainWindow):
 
         # on the map, the minor planets and comets bright enough for the chosen limit
         bright = [m for m in self.minor_planets if m["mag"] <= self._mag_limit()]
-        deep_sky = []
-        if prefs.get("show_messier"):
-            alts, azs = AstroEngine.deep_sky_horizontal(tc, lat, lon, elev)
-            deep_sky = [{**obj, "alt": float(alt), "az": float(az)}
-                        for obj, alt, az in zip(messier_catalog(), alts, azs) if alt > 0]
+        alts, azs = AstroEngine.deep_sky_horizontal(tc, lat, lon, elev)
+        self._deep_sky_all = [{**obj, "alt": float(alt), "az": float(az)}
+                              for obj, alt, az in zip(messier_catalog(), alts, azs)]
+        deep_sky = [o for o in self._deep_sky_all if o["alt"] > 0] if prefs.get("show_messier") else []
         self._sky_scene = charts.sky_scene(jd, lat, lon, self._mag_limit(),
                                            self.sun_data, self.moon_data, self.planets + bright, deep_sky)
-        self._sky_objects = charts.visible_objects(self._sky_scene)
+        self._refresh_sky_objects()
         self.visible_stars = [s["name"] for s in self._sky_scene["stars"]]
         self.visible_planets_map = [p["name"] for p in self.planets if p["alt"] > 0]
 
@@ -2729,6 +2900,86 @@ class AstroApp(QMainWindow):
         self._update_status()
         self._dirty = {"traj", "sky", "orrery"}
         self._draw_visible_chart()
+        self._note_calculation(dte, lat, lon, elev)
+
+    # ── History of the calculations ───────────────────────────────────────────
+
+    def _calculate_quietly(self):
+        """A calculation the user did not ask for (start, new language or theme):
+        it stays out of the history."""
+        self._history_quiet = True
+        try:
+            self.calculate()
+        finally:
+            self._history_quiet = False
+
+    def _note_calculation(self, dte, lat, lon, elev):
+        """
+        The calculation shown enters the history once the user has stayed on it
+        for a few seconds: not each step through the dates, not each tick of
+        the real-time mode.
+        """
+        if self._history_quiet or self.live_mode:
+            return
+        self._history_pending = history.entry(dte, lat, lon, elev, self.location_name, self.tz_name)
+        self._history_timer.start(_HISTORY_DELAY_MS)
+
+    def _commit_history(self):
+        self._history_timer.stop()
+        item, self._history_pending = self._history_pending, None
+        if item is not None:
+            self.history = history.add(self.history, item)
+            history.save(self.history)
+
+    def _history_label(self, item):
+        """"01/11/2026 21:30 UT · Cherbourg-en-Cotentin" (or the coordinates of an unnamed place)."""
+        place = item["name"] or f"{_fmt_lat(item['lat'])}, {_fmt_lon(item['lon'])}"
+        return f"{history.when(item):%d/%m/%Y %H:%M} {t('chart.ut')} · {place}"
+
+    def _show_history_menu(self):
+        """Menu under the History button: the last calculations, the most recent first."""
+        self._commit_history()                            # the calculation shown comes first
+        menu = QMenu(self)
+        menu.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        for item in self.history:
+            action = menu.addAction(self._history_label(item))
+            action.triggered.connect(lambda _checked=False, it=item: self._restore_calculation(it))
+        if self.history:
+            menu.addSeparator()
+            menu.addAction(t("history.clear")).triggered.connect(self._clear_history)
+        else:
+            menu.addAction(t("history.empty")).setEnabled(False)
+        self._history_menu = menu
+        menu.popup(self.btn_history.mapToGlobal(QPoint(0, self.btn_history.height())))
+
+    def _restore_calculation(self, item):
+        """Brings a calculation of the history back: date, place, elevation and time zone."""
+        if self.live_mode:
+            self.btn_live.setChecked(False)
+        self._set_datetime(history.when(item))
+        self.entry_lat.setText(_coord_text(item["lat"]))
+        self.entry_lon.setText(_coord_text(item["lon"]))
+        self.entry_elev.setText(_elev_text(item["elev"]))
+        self.location_name = item["name"]
+        favorite = self.favorites.get(item["name"])
+        same_place = bool(favorite) and (round(float(favorite["lat"]), 4), round(float(favorite["lon"]), 4)) \
+            == (item["lat"], item["lon"])
+        self.combo_fav.setCurrentIndex(self.combo_fav.findText(item["name"]) if same_place else -1)
+        self.tz_name = item["tz"]
+        self._select_zone(self.tz_name)
+        self.calculate()
+        self._commit_history()                            # back to the top of the list at once
+
+    def _clear_history(self):
+        self._history_timer.stop()
+        self._history_pending = None
+        self.history = []
+        history.save(self.history)
+        self.statusBar().showMessage(t("history.cleared"), 5000)
+
+    def closeEvent(self, event):
+        self._commit_history()                            # a calculation made just before closing
+        super().closeEvent(event)
 
     # ──────────────────────────────────────────────────────────────────────────
     # UPDATING THE CARDS
@@ -3083,10 +3334,184 @@ class AstroApp(QMainWindow):
                           for c in ("n", "ne", "e", "se", "s", "sw", "w", "nw")],
             "planets": {n: _planet_name(n) for n in _PLANETS + MINOR_PLANETS + COMETS},
         }
-        self._sky_ax, tip = charts.draw_sky_map(self.fig_sky, self._sky_scene, labels)
+        found = self._resolve_target(self._sky_found)
+        highlight = None
+        if found is not None and found["alt"] > 0:
+            highlight = {"x": found["x"], "y": found["y"], "label": self._target_label(self._sky_found),
+                         "wide": found["kind"] == "figure"}
+        self._sky_ax, tip = charts.draw_sky_map(self.fig_sky, self._sky_scene, labels, highlight)
+        self._show_find_result()
         self._sky_tip.attach(tip)
         self._sky_hover = None
         self.canvas_sky.draw_idle()
+
+    # ── Search by name on the sky map ─────────────────────────────────────────
+    #    A reference names an object from one calculation to the next: ("sun",),
+    #    ("moon",), ("planet", name), ("star", designation), ("messier", number),
+    #    ("figure", constellation).
+
+    @staticmethod
+    def _find_key(text):
+        """Search key of a name: no accents or case, Greek letters spelled out
+        ("α¹ Cen": "alpha1 cen"), "M 31" and "Messier 31" as "m31"."""
+        key = places.normalize("".join(_GREEK.get(ch, ch) for ch in text))
+        return re.sub(r"\b(?:messier|m) (?=\d)", "m", key)
+
+    def _target_label(self, ref):
+        kind = ref[0]
+        if kind in ("sun", "moon"):
+            return t(f"chart.{kind}")
+        if kind == "planet":
+            return _planet_name(ref[1])
+        if kind == "figure":
+            return t(f"constellations.{ref[1]}")
+        if kind == "messier":
+            return _messier_label(next(o for o in messier_catalog() if o["m"] == ref[1]))
+        star = next(s for s in self._sky_scene["catalog"] if s["designation"] == ref[1])
+        return star["name"] if star["name"] == ref[1] else f"{star['name']} ({ref[1]})"
+
+    def _sky_targets(self):
+        """Everything the search knows, [(label, reference)]: the Sun, the Moon, the
+        planets, minor planets and comets, the Messier objects, the constellations
+        drawn and the stars of the catalogue."""
+        refs = [("sun",), ("moon",)]
+        refs += [("planet", p["name"]) for p in self.planets + self.minor_planets]
+        refs += [("messier", o["m"]) for o in self._deep_sky_all]
+        refs += [("figure", key) for key in self._sky_scene["figures"]]
+        refs += [("star", s["designation"]) for s in self._sky_scene["catalog"]]
+        return [(self._target_label(ref), ref) for ref in refs]
+
+    def _find_targets(self, text, limit=10):
+        """The targets whose name matches *text*: the exact name (or its first
+        word, "m3") first, then names starting with it, then a word starting
+        with it, then any place in the name."""
+        query = self._find_key(text)
+        if not query or self._sky_scene is None:
+            return []
+        ranked = []
+        for index, (label, ref) in enumerate(self._sky_targets()):
+            key = self._find_key(label)
+            words = key.split()
+            if key == query or words[0] == query:
+                rank = 0
+            elif key.startswith(query):
+                rank = 1
+            elif any(word.startswith(query) for word in words) or f" {query}" in f" {key}":
+                rank = 2
+            elif query in key:
+                rank = 3
+            else:
+                continue
+            ranked.append((rank, index, label, ref))
+        return [(label, ref) for _rank, _index, label, ref in sorted(ranked)[:limit]]
+
+    def _resolve_target(self, ref):
+        """The object behind a reference as the sky map describes it (altitude,
+        azimuth, map position); None without a reference, or for a comet that
+        has left its table."""
+        if ref is None or self._sky_scene is None:
+            return None
+        scene, kind = self._sky_scene, ref[0]
+        if kind in ("sun", "moon"):
+            return scene[kind]
+        if kind == "star":
+            return next((s for s in scene["catalog"] if s["designation"] == ref[1]), None)
+        if kind == "planet":
+            obj = self._body_object(ref[1])
+        elif kind == "messier":
+            obj = next(({**o, "kind": "deep_sky"} for o in self._deep_sky_all if o["m"] == ref[1]), None)
+        else:
+            alt, az = scene["figures"][ref[1]]
+            obj = {"kind": "figure", "name": ref[1], "alt": alt, "az": az}
+        if obj is None:
+            return None
+        x, y = charts.sky_xy(obj["alt"], obj["az"])
+        return {**obj, "x": x, "y": y}
+
+    def _refresh_sky_objects(self):
+        """What the pointer finds on the map: the objects drawn and, when it is
+        too faint to be drawn, the object found by name."""
+        self._sky_objects = charts.visible_objects(self._sky_scene)
+        found = self._resolve_target(self._sky_found)
+        if found is None or found["kind"] == "figure" or found["alt"] <= 0:
+            return
+        same = (lambda o: o.get("m") == found.get("m")) if found["kind"] == "deep_sky" else \
+            (lambda o: o.get("name") == found.get("name"))
+        if not any(o["kind"] == found["kind"] and same(o) for o in self._sky_objects):
+            self._sky_objects.append(found)
+
+    def _on_find_typed(self, text):
+        """Suggestions at each letter."""
+        self._find_matches = dict(self._find_targets(text))
+        self._find_model.setStringList(list(self._find_matches))
+        if self._find_matches:
+            self._find_completer.complete()
+
+    def _on_find_chosen(self, label):
+        ref = self._find_matches.get(label)
+        if ref is not None:
+            self._find_on_sky(ref)
+
+    def _on_find_return(self):
+        """Return without choosing: the first suggestion."""
+        text = self._find_entry.text().strip()
+        if not text:
+            return
+        ref = self._find_matches.get(text)
+        if ref is None:
+            found = self._find_targets(text, limit=1)
+            ref = found[0][1] if found else None
+        if ref is None:
+            message = tf("skymap.not_found", name=text)
+            self._chart_hints["sky"].setText(message)
+            self.statusBar().showMessage(message, 6000)
+            return
+        self._find_on_sky(ref)
+
+    def _find_on_sky(self, ref):
+        """Circles the object on the map and says where it is."""
+        self._find_completer.popup().hide()
+        self._sky_found = ref
+        self._find_entry.blockSignals(True)
+        self._find_entry.setText(self._target_label(ref))
+        self._find_entry.blockSignals(False)
+        self._refresh_sky_objects()
+        self._dirty.add("sky")
+        self._draw_visible_chart()
+        self._show_find_result()                          # also when another tab is shown
+        self.statusBar().showMessage(self._chart_hints["sky"].text(), 6000)
+
+    def _clear_found(self):
+        if self._sky_found is None:
+            self._chart_hints["sky"].setText(t("skymap.hint"))
+            return
+        self._sky_found = None
+        self._refresh_sky_objects()
+        self._dirty.add("sky")
+        self._draw_visible_chart()
+        self._show_find_result()
+
+    def _show_find_result(self):
+        """Under the map: where the object found is, or that it is below the horizon."""
+        hint = self._chart_hints["sky"]
+        found = self._resolve_target(self._sky_found)
+        if found is None:
+            hint.setText(t("skymap.hint"))
+            return
+        name = self._target_label(self._sky_found)
+        if found["alt"] > 0:
+            hint.setText(tf("skymap.found", name=name, alt=_deg(found["alt"], 1),
+                            dir=self._wind(found["az"]), az=_deg(found["az"], 1)))
+            return
+        rise = None
+        if found["kind"] in ("sun", "moon", "planet"):
+            body = found["kind"] if found["kind"] != "planet" else found["name"]
+            rise = AstroEngine.next_rise(self._dte, self._lat, self._lon, body, self._elevation())
+        if rise is not None:
+            hint.setText(tf("skymap.found_below_rise", name=name, alt=_deg(found["alt"], 1, signed=True),
+                            time=self._format_event(rise)))
+        else:
+            hint.setText(tf("skymap.found_below", name=name, alt=_deg(found["alt"], 1, signed=True)))
 
     def _draw_orrery(self):
         labels = {
@@ -3373,12 +3798,70 @@ class AstroApp(QMainWindow):
             val.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
             grid.addWidget(val, r, 1)
         lay.addWidget(card)
+        extra = self._companions_card(obj)
+        if extra is not None:
+            lay.addWidget(extra)
         buttons = QDialogButtonBox()
         close = _button(t("detail.close"))
         buttons.addButton(close, QDialogButtonBox.ButtonRole.RejectRole)
         buttons.rejected.connect(dlg.reject)
         lay.addWidget(buttons)
         return dlg
+
+    def _companions_card(self, obj):
+        """Second card of the data window: Jupiter's moons, Saturn's rings; None for the others."""
+        if not obj or obj.get("kind") != "planet" or obj.get("name") not in ("Jupiter", "Saturn") \
+                or self._dte is None:
+            return None
+        tc = AstroEngine.julian_century_j2000(self._dte)
+        southern = self._lat is not None and self._lat < 0
+        card = _card()
+        lay = QVBoxLayout(card)
+        lay.setContentsMargins(16, 12, 16, 12)
+        lay.setSpacing(8)
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(24)
+        grid.setVerticalSpacing(6)
+        if obj["name"] == "Jupiter":
+            moons = AstroEngine.galilean_moons(tc)
+            radius = AstroEngine.body_details(tc, "Jupiter")["diameter_arcsec"] / 2.0
+            lay.addWidget(_label(t("jupiter.title"), "label"))
+            self._moons_drawing = JupiterMoons(moons, southern)
+            lay.addWidget(self._moons_drawing)
+            rows = [(f"{numeral}  {t('jupiter.' + moon['name'])}", self._moon_text(moon, radius))
+                    for numeral, moon in zip(("I", "II", "III", "IV"), moons)]
+            note = t("jupiter.note_south" if southern else "jupiter.note_north")
+        else:
+            rings = AstroEngine.saturn_rings(tc)
+            lay.addWidget(_label(t("saturn.title"), "label"))
+            self._rings_drawing = SaturnRings(rings["tilt"], southern)
+            lay.addWidget(self._rings_drawing)
+            face = t("saturn.north_face" if rings["tilt"] >= 0 else "saturn.south_face")
+            if not rings["lit"]:
+                face = f"{face}, {t('saturn.unlit')}"
+            rows = [(t("saturn.tilt"), f"{_deg(abs(rings['tilt']), 1)} · {face}"),
+                    (t("saturn.size"), f"{self._diameter(rings['major_arcsec'])} × "
+                                       f"{self._diameter(rings['minor_arcsec'])}")]
+            note = t("saturn.note_south" if southern else "saturn.note_north")
+        for r, (key, value) in enumerate(rows):
+            grid.addWidget(_label(key, "legende"), r, 0)
+            val = _label(value, "donnee")
+            val.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            val.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            grid.addWidget(val, r, 1)
+        lay.addLayout(grid)
+        lay.addWidget(_label(note, "legende", wrap=True))
+        return card
+
+    def _moon_text(self, moon, radius_arcsec):
+        """"4,9 R à l'ouest · 1′ 32″", "devant Jupiter", "dans l'ombre de Jupiter"…"""
+        if moon["state"] == "free":
+            side = "jupiter.west" if moon["x"] > 0 else "jupiter.east"
+            text = tf(side, r=_num(abs(moon["x"]), 1),
+                      sep=self._diameter(math.hypot(moon["x"], moon["y"]) * radius_arcsec))
+        else:
+            text = t(f"jupiter.{moon['state']}")
+        return f"{text} · {t('jupiter.shadow')}" if moon["shadow"] else text
 
     def _show_object_detail(self, obj):
         """Detailed card of a body of the sky map."""

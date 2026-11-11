@@ -133,9 +133,10 @@ class TestSkyGeometry:
         assert abs(x) < 1e-12 and abs(y) < 1e-12
 
     def test_cardinal_points_on_horizon(self):
-        """North up, east on the right, horizon on the unit circle."""
+        """North up, east on the left as in the sky (v4.9), horizon on the unit circle."""
         assert all(abs(a - b) < 1e-12 for a, b in zip(charts.sky_xy(0, 0), (0, 1)))
-        assert all(abs(a - b) < 1e-12 for a, b in zip(charts.sky_xy(0, 90), (1, 0)))
+        assert all(abs(a - b) < 1e-12 for a, b in zip(charts.sky_xy(0, 90), (-1, 0)))
+        assert all(abs(a - b) < 1e-12 for a, b in zip(charts.sky_xy(0, 270), (1, 0)))
         assert all(abs(a - b) < 1e-12 for a, b in zip(charts.sky_xy(0, 180), (0, -1)))
 
     def test_below_horizon_outside_circle(self):

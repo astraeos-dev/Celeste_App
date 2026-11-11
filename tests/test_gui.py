@@ -30,6 +30,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 pytest.importorskip("PyQt6.QtWidgets", reason="PyQt6 or the Qt libraries are missing")
 pytest.importorskip("matplotlib")
 
+from engine import COMETS  # noqa: E402
 from matplotlib.backend_bases import MouseEvent  # noqa: E402
 from PyQt6.QtCore import QEvent, Qt  # noqa: E402
 from PyQt6.QtWidgets import (  # noqa: E402
@@ -160,12 +161,12 @@ class TestCalculation:
 
     def test_all_bodies_and_visible_only(self, window):
         """Issue #21: all the bodies, or only those above the horizon; in 2026,
-        7 planets, 9 minor planets and the 4 comets followed."""
+        7 planets, 9 minor planets and the comets followed."""
         window._planet_selector.buttons["all"].click()
-        assert len(self._shown(window)) == 20
+        assert len(self._shown(window)) == 16 + len(COMETS)
         window._planet_visible.setChecked(True)
         up = self._shown(window)
-        assert 0 < len(up) < 20
+        assert 0 < len(up) < 16 + len(COMETS)
         assert all(window._planet_alt[name] > 0 for name in up)
         window._planet_visible.setChecked(False)
         window._planet_selector.buttons["planets"].click()
@@ -498,7 +499,7 @@ class TestSkyMapAndTrajectory:
     def test_star_card_names_its_constellation(self, window):
         title, rows = window._object_details(_vega(window))
         assert title == "Vega"
-        assert ("Constellation", "Triangle d'été") in rows
+        assert ("Constellation", "Lyre (Lyr)") in rows
         dialog = window._build_detail_dialog(_vega(window))
         assert isinstance(dialog, QDialog)
         dialog.close()
@@ -834,7 +835,7 @@ class TestComets:
         window._on_planet_group("comets")
         rows = {name: items for name, items in window._planet_items.items()
                 if not window.planet_table.isRowHidden(items["col_planet"].row())}
-        assert set(rows) == {"Panstarrs", "Honda", "Tsuchinshan", "Borrelly"}
+        assert set(rows) == set(COMETS)
         honda = rows["Honda"]["col_planet"]
         assert honda.text() == "\u2604\ufe0e 45P/Honda" and honda.toolTip().startswith("45P/Honda-Mrkos-Pajdušáková")
         assert rows["Honda"]["col_mag"].text() == "8,2"
@@ -844,7 +845,7 @@ class TestComets:
         self._at(window, qapp, datetime(2035, 6, 1))
         window._on_planet_group("comets")
         assert all(window.planet_table.isRowHidden(window._planet_items[n]["col_planet"].row())
-                   for n in ("Panstarrs", "Honda", "Tsuchinshan", "Borrelly"))
+                   for n in COMETS)
         assert not window._planet_empty.isHidden() and "C/2026 C1" in window._planet_empty.text()
         window._on_planet_group("planets")
 
@@ -1312,7 +1313,7 @@ class TestSkySearch:
     @pytest.mark.parametrize("text, first", [
         ("vega", "Vega (α Lyr)"), ("VÉGA", "Vega (α Lyr)"), ("alpha cy", "Deneb (α Cyg)"),
         ("m 31", "M31 Galaxie d'Andromède"), ("Messier 31", "M31 Galaxie d'Andromède"),
-        ("andro", "M31 Galaxie d'Andromède"), ("m3", "M3"), ("jup", "Jupiter"), ("cérès", "Cérès"),
+        ("andro", "Andromède"), ("galaxie d'andro", "M31 Galaxie d'Andromède"), ("m3", "M3"), ("jup", "Jupiter"), ("cérès", "Cérès"),
         ("lune", "Lune"), ("cassio", "Cassiopée"), ("orion", "Orion"), ("epsilon car", "ε Car"),
     ])
     def test_names_found(self, window, text, first):
@@ -1337,9 +1338,9 @@ class TestSkySearch:
 
     def test_constellation_gets_a_wide_circle(self, window):
         self._find(window, "cassio")
-        assert window._sky_found == ("figure", "Cassiopeia")
+        assert window._sky_found == ("figure", "Cas")
         (_x, _y, radius), = self._rings(window)
-        assert radius > 0.1 and "Cassiopée : hauteur 76,8°" in window._chart_hints["sky"].text()
+        assert radius > 0.1 and "Cassiopée : hauteur 82,4°" in window._chart_hints["sky"].text()
 
     def test_below_the_horizon(self, window):
         self._find(window, "sirius")

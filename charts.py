@@ -7,7 +7,7 @@ The three charts of the interface:
   shaded by the phases of the day (day, civil, nautical and astronomical
   twilights, night);
 - the sky map: the dome seen from below with the zenith at the centre, the
-  horizon on the circle, north up and east on the right;
+  horizon on the circle, north up and east on the left, as the sky is seen;
 - the solar system seen from the north ecliptic pole, inner and outer views.
 
 The ``*_scene`` functions compute what to draw with the engine; the
@@ -21,6 +21,7 @@ values and ``encre-attenuee`` for labels, the Sun in ``or`` and the Moon in
 ♃ ♄ ⊕ ♈) always next to the body's name.
 """
 
+import functools
 import logging
 import json
 import math
@@ -36,7 +37,6 @@ from matplotlib.patches import Circle, Patch
 from matplotlib.ticker import FuncFormatter, MultipleLocator
 
 from config import Config, FONT_SANS, mix
-from constellations import CONSTELLATIONS
 from star_catalog import CATALOG
 from engine import COMETS, EPHEMERIS_YEARS, AstroEngine, _HORIZON_CORRECTION_SUN
 
@@ -309,11 +309,13 @@ def draw_trajectory(fig, hours, sun_alts, moon_alts, now_hour, sun_now, moon_now
 def sky_xy(alt, az):
     """
     Position on the sky map: zenith at (0, 0), horizon on the unit circle,
-    north up and east on the right. Below the horizon, the radius exceeds 1.
+    north up and east on the left, as the sky is seen lying on one's back
+    with the head to the north (the mirror image of a map of the ground).
+    Below the horizon, the radius exceeds 1.
     """
     r = (90.0 - alt) / 90.0
     a = math.radians(az)
-    return r * math.sin(a), r * math.cos(a)
+    return -r * math.sin(a), r * math.cos(a)
 
 
 def star_marker_size(mag):
@@ -340,19 +342,22 @@ def sky_scene(jd, lat, lon, mag_limit, sun, moon, planets, deep_sky=()):
         lines (at least one end above the horizon), sun, moon, planets;
         every object carries its map position "x", "y". For the search by
         name: catalog (every star of the catalogue, whatever its magnitude
-        and altitude) and figures ({constellation: (alt, az) of the middle of
-        its figure}).
+        and altitude) and figures ({IAU abbreviation: (alt, az) of the point
+        where the constellation is named}).
     """
-    # the 513 stars of the catalogue brought to the date at once (proper motion,
-    # precession, nutation, aberration); the stars of the figures by their name
+    # every star of the catalogue and every point of the constellation figures
+    # brought to the date at once (proper motion, precession, nutation, aberration)
+    figures_data = constellation_figures()
+    points = [point for figure in figures_data.values()
+              for point in [figure["center"]] + [p for line in figure["lines"] for p in line]]
     alts, azs = AstroEngine.stars_horizontal(
-        (jd - 2451545.0) / 36525.0, lat, lon, [c[1] for c in CATALOG], [c[2] for c in CATALOG],
-        pm_ra_mas=[c[4] for c in CATALOG], pm_dec_mas=[c[5] for c in CATALOG])
-    stars, catalog, horizontal = [], [], {}
+        (jd - 2451545.0) / 36525.0, lat, lon,
+        [c[1] for c in CATALOG] + [p[0] for p in points], [c[2] for c in CATALOG] + [p[1] for p in points],
+        pm_ra_mas=[c[4] for c in CATALOG] + [0] * len(points),
+        pm_dec_mas=[c[5] for c in CATALOG] + [0] * len(points))
+    stars, catalog = [], []
     for (designation, ra, dec, mag, _pm_ra, _pm_dec, name), alt, az in zip(CATALOG, alts, azs):
         alt, az = float(alt), float(az)
-        if name:
-            horizontal[name] = (alt, az)
         x, y = sky_xy(alt, az)
         star = {"kind": "star", "name": name or designation, "designation": designation,
                 "alt": alt, "az": az, "ra": ra, "dec": dec, "mag": mag, "x": x, "y": y}
@@ -360,25 +365,22 @@ def sky_scene(jd, lat, lon, mag_limit, sun, moon, planets, deep_sky=()):
         if mag <= mag_limit and alt > 0:
             stars.append(star)
 
-    lines = []
-    for edges in CONSTELLATIONS.values():
-        for a, b in edges:
-            if a not in horizontal or b not in horizontal:
-                continue
-            (alt1, az1), (alt2, az2) = horizontal[a], horizontal[b]
-            if max(alt1, alt2) <= 0:
-                continue
-            lines.append((sky_xy(alt1, az1), sky_xy(alt2, az2)))
+    # the figures: their segments with at least one end above the horizon
+    lines, figures = [], {}
+    index = len(CATALOG)
+    for key, figure in figures_data.items():
+        figures[key] = (float(alts[index]), float(azs[index]))
+        index += 1
+        for line in figure["lines"]:
+            ends = [(float(alts[index + i]), float(azs[index + i])) for i in range(len(line))]
+            index += len(line)
+            for (alt1, az1), (alt2, az2) in zip(ends, ends[1:]):
+                if max(alt1, alt2) > 0:
+                    lines.append((sky_xy(alt1, az1), sky_xy(alt2, az2)))
 
     def placed(body, kind):
         x, y = sky_xy(body["alt"], body["az"])
         return {**body, "kind": kind, "x": x, "y": y}
-
-    figures = {}
-    for key, edges in CONSTELLATIONS.items():
-        members = {name for edge in edges for name in edge if name in horizontal}
-        if members:
-            figures[key] = _middle([horizontal[name] for name in members])
 
     return {
         "stars": stars,
@@ -392,16 +394,17 @@ def sky_scene(jd, lat, lon, mag_limit, sun, moon, planets, deep_sky=()):
     }
 
 
-def _middle(points):
-    """(alt, az) of the middle of a group of points of the sky, each (alt, az) in degrees."""
-    x = y = z = 0.0
-    for alt, az in points:
-        a, b = math.radians(alt), math.radians(az)
-        x += math.cos(a) * math.sin(b)
-        y += math.cos(a) * math.cos(b)
-        z += math.sin(a)
-    norm = math.sqrt(x * x + y * y + z * z) or 1.0
-    return math.degrees(math.asin(z / norm)), math.degrees(math.atan2(x, y)) % 360.0
+@functools.lru_cache(maxsize=1)
+def constellation_figures():
+    """
+    Figures of the 88 constellations (assets/constellations.json, from
+    d3-celestial, BSD 3-Clause; scripts/make_constellations.py):
+    {IAU abbreviation: {"center": [RA hours, Dec degrees] of its name,
+    "lines": [[[RA hours, Dec degrees], ...], ...]}}, J2000.
+    """
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "constellations.json")
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
 
 
 def visible_objects(scene):
@@ -483,10 +486,10 @@ def draw_sky_map(fig, scene, labels, highlight=None):
     for alt in (30, 60):
         ax.add_patch(Circle((0, 0), (90 - alt) / 90, fill=False,
                             edgecolor=Config.CIEL_200, linewidth=1.0, zorder=1))
-        lx, ly = sky_xy(alt, 202)
+        lx, ly = sky_xy(alt, 158)
         ax.text(lx, ly, f"{alt}°", color=Config.ENCRE_ATTENUEE, fontsize=SIZE_LEGENDE * 0.85,
                 ha="center", va="center", zorder=1)
-    hx, hy = sky_xy(0, 202)
+    hx, hy = sky_xy(0, 158)
     ax.text(hx * 0.93, hy * 0.93, labels["horizon"], color=Config.ENCRE_ATTENUEE,
             fontsize=SIZE_LEGENDE * 0.85, ha="center", va="center", rotation=-22, zorder=1)
     ax.plot(0, 0, "+", color=Config.ENCRE_ATTENUEE, markersize=9, markeredgewidth=1.0,

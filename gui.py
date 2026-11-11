@@ -316,7 +316,7 @@ def _clean_place(name):
 
 # Comets: their short designation (tables, "Tonight"); the full one with *numbered*
 _COMET_SHORT = {"Panstarrs": "C/2026 O1", "Honda": "45P/Honda", "Tsuchinshan": "C/2026 C1",
-                "Borrelly": "19P/Borrelly"}
+                "Borrelly": "19P/Borrelly","Lemmon": "C/2025 A6"}
 
 
 def _planet_name(name, symbol=False, numbered=False):

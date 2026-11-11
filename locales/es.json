@@ -288,7 +288,13 @@
     "cardinal_w": "O",
     "cardinal_nw": "NO",
     "messier": "Objetos Messier",
-    "messier_tip": "Las 110 nebulosas, cúmulos y galaxias del catálogo Messier sobre el horizonte; los más brillantes llevan su número"
+    "messier_tip": "Las 110 nebulosas, cúmulos y galaxias del catálogo Messier sobre el horizonte; los más brillantes llevan su número",
+    "find_placeholder": "Buscar un astro…",
+    "find_tip": "Buscar una estrella, un planeta, un objeto de Messier o una constelación por su nombre: Vega, Júpiter, M31, Orión…",
+    "found": "{name}: altura {alt}, dirección {dir} (acimut {az}), rodeado de oro en el mapa.",
+    "found_below": "{name} está bajo el horizonte ({alt}).",
+    "found_below_rise": "{name} está bajo el horizonte ({alt}); sale a las {time}.",
+    "not_found": "Ningún astro llamado «{name}»."
   },
   "detail": {
     "title": "Ficha — {name}",

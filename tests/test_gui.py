@@ -1290,6 +1290,103 @@ class TestFirstLaunch:
 
 
 # ──────────────────────────────────────────────────────────────────────
+# Search by name on the sky map (v4.8)
+# ──────────────────────────────────────────────────────────────────────
+
+class TestSkySearch:
+    @staticmethod
+    def _find(window, text):
+        window.tabs.setCurrentIndex(2)
+        window._find_entry.setText(text)
+        window._on_find_return()
+
+    @staticmethod
+    def _rings(window):
+        """Gold circles drawn on the map: [(x, y, radius)]."""
+        from matplotlib.colors import to_hex
+        from matplotlib.patches import Circle
+        from config import Config
+        return [(c.center[0], c.center[1], c.radius) for c in window._sky_ax.patches
+                if isinstance(c, Circle) and to_hex(c.get_edgecolor()) == Config.OR]
+
+    @pytest.mark.parametrize("text, first", [
+        ("vega", "Vega (α Lyr)"), ("VÉGA", "Vega (α Lyr)"), ("alpha cy", "Deneb (α Cyg)"),
+        ("m 31", "M31 Galaxie d'Andromède"), ("Messier 31", "M31 Galaxie d'Andromède"),
+        ("andro", "M31 Galaxie d'Andromède"), ("m3", "M3"), ("jup", "Jupiter"), ("cérès", "Cérès"),
+        ("lune", "Lune"), ("cassio", "Cassiopée"), ("orion", "Orion"), ("epsilon car", "ε Car"),
+    ])
+    def test_names_found(self, window, text, first):
+        assert window._find_targets(text)[0][0] == first
+
+    def test_suggestions(self, window):
+        assert [label for label, _ref in window._find_targets("ourse")] == ["Grande Ourse", "Petite Ourse"]
+        assert window._find_targets("") == [] and window._find_targets("zzz") == []
+        window._on_find_typed("m3")
+        assert window._find_model.stringList()[:3] == ["M3", "M30", "M31 Galaxie d'Andromède"]
+        assert len(window._find_model.stringList()) == 10
+        window._find_completer.popup().hide()
+
+    def test_star_is_circled(self, window):
+        self._find(window, "véga")
+        assert window._sky_found == ("star", "α Lyr") and window._find_entry.text() == "Vega (α Lyr)"
+        assert window._chart_hints["sky"].text() == \
+            "Vega (α Lyr) : hauteur 32,9°, direction NO (azimut 293,1°), cerclé d'or sur la carte."
+        vega = next(s for s in window._sky_scene["stars"] if s["name"] == "Vega")
+        (x, y, radius), = self._rings(window)
+        assert (x, y) == (vega["x"], vega["y"]) and radius < 0.05
+
+    def test_constellation_gets_a_wide_circle(self, window):
+        self._find(window, "cassio")
+        assert window._sky_found == ("figure", "Cassiopeia")
+        (_x, _y, radius), = self._rings(window)
+        assert radius > 0.1 and "Cassiopée : hauteur 76,8°" in window._chart_hints["sky"].text()
+
+    def test_below_the_horizon(self, window):
+        self._find(window, "sirius")
+        assert window._chart_hints["sky"].text() == "Sirius (α CMa) est sous l'horizon (−18,8°)."
+        assert self._rings(window) == []
+        self._find(window, "jupiter")                            # a planet: with its rise
+        assert window._chart_hints["sky"].text().startswith("Jupiter est sous l'horizon (−")
+        assert window._chart_hints["sky"].text().endswith(" ; lever à 23:57.")
+
+    def test_object_too_faint_to_be_drawn(self, window, qapp):
+        """Ceres (magnitude 8.9) is not on the map at the limit 6: circled, and it answers the pointer."""
+        assert "Ceres" not in [o.get("name") for o in window._sky_objects]
+        self._find(window, "ceres")
+        (x, y, _radius), = self._rings(window)
+        ceres = next(o for o in window._sky_objects if o.get("name") == "Ceres")
+        assert (ceres["x"], ceres["y"]) == (x, y) and ceres["kind"] == "planet"
+        window._messier_box.setChecked(False)                    # the Messier objects hidden
+        _pump(qapp, 3)
+        self._find(window, "m31")
+        assert window._sky_found == ("messier", 31) and len(self._rings(window)) == 1
+        assert [o["m"] for o in window._sky_objects if o["kind"] == "deep_sky"] == [31]
+
+    def test_follows_the_date_and_the_language(self, window, qapp):
+        self._find(window, "lune")
+        assert "Lune est sous l'horizon" in window._chart_hints["sky"].text()
+        window._set_datetime(datetime(2026, 11, 2, 3, 0))        # the Moon has risen
+        window.calculate()
+        assert "Lune : hauteur" in window._chart_hints["sky"].text() and len(self._rings(window)) == 1
+        window._lang_combo.setCurrentIndex(window._lang_combo.findData("en"))
+        _pump(qapp)
+        window.tabs.setCurrentIndex(2)
+        _pump(qapp, 3)
+        assert window._find_entry.text() == "Moon" and window._sky_found == ("moon",)
+        assert window._chart_hints["sky"].text().startswith("Moon: altitude ")
+        assert len(self._rings(window)) == 1
+
+    def test_unknown_name_and_clearing(self, window):
+        self._find(window, "véga")
+        self._find(window, "zzz")
+        assert window._chart_hints["sky"].text() == "Aucun astre nommé « zzz »."
+        assert window._sky_found == ("star", "α Lyr")            # the last object found stays circled
+        window._find_entry.setText("")
+        assert window._sky_found is None and self._rings(window) == []
+        assert window._chart_hints["sky"].text().startswith("Zénith au centre")
+
+
+# ──────────────────────────────────────────────────────────────────────
 # Jupiter's moons and Saturn's rings in their data windows (v4.8)
 # ──────────────────────────────────────────────────────────────────────
 

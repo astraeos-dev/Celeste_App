@@ -941,6 +941,33 @@ class AstroEngine:
         return events
 
     @classmethod
+    def next_rise(cls, dte, lat, lon, body, elevation_m=0.0, hours=25.0):
+        """
+        The first rise of *body* after *dte* (UT datetime), within *hours*:
+        find_events() gives the first rise of the local day, which may be past
+        (Jupiter can rise at 00:00 and again at 23:57 on the same day).
+
+        Returns:
+            datetime (UT, tzinfo of *dte* kept) or None when the body does not
+            rise in that time (polar day or night).
+        """
+        sky = _sky()
+        t0 = cls._time_ut(cls.julian_century_j2000(dte))
+        t1 = cls._time_ut(cls.julian_century_j2000(dte + timedelta(hours=hours)))
+        observer = sky["earth"] + wgs84.latlon(lat, lon, elevation_m=elevation_m)
+        target = cls._target(body)
+        horizon = None
+        if elevation_m > 0:
+            km = sky["earth"].at(t0).observe(target).distance().km
+            horizon = -(_HORIZON_REFRACTION + math.degrees(math.asin(_BODY_RADIUS_KM.get(body, 0.0) / km))
+                        + _HORIZON_DIP * math.sqrt(elevation_m))
+        times, crosses = almanac.find_risings(observer, target, t0, t1, horizon)
+        for time, really in zip(times, crosses):
+            if really:
+                return cls._jd_to_datetime(time.ut1, dte)
+        return None
+
+    @classmethod
     def altitudes(cls, dtes, lat, lon, elevation_m=0.0):
         """
         Altitudes of the Sun (geometric centre) and of the Moon (seen from the

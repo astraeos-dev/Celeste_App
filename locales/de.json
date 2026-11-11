@@ -288,7 +288,13 @@
     "cardinal_w": "W",
     "cardinal_nw": "NW",
     "messier": "Messier-Objekte",
-    "messier_tip": "Die 110 Nebel, Sternhaufen und Galaxien des Messier-Katalogs über dem Horizont; die hellsten tragen ihre Nummer"
+    "messier_tip": "Die 110 Nebel, Sternhaufen und Galaxien des Messier-Katalogs über dem Horizont; die hellsten tragen ihre Nummer",
+    "find_placeholder": "Objekt suchen…",
+    "find_tip": "Einen Stern, einen Planeten, ein Messier-Objekt oder ein Sternbild nach Namen suchen: Wega, Jupiter, M31, Orion…",
+    "found": "{name}: Höhe {alt}, Richtung {dir} (Azimut {az}), auf der Karte golden umkreist.",
+    "found_below": "{name} steht unter dem Horizont ({alt}).",
+    "found_below_rise": "{name} steht unter dem Horizont ({alt}); Aufgang um {time}.",
+    "not_found": "Kein Objekt namens „{name}“."
   },
   "detail": {
     "title": "Steckbrief — {name}",

@@ -288,7 +288,13 @@
     "cardinal_w": "O",
     "cardinal_nw": "NO",
     "messier": "Objets de Messier",
-    "messier_tip": "Les 110 nébuleuses, amas et galaxies du catalogue de Messier au-dessus de l'horizon ; les plus brillants portent leur numéro"
+    "messier_tip": "Les 110 nébuleuses, amas et galaxies du catalogue de Messier au-dessus de l'horizon ; les plus brillants portent leur numéro",
+    "find_placeholder": "Trouver un astre…",
+    "find_tip": "Chercher une étoile, une planète, un objet de Messier ou une constellation par son nom : Véga, Jupiter, M31, Orion…",
+    "found": "{name} : hauteur {alt}, direction {dir} (azimut {az}), cerclé d'or sur la carte.",
+    "found_below": "{name} est sous l'horizon ({alt}).",
+    "found_below_rise": "{name} est sous l'horizon ({alt}) ; lever à {time}.",
+    "not_found": "Aucun astre nommé « {name} »."
   },
   "detail": {
     "title": "Fiche — {name}",

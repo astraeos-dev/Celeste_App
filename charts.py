@@ -338,23 +338,27 @@ def sky_scene(jd, lat, lon, mag_limit, sun, moon, planets, deep_sky=()):
     Returns:
         dict: stars (above the horizon and bright enough), constellation
         lines (at least one end above the horizon), sun, moon, planets;
-        every object carries its map position "x", "y".
+        every object carries its map position "x", "y". For the search by
+        name: catalog (every star of the catalogue, whatever its magnitude
+        and altitude) and figures ({constellation: (alt, az) of the middle of
+        its figure}).
     """
     # the 513 stars of the catalogue brought to the date at once (proper motion,
     # precession, nutation, aberration); the stars of the figures by their name
     alts, azs = AstroEngine.stars_horizontal(
         (jd - 2451545.0) / 36525.0, lat, lon, [c[1] for c in CATALOG], [c[2] for c in CATALOG],
         pm_ra_mas=[c[4] for c in CATALOG], pm_dec_mas=[c[5] for c in CATALOG])
-    stars, horizontal = [], {}
+    stars, catalog, horizontal = [], [], {}
     for (designation, ra, dec, mag, _pm_ra, _pm_dec, name), alt, az in zip(CATALOG, alts, azs):
         alt, az = float(alt), float(az)
         if name:
             horizontal[name] = (alt, az)
-        if mag > mag_limit or alt <= 0:
-            continue
         x, y = sky_xy(alt, az)
-        stars.append({"kind": "star", "name": name or designation, "designation": designation,
-                      "alt": alt, "az": az, "ra": ra, "dec": dec, "mag": mag, "x": x, "y": y})
+        star = {"kind": "star", "name": name or designation, "designation": designation,
+                "alt": alt, "az": az, "ra": ra, "dec": dec, "mag": mag, "x": x, "y": y}
+        catalog.append(star)
+        if mag <= mag_limit and alt > 0:
+            stars.append(star)
 
     lines = []
     for edges in CONSTELLATIONS.values():
@@ -370,14 +374,34 @@ def sky_scene(jd, lat, lon, mag_limit, sun, moon, planets, deep_sky=()):
         x, y = sky_xy(body["alt"], body["az"])
         return {**body, "kind": kind, "x": x, "y": y}
 
+    figures = {}
+    for key, edges in CONSTELLATIONS.items():
+        members = {name for edge in edges for name in edge if name in horizontal}
+        if members:
+            figures[key] = _middle([horizontal[name] for name in members])
+
     return {
         "stars": stars,
+        "catalog": catalog,
+        "figures": figures,
         "lines": lines,
         "sun": placed(sun, "sun"),
         "moon": placed(moon, "moon"),
         "planets": [placed(p, "planet") for p in planets],
         "deep_sky": [placed(o, "deep_sky") for o in deep_sky if o["alt"] > 0],
     }
+
+
+def _middle(points):
+    """(alt, az) of the middle of a group of points of the sky, each (alt, az) in degrees."""
+    x = y = z = 0.0
+    for alt, az in points:
+        a, b = math.radians(alt), math.radians(az)
+        x += math.cos(a) * math.sin(b)
+        y += math.cos(a) * math.cos(b)
+        z += math.sin(a)
+    norm = math.sqrt(x * x + y * y + z * z) or 1.0
+    return math.degrees(math.asin(z / norm)), math.degrees(math.atan2(x, y)) % 360.0
 
 
 def visible_objects(scene):
@@ -426,7 +450,7 @@ def _overlaps(a, b):
 _LABEL_PLACES = ((6, 3, "left"), (6, -14, "left"), (-6, 3, "right"), (-6, -14, "right"))
 
 
-def draw_sky_map(fig, scene, labels):
+def draw_sky_map(fig, scene, labels, highlight=None):
     """
     Draws the sky map.
 
@@ -435,6 +459,8 @@ def draw_sky_map(fig, scene, labels):
         scene (dict): from ``sky_scene``.
         labels (dict): title, sun, moon, horizon, cardinals (8 labels from N
             clockwise) and planets ({"Venus": "Vénus", ...}).
+        highlight (dict | None): the object found by name, circled in gold:
+            x, y, label, and wide (True for a constellation).
 
     Returns:
         tuple: (axes, tooltip annotation)
@@ -560,6 +586,13 @@ def draw_sky_map(fig, scene, labels):
                 markeredgewidth=0, zorder=7)
         _body_label(ax, sun["x"], sun["y"], f"{SYMBOL['Sun']} {labels['sun']}",
                     Config.OR, size=SIZE_CORPS, weight=600)
+
+    if highlight is not None:
+        radius = 0.16 if highlight.get("wide") else 0.045
+        ax.add_patch(Circle((highlight["x"], highlight["y"]), radius, fill=False,
+                            edgecolor=Config.OR, linewidth=1.6, zorder=9))
+        _body_label(ax, highlight["x"], highlight["y"] + radius, highlight["label"],
+                    Config.OR, size=SIZE_LEGENDE, weight=600, dx=0, dy=4, ha="center")
 
     fig.text(0.03, 0.97, labels["title"], ha="left", va="top", fontsize=SIZE_SOUS_TITRE,
              fontweight=600, color=Config.ENCRE)

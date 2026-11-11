@@ -1531,3 +1531,22 @@ class TestSaturnRings:
     def test_widest_in_2032(self):
         rings = AstroEngine.saturn_rings(AstroEngine.julian_century_j2000(datetime(2032, 5, 17)))
         assert 26.9 < abs(rings["tilt"]) < 27.0
+
+
+class TestNextRise:
+    """The rise that follows an instant, where find_events() gives the first of the local day."""
+    LAT, LON = 49.6333, -1.6167
+
+    def test_jupiter_rises_twice_on_1_november_2026(self):
+        day = AstroEngine.find_events(datetime(2026, 11, 1, 21, 30), self.LAT, self.LON, "Jupiter")
+        assert day["rise"].strftime("%H:%M") == "00:00"                  # already past at 21:30
+        rise = AstroEngine.next_rise(datetime(2026, 11, 1, 21, 30), self.LAT, self.LON, "Jupiter")
+        assert rise.strftime("%d %H:%M") == "01 23:57"
+
+    def test_same_as_the_day_s_rise_when_it_is_still_to_come(self):
+        day = AstroEngine.find_events(datetime(2026, 11, 1, 3, 0), self.LAT, self.LON, "sun")
+        rise = AstroEngine.next_rise(datetime(2026, 11, 1, 3, 0), self.LAT, self.LON, "sun")
+        assert abs((rise - day["rise"]).total_seconds()) < 1
+
+    def test_no_rise_in_the_polar_night(self):
+        assert AstroEngine.next_rise(datetime(2026, 12, 21, 12, 0), 78.22, 15.65, "sun") is None

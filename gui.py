@@ -114,6 +114,11 @@ _QT_DATETIME_FORMAT = "dd/MM/yyyy HH:mm:ss"
 # Decimal degrees, with a point or a comma (49.6333 or 49,6333)
 _COORD_REGEX = r"^\s*[+\-−]?\d{0,3}(?:[.,]\d{0,8})?\s*$"
 
+# Greek letters of the star designations, spelled out for the search ("α CMa": "alpha cma")
+_GREEK = dict(zip("αβγδεζηθικλμνξοπρστυφχψω", (
+    "alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta", "iota", "kappa", "lambda",
+    "mu", "nu", "xi", "omicron", "pi", "rho", "sigma", "tau", "upsilon", "phi", "chi", "psi", "omega")))
+
 # Astronomical symbols, followed by U+FE0E (text presentation, never emoji)
 _VS15 = "︎"
 SYMBOL = {name: glyph + _VS15 for name, glyph in charts.SYMBOL.items()}
@@ -1183,6 +1188,8 @@ class AstroApp(QMainWindow):
         self._dirty              = set()
         self._last_search        = None
         self.history             = history.load()
+        self._sky_found          = None      # the object found by name on the sky map (its reference)
+        self._deep_sky_all       = []        # the 110 Messier objects at the computed instant
         self._history_pending    = None      # the calculation shown, not yet in the history
         self._history_quiet      = False     # a calculation the user did not ask for (start, rebuild)
 
@@ -1231,6 +1238,7 @@ class AstroApp(QMainWindow):
         root.addWidget(main, stretch=1)
 
         self._chart_tabs = {}
+        self._chart_hints = {}
         self._build_ephemeris_tab()
         self._build_trajectories_tab()
         self._build_skymap_tab()
@@ -1574,7 +1582,8 @@ class AstroApp(QMainWindow):
         card_l.addWidget(canvas)
         lay.addWidget(card, stretch=1)
         if hint:
-            lay.addWidget(_label(hint, "legende", wrap=True))
+            self._chart_hints[name] = _label(hint, "legende", wrap=True)
+            lay.addWidget(self._chart_hints[name])
         self._chart_tabs[page] = name
         return page, figure, canvas
 
@@ -1609,6 +1618,28 @@ class AstroApp(QMainWindow):
         self._messier_box.toggled.connect(self._on_messier_toggled)
         bar.addWidget(self._messier_box)
         bar.addStretch()
+        # find a star, a planet, a Messier object or a constellation by its name
+        self._find_entry = QLineEdit()
+        self._find_entry.setPlaceholderText(t("skymap.find_placeholder"))
+        self._find_entry.setToolTip(t("skymap.find_tip"))
+        self._find_entry.setAccessibleName(t("skymap.find_tip"))
+        self._find_entry.setClearButtonEnabled(True)
+        self._find_entry.setFixedWidth(220)
+        self._find_model = QStringListModel(self)
+        self._find_matches = {}
+        self._find_completer = QCompleter(self._find_model, self)
+        self._find_completer.setCompletionMode(QCompleter.CompletionMode.UnfilteredPopupCompletion)
+        self._find_completer.setMaxVisibleItems(10)
+        self._find_completer.activated.connect(self._on_find_chosen)
+        self._find_entry.setCompleter(self._find_completer)
+        self._find_entry.textEdited.connect(self._on_find_typed)
+        self._find_entry.returnPressed.connect(self._on_find_return)
+        self._find_entry.textChanged.connect(lambda text: text or self._clear_found())
+        if self._sky_found is not None:                   # rebuilt: the object found stays circled
+            self._find_entry.blockSignals(True)
+            self._find_entry.setText(self._target_label(self._sky_found))
+            self._find_entry.blockSignals(False)
+        bar.addWidget(self._find_entry)
 
         page, self.fig_sky, self.canvas_sky = self._chart_page(
             "sky", toolbar=bar, hint=t("skymap.hint"))
@@ -2850,14 +2881,13 @@ class AstroApp(QMainWindow):
 
         # on the map, the minor planets and comets bright enough for the chosen limit
         bright = [m for m in self.minor_planets if m["mag"] <= self._mag_limit()]
-        deep_sky = []
-        if prefs.get("show_messier"):
-            alts, azs = AstroEngine.deep_sky_horizontal(tc, lat, lon, elev)
-            deep_sky = [{**obj, "alt": float(alt), "az": float(az)}
-                        for obj, alt, az in zip(messier_catalog(), alts, azs) if alt > 0]
+        alts, azs = AstroEngine.deep_sky_horizontal(tc, lat, lon, elev)
+        self._deep_sky_all = [{**obj, "alt": float(alt), "az": float(az)}
+                              for obj, alt, az in zip(messier_catalog(), alts, azs)]
+        deep_sky = [o for o in self._deep_sky_all if o["alt"] > 0] if prefs.get("show_messier") else []
         self._sky_scene = charts.sky_scene(jd, lat, lon, self._mag_limit(),
                                            self.sun_data, self.moon_data, self.planets + bright, deep_sky)
-        self._sky_objects = charts.visible_objects(self._sky_scene)
+        self._refresh_sky_objects()
         self.visible_stars = [s["name"] for s in self._sky_scene["stars"]]
         self.visible_planets_map = [p["name"] for p in self.planets if p["alt"] > 0]
 
@@ -3304,10 +3334,184 @@ class AstroApp(QMainWindow):
                           for c in ("n", "ne", "e", "se", "s", "sw", "w", "nw")],
             "planets": {n: _planet_name(n) for n in _PLANETS + MINOR_PLANETS + COMETS},
         }
-        self._sky_ax, tip = charts.draw_sky_map(self.fig_sky, self._sky_scene, labels)
+        found = self._resolve_target(self._sky_found)
+        highlight = None
+        if found is not None and found["alt"] > 0:
+            highlight = {"x": found["x"], "y": found["y"], "label": self._target_label(self._sky_found),
+                         "wide": found["kind"] == "figure"}
+        self._sky_ax, tip = charts.draw_sky_map(self.fig_sky, self._sky_scene, labels, highlight)
+        self._show_find_result()
         self._sky_tip.attach(tip)
         self._sky_hover = None
         self.canvas_sky.draw_idle()
+
+    # ── Search by name on the sky map ─────────────────────────────────────────
+    #    A reference names an object from one calculation to the next: ("sun",),
+    #    ("moon",), ("planet", name), ("star", designation), ("messier", number),
+    #    ("figure", constellation).
+
+    @staticmethod
+    def _find_key(text):
+        """Search key of a name: no accents or case, Greek letters spelled out
+        ("α¹ Cen": "alpha1 cen"), "M 31" and "Messier 31" as "m31"."""
+        key = places.normalize("".join(_GREEK.get(ch, ch) for ch in text))
+        return re.sub(r"\b(?:messier|m) (?=\d)", "m", key)
+
+    def _target_label(self, ref):
+        kind = ref[0]
+        if kind in ("sun", "moon"):
+            return t(f"chart.{kind}")
+        if kind == "planet":
+            return _planet_name(ref[1])
+        if kind == "figure":
+            return t(f"constellations.{ref[1]}")
+        if kind == "messier":
+            return _messier_label(next(o for o in messier_catalog() if o["m"] == ref[1]))
+        star = next(s for s in self._sky_scene["catalog"] if s["designation"] == ref[1])
+        return star["name"] if star["name"] == ref[1] else f"{star['name']} ({ref[1]})"
+
+    def _sky_targets(self):
+        """Everything the search knows, [(label, reference)]: the Sun, the Moon, the
+        planets, minor planets and comets, the Messier objects, the constellations
+        drawn and the stars of the catalogue."""
+        refs = [("sun",), ("moon",)]
+        refs += [("planet", p["name"]) for p in self.planets + self.minor_planets]
+        refs += [("messier", o["m"]) for o in self._deep_sky_all]
+        refs += [("figure", key) for key in self._sky_scene["figures"]]
+        refs += [("star", s["designation"]) for s in self._sky_scene["catalog"]]
+        return [(self._target_label(ref), ref) for ref in refs]
+
+    def _find_targets(self, text, limit=10):
+        """The targets whose name matches *text*: the exact name (or its first
+        word, "m3") first, then names starting with it, then a word starting
+        with it, then any place in the name."""
+        query = self._find_key(text)
+        if not query or self._sky_scene is None:
+            return []
+        ranked = []
+        for index, (label, ref) in enumerate(self._sky_targets()):
+            key = self._find_key(label)
+            words = key.split()
+            if key == query or words[0] == query:
+                rank = 0
+            elif key.startswith(query):
+                rank = 1
+            elif any(word.startswith(query) for word in words) or f" {query}" in f" {key}":
+                rank = 2
+            elif query in key:
+                rank = 3
+            else:
+                continue
+            ranked.append((rank, index, label, ref))
+        return [(label, ref) for _rank, _index, label, ref in sorted(ranked)[:limit]]
+
+    def _resolve_target(self, ref):
+        """The object behind a reference as the sky map describes it (altitude,
+        azimuth, map position); None without a reference, or for a comet that
+        has left its table."""
+        if ref is None or self._sky_scene is None:
+            return None
+        scene, kind = self._sky_scene, ref[0]
+        if kind in ("sun", "moon"):
+            return scene[kind]
+        if kind == "star":
+            return next((s for s in scene["catalog"] if s["designation"] == ref[1]), None)
+        if kind == "planet":
+            obj = self._body_object(ref[1])
+        elif kind == "messier":
+            obj = next(({**o, "kind": "deep_sky"} for o in self._deep_sky_all if o["m"] == ref[1]), None)
+        else:
+            alt, az = scene["figures"][ref[1]]
+            obj = {"kind": "figure", "name": ref[1], "alt": alt, "az": az}
+        if obj is None:
+            return None
+        x, y = charts.sky_xy(obj["alt"], obj["az"])
+        return {**obj, "x": x, "y": y}
+
+    def _refresh_sky_objects(self):
+        """What the pointer finds on the map: the objects drawn and, when it is
+        too faint to be drawn, the object found by name."""
+        self._sky_objects = charts.visible_objects(self._sky_scene)
+        found = self._resolve_target(self._sky_found)
+        if found is None or found["kind"] == "figure" or found["alt"] <= 0:
+            return
+        same = (lambda o: o.get("m") == found.get("m")) if found["kind"] == "deep_sky" else \
+            (lambda o: o.get("name") == found.get("name"))
+        if not any(o["kind"] == found["kind"] and same(o) for o in self._sky_objects):
+            self._sky_objects.append(found)
+
+    def _on_find_typed(self, text):
+        """Suggestions at each letter."""
+        self._find_matches = dict(self._find_targets(text))
+        self._find_model.setStringList(list(self._find_matches))
+        if self._find_matches:
+            self._find_completer.complete()
+
+    def _on_find_chosen(self, label):
+        ref = self._find_matches.get(label)
+        if ref is not None:
+            self._find_on_sky(ref)
+
+    def _on_find_return(self):
+        """Return without choosing: the first suggestion."""
+        text = self._find_entry.text().strip()
+        if not text:
+            return
+        ref = self._find_matches.get(text)
+        if ref is None:
+            found = self._find_targets(text, limit=1)
+            ref = found[0][1] if found else None
+        if ref is None:
+            message = tf("skymap.not_found", name=text)
+            self._chart_hints["sky"].setText(message)
+            self.statusBar().showMessage(message, 6000)
+            return
+        self._find_on_sky(ref)
+
+    def _find_on_sky(self, ref):
+        """Circles the object on the map and says where it is."""
+        self._find_completer.popup().hide()
+        self._sky_found = ref
+        self._find_entry.blockSignals(True)
+        self._find_entry.setText(self._target_label(ref))
+        self._find_entry.blockSignals(False)
+        self._refresh_sky_objects()
+        self._dirty.add("sky")
+        self._draw_visible_chart()
+        self._show_find_result()                          # also when another tab is shown
+        self.statusBar().showMessage(self._chart_hints["sky"].text(), 6000)
+
+    def _clear_found(self):
+        if self._sky_found is None:
+            self._chart_hints["sky"].setText(t("skymap.hint"))
+            return
+        self._sky_found = None
+        self._refresh_sky_objects()
+        self._dirty.add("sky")
+        self._draw_visible_chart()
+        self._show_find_result()
+
+    def _show_find_result(self):
+        """Under the map: where the object found is, or that it is below the horizon."""
+        hint = self._chart_hints["sky"]
+        found = self._resolve_target(self._sky_found)
+        if found is None:
+            hint.setText(t("skymap.hint"))
+            return
+        name = self._target_label(self._sky_found)
+        if found["alt"] > 0:
+            hint.setText(tf("skymap.found", name=name, alt=_deg(found["alt"], 1),
+                            dir=self._wind(found["az"]), az=_deg(found["az"], 1)))
+            return
+        rise = None
+        if found["kind"] in ("sun", "moon", "planet"):
+            body = found["kind"] if found["kind"] != "planet" else found["name"]
+            rise = AstroEngine.next_rise(self._dte, self._lat, self._lon, body, self._elevation())
+        if rise is not None:
+            hint.setText(tf("skymap.found_below_rise", name=name, alt=_deg(found["alt"], 1, signed=True),
+                            time=self._format_event(rise)))
+        else:
+            hint.setText(tf("skymap.found_below", name=name, alt=_deg(found["alt"], 1, signed=True)))
 
     def _draw_orrery(self):
         labels = {

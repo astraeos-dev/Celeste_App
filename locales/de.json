@@ -296,7 +296,7 @@
     "horizon": "Horizont",
     "mag_limit": "Grenzgröße",
     "mag_tip": "Sterne, die lichtschwächer als diese Größe sind, werden ausgeblendet",
-    "hint": "Zenit in der Mitte, Horizont auf dem Kreis. Mit der Maus über ein Objekt fahren, um es zu erkennen; klicken, um seinen Steckbrief zu öffnen. Mausrad zum Zoomen, ziehen zum Verschieben.",
+    "hint": "Zenit in der Mitte, Horizont auf dem Kreis. Mit der Maus über ein Objekt fahren, um es zu erkennen; klicken, um seinen Steckbrief zu öffnen. Mausrad zum Zoomen, ziehen zum Verschieben; die Leiste unter der Karte führt durch die Nacht.",
     "cardinal_n": "N",
     "cardinal_ne": "NO",
     "cardinal_e": "O",
@@ -315,7 +315,12 @@
     "not_found": "Kein Objekt namens „{name}“.",
     "zoom_out": "Verkleinern",
     "zoom_in": "Vergrößern (auch mit dem Mausrad, am Zeiger)",
-    "zoom_reset": "Zurück zum ganzen Himmel (oder Doppelklick)"
+    "zoom_reset": "Zurück zum ganzen Himmel (oder Doppelklick)",
+    "time_play": "Die Nacht abspielen: der Himmel dreht sich, zehn Minuten pro Bild",
+    "time_pause": "Pause",
+    "time_tip": "Durch die Nacht gehen, von Sonnenuntergang bis Sonnenaufgang: nur die Karte ändert die Uhrzeit",
+    "time_reset": "Zurück zur Uhrzeit der Berechnung",
+    "time_label_tip": "Ortszeit, am {date} ({ut} UT)"
   },
   "detail": {
     "title": "Steckbrief — {name}",

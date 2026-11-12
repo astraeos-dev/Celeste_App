@@ -296,7 +296,7 @@
     "horizon": "Horizon",
     "mag_limit": "Magnitude limite",
     "mag_tip": "Les étoiles plus faibles que cette magnitude sont masquées",
-    "hint": "Zénith au centre, horizon sur le cercle. Survolez un astre pour l'identifier, cliquez pour afficher sa fiche. Molette pour zoomer, glisser pour se déplacer.",
+    "hint": "Zénith au centre, horizon sur le cercle. Survolez un astre pour l'identifier, cliquez pour afficher sa fiche. Molette pour zoomer, glisser pour se déplacer ; la barre sous la carte fait défiler la nuit.",
     "cardinal_n": "N",
     "cardinal_ne": "NE",
     "cardinal_e": "E",
@@ -315,7 +315,12 @@
     "not_found": "Aucun astre nommé « {name} ».",
     "zoom_out": "Dézoomer",
     "zoom_in": "Zoomer (aussi à la molette, sur le pointeur)",
-    "zoom_reset": "Revenir au ciel entier (ou double-clic)"
+    "zoom_reset": "Revenir au ciel entier (ou double-clic)",
+    "time_play": "Animer la nuit : le ciel tourne, dix minutes par image",
+    "time_pause": "Mettre en pause",
+    "time_tip": "Faire défiler la nuit, du coucher au lever du Soleil : seule la carte change d'heure",
+    "time_reset": "Revenir à l'heure du calcul",
+    "time_label_tip": "Heure locale du lieu, le {date} ({ut} TU)"
   },
   "detail": {
     "title": "Fiche — {name}",

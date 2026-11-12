@@ -82,7 +82,14 @@ class AstroApp(TonightSpace, SkySpace, BodiesSpace, CalendarSpace, ObserveSpace,
         self.moon_altitudes      = []
         self.last_cache_key      = ""
         self._dte = self._lat = self._lon = None
-        self._sky_scene          = None
+        self._sky_scene          = None      # the scene the sky map shows
+        self._sky_calc_state     = None      # the sky at the calculation's instant (_sky_state)
+        self._sky_calc_scene     = None      # and its map
+        self._sky_view           = None      # the sky the map shows: the calculation's, or the time bar's
+        self._sky_offset_min     = 0         # the time bar: minutes from the calculation's instant
+        self._sky_span           = (0, 0)    # its span, minutes
+        self._sky_time_key       = None      # the calculation it belongs to
+        self._sky_tracks         = None      # the bodies along the bar (computed once a night)
         self._sky_objects        = []
         self._sky_hover          = None
         self._dirty              = set()
@@ -442,8 +449,9 @@ class AstroApp(TonightSpace, SkySpace, BodiesSpace, CalendarSpace, ObserveSpace,
 
     # ── Tabs 2 and 3: charts ──────────────────────────────────────────────────
 
-    def _chart_page(self, name, toolbar=None, hint=None):
-        """Tab page: a matplotlib chart in a card."""
+    def _chart_page(self, name, toolbar=None, hint=None, footer=None):
+        """Tab page: a matplotlib chart in a card, a toolbar above it, a footer
+        (layout) and a hint under it."""
         page = QWidget()
         page.setObjectName("page")
         lay = QVBoxLayout(page)
@@ -459,6 +467,8 @@ class AstroApp(TonightSpace, SkySpace, BodiesSpace, CalendarSpace, ObserveSpace,
         canvas.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         card_l.addWidget(canvas)
         lay.addWidget(card, stretch=1)
+        if footer is not None:
+            lay.addLayout(footer)
         if hint:
             self._chart_hints[name] = _label(hint, "legende", wrap=True)
             lay.addWidget(self._chart_hints[name])
@@ -952,6 +962,61 @@ class AstroApp(TonightSpace, SkySpace, BodiesSpace, CalendarSpace, ObserveSpace,
                 ok = False
         return ok
 
+    def _sky_state(self, dte, lat, lon, elev):
+        """
+        The sky at *dte* (UT) seen from the place: the Sun, the Moon, the
+        planets, the minor planets and the comets within their tables, the 110
+        Messier objects, with their positions — for the calculation, and for
+        each step of the sky map's time bar.
+        """
+        tc = AstroEngine.julian_century_j2000(dte)
+        s_l, r_sun  = AstroEngine.sun_position(tc)
+        s_ra, s_dec = AstroEngine.ecliptic_to_equatorial(s_l, 0, tc)
+        s_alt, s_az = AstroEngine.horizontal(tc, lat, lon, "sun", elev)
+
+        m_l, m_b, m_p = AstroEngine.moon_position(tc)
+        m_ra, m_dec   = AstroEngine.ecliptic_to_equatorial(m_l, m_b, tc)
+        m_alt_c, m_az = AstroEngine.horizontal(tc, lat, lon, "moon", elev, refraction=True)
+        illum, age = AstroEngine.moon_phase(tc)
+
+        sun = {"name": "Sun", "ra": s_ra, "dec": s_dec, "alt": s_alt, "az": s_az, "dist": r_sun,
+               "eot": AstroEngine.equation_of_time(tc)}
+        moon = {"name": "Moon", "ra": m_ra, "dec": m_dec, "alt": m_alt_c, "az": m_az, "illum": illum,
+                "phase": AstroEngine.mod360(m_l - s_l), "dist": 6378.14 / math.sin(math.radians(m_p)),
+                "age": age}
+
+        planets, minor_planets = [], []
+        comets = AstroEngine.comets_at(tc)                          # within their tables (2025–2031)
+        bodies = _PLANETS + MINOR_PLANETS + comets
+        magnitudes = AstroEngine.observations(tc, bodies)
+        for name in bodies:
+            ra, dec, dist = AstroEngine.planet_position(tc, name)
+            alt, az = AstroEngine.horizontal(tc, lat, lon, name, elev)
+            minor = name not in _PLANETS
+            (minor_planets if minor else planets).append({
+                "name": name, "ra": ra, "dec": dec, "dist": dist, "alt": alt, "az": az,
+                "elong": AstroEngine.angular_separation(ra, dec, s_ra, s_dec),
+                "east": (ra - s_ra) % 24 < 12, "mag": magnitudes[name]["mag"], "minor": minor,
+                "comet": name in COMETS,
+            })
+
+        alts, azs = AstroEngine.deep_sky_horizontal(tc, lat, lon, elev)
+        deep_sky = [{**obj, "alt": float(alt), "az": float(az)}
+                    for obj, alt, az in zip(messier_catalog(), alts, azs)]
+        return {"dte": dte, "sun": sun, "moon": moon, "planets": planets, "minor_planets": minor_planets,
+                "comets": comets, "deep_sky": deep_sky}
+
+    def _sky_scene_for(self, sky, dte, lat, lon, quick=False):
+        """The sky map's scene of a sky state (_sky_state): the stars down to the
+        chosen magnitude, the minor planets and comets bright enough for it, the
+        Messier objects when they are shown, the horizon drawn by the user.
+        *quick*: the stars turned by the sidereal time (the time bar's frames)."""
+        bright = [m for m in sky["minor_planets"] if m["mag"] <= self._mag_limit()]
+        deep_sky = [o for o in sky["deep_sky"] if o["alt"] > 0] if prefs.get("show_messier") else []
+        return charts.sky_scene(AstroEngine.julian_day(dte), lat, lon, self._mag_limit(), sky["sun"], sky["moon"],
+                                sky["planets"] + bright, deep_sky,
+                                [tuple(p) for p in prefs.get("horizon_points") or []], quick=quick)
+
     def calculate(self):
         """Computes everything for the typed date and place, then updates the display."""
         self._recalc_timer.stop()
@@ -963,27 +1028,9 @@ class AstroApp(TonightSpace, SkySpace, BodiesSpace, CalendarSpace, ObserveSpace,
         self._zone = _zone(self.tz_name, lat, lon)
         elev = self._elevation()
 
-        jd = AstroEngine.julian_day(dte)
         tc = AstroEngine.julian_century_j2000(dte)
-
-        s_l, r_sun  = AstroEngine.sun_position(tc)
-        s_ra, s_dec = AstroEngine.ecliptic_to_equatorial(s_l, 0, tc)
-        s_alt, s_az = AstroEngine.horizontal(tc, lat, lon, "sun", elev)
-
-        m_l, m_b, m_p = AstroEngine.moon_position(tc)
-        m_ra, m_dec   = AstroEngine.ecliptic_to_equatorial(m_l, m_b, tc)
-        m_alt_c, m_az = AstroEngine.horizontal(tc, lat, lon, "moon", elev, refraction=True)
-
-        phase = AstroEngine.mod360(m_l - s_l)
-        illum, age = AstroEngine.moon_phase(tc)
-
-        self.sun_data  = {"name": "Sun", "ra": s_ra, "dec": s_dec, "alt": s_alt,
-                          "az": s_az, "dist": r_sun,
-                          "eot": AstroEngine.equation_of_time(tc)}
-        self.moon_data = {"name": "Moon", "ra": m_ra, "dec": m_dec, "alt": m_alt_c,
-                          "az": m_az, "illum": illum, "phase": phase,
-                          "dist": 6378.14 / math.sin(math.radians(m_p)),
-                          "age": age}
+        sky = self._sky_state(dte, lat, lon, elev)
+        self.sun_data, self.moon_data = sky["sun"], sky["moon"]
 
         # Events of the day and 24 h curves: only when the date or the place changes
         key = (f"{self._local(dte):%Y-%m-%d}_{lat:.4f}_{lon:.4f}_"
@@ -998,33 +1045,15 @@ class AstroApp(TonightSpace, SkySpace, BodiesSpace, CalendarSpace, ObserveSpace,
             self._day_start = AstroEngine._local_day(dte, self._zone)[0]
             self.last_cache_key = key
 
-        self.planets, self.minor_planets = [], []
-        self._comets_now = AstroEngine.comets_at(tc)                  # within their tables (2025–2031)
-        bodies = _PLANETS + MINOR_PLANETS + self._comets_now
-        magnitudes = AstroEngine.observations(tc, bodies)
-        for name in bodies:
-            ra, dec, dist = AstroEngine.planet_position(tc, name)
-            alt, az = AstroEngine.horizontal(tc, lat, lon, name, elev)
-            minor = name not in _PLANETS
-            (self.minor_planets if minor else self.planets).append({
-                "name": name, "ra": ra, "dec": dec, "dist": dist, "alt": alt, "az": az,
-                "elong": AstroEngine.angular_separation(ra, dec, s_ra, s_dec),
-                "east": (ra - s_ra) % 24 < 12, "mag": magnitudes[name]["mag"], "minor": minor,
-                "comet": name in COMETS,
-            })
-
-        # on the map, the minor planets and comets bright enough for the chosen limit
-        bright = [m for m in self.minor_planets if m["mag"] <= self._mag_limit()]
-        alts, azs = AstroEngine.deep_sky_horizontal(tc, lat, lon, elev)
-        self._deep_sky_all = [{**obj, "alt": float(alt), "az": float(az)}
-                              for obj, alt, az in zip(messier_catalog(), alts, azs)]
-        deep_sky = [o for o in self._deep_sky_all if o["alt"] > 0] if prefs.get("show_messier") else []
-        self._sky_scene = charts.sky_scene(jd, lat, lon, self._mag_limit(), self.sun_data, self.moon_data,
-                                           self.planets + bright, deep_sky,
-                                           [tuple(p) for p in prefs.get("horizon_points") or []])
-        self._refresh_sky_objects()
+        self.planets, self.minor_planets = sky["planets"], sky["minor_planets"]
+        self._comets_now = sky["comets"]
+        self._deep_sky_all = sky["deep_sky"]
+        self._sky_calc_state = sky
+        self._sky_calc_scene = self._sky_scene = self._sky_scene_for(sky, dte, lat, lon)
         self.visible_stars = [s["name"] for s in self._sky_scene["stars"]]
         self.visible_planets_map = [p["name"] for p in self.planets if p["alt"] > 0]
+        self._sync_sky_time()                  # the sky map's time bar: kept for the same calculation
+        self._refresh_sky_objects()
 
         self._update_data_cards()
         self._update_tonight(dte, lat, lon, elev)
@@ -1140,6 +1169,8 @@ class AstroApp(TonightSpace, SkySpace, BodiesSpace, CalendarSpace, ObserveSpace,
         timer = getattr(self, "_orrery_timer", None)
         if timer is not None and timer.isActive() and self._chart_tabs.get(self.current_page()) != "orrery":
             self._toggle_orrery()                         # a hidden animation does not run
+        if getattr(self, "_sky_animating", False) and self._chart_tabs.get(self.current_page()) != "sky":
+            self._stop_sky_animation()
         self._draw_visible_chart()
         self._refresh_coordinates()
         if self.current_page() is getattr(self, "_planner_page", None):

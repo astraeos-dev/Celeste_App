@@ -32,13 +32,14 @@ from datetime import timedelta
 
 import matplotlib
 from matplotlib import font_manager
+from matplotlib.collections import LineCollection
 from matplotlib.colors import to_rgba
 from matplotlib.patches import Circle, Patch
 from matplotlib.ticker import FuncFormatter, MultipleLocator
 
 from config import Config, FONT_SANS, mix
 from star_catalog import CATALOG
-from engine import COMETS, EPHEMERIS_YEARS, AstroEngine, _HORIZON_CORRECTION_SUN
+from engine import COMETS, EPHEMERIS_YEARS, AstroEngine, _HORIZON_CORRECTION_SUN, messier_catalog
 
 # Astronomical symbols (Astraeos Symboles). Matplotlib never draws emoji, so
 # they go without the U+FE0E selector here.
@@ -539,7 +540,50 @@ def star_marker_size(mag):
     return diameter * diameter
 
 
-def sky_scene(jd, lat, lon, mag_limit, sun, moon, planets, deep_sky=(), horizon=()):
+@functools.lru_cache(maxsize=1)
+def _sky_points():
+    """
+    The sky map's points, J2000 (ICRS): the catalogue's stars, then for each
+    constellation the point where it is named and the points of its figure;
+    arrays (RA h, Dec °, proper motions in RA and Dec, mas a year).
+    """
+    figures = constellation_figures()
+    points = [point for figure in figures.values()
+              for point in [figure["center"]] + [p for line in figure["lines"] for p in line]]
+    ra = np.array([c[1] for c in CATALOG] + [p[0] for p in points], dtype=float)
+    dec = np.array([c[2] for c in CATALOG] + [p[1] for p in points], dtype=float)
+    pm_ra = np.array([c[4] for c in CATALOG] + [0.0] * len(points), dtype=float)
+    pm_dec = np.array([c[5] for c in CATALOG] + [0.0] * len(points), dtype=float)
+    return ra, dec, pm_ra, pm_dec
+
+
+@functools.lru_cache(maxsize=4)
+def _apparent_places(kind, day):
+    """Apparent places (h, °) of the date of the sky map's points ("sky") or of the
+    Messier objects ("messier") on the Julian day *day* (0 h UT): over a day
+    they move by less than a second of arc."""
+    t = (day - 2451545.0) / 36525.0
+    if kind == "sky":
+        ra, dec, pm_ra, pm_dec = _sky_points()
+        return AstroEngine.stars_apparent(t, ra, dec, pm_ra, pm_dec)
+    catalog = messier_catalog()
+    return AstroEngine.stars_apparent(t, [o["ra"] for o in catalog], [o["dec"] for o in catalog])
+
+
+def turned_places(kind, jd, lat, lon):
+    """
+    Altitudes and azimuths (°) at *jd* of the sky map's points ("sky": the
+    catalogue's stars, then the figures' points, as sky_scene orders them) or
+    of the Messier objects ("messier"): their apparent places of the day turned
+    by the sidereal time — for the time bar, within a second of arc of the
+    full computation and many times faster.
+    """
+    day = math.floor(jd - 0.5) + 0.5
+    ra, dec = _apparent_places(kind, day)
+    return AstroEngine.turned_horizontal((jd - 2451545.0) / 36525.0, lat, lon, ra, dec)
+
+
+def sky_scene(jd, lat, lon, mag_limit, sun, moon, planets, deep_sky=(), horizon=(), quick=False):
     """
     Collects what the sky map shows.
 
@@ -552,6 +596,8 @@ def sky_scene(jd, lat, lon, mag_limit, sun, moon, planets, deep_sky=(), horizon=
         deep_sky (list[dict]): Messier objects above the horizon (m, type,
             alt, az, ra, dec, mag, label...).
         horizon: (azimuth, altitude) points of the observer's horizon mask.
+        quick (bool): the stars turned from their apparent places of the day
+            (turned_places): the time bar's frames.
 
     Returns:
         dict: stars (above the horizon and bright enough), constellation
@@ -564,13 +610,12 @@ def sky_scene(jd, lat, lon, mag_limit, sun, moon, planets, deep_sky=(), horizon=
     # every star of the catalogue and every point of the constellation figures
     # brought to the date at once (proper motion, precession, nutation, aberration)
     figures_data = constellation_figures()
-    points = [point for figure in figures_data.values()
-              for point in [figure["center"]] + [p for line in figure["lines"] for p in line]]
-    alts, azs = AstroEngine.stars_horizontal(
-        (jd - 2451545.0) / 36525.0, lat, lon,
-        [c[1] for c in CATALOG] + [p[0] for p in points], [c[2] for c in CATALOG] + [p[1] for p in points],
-        pm_ra_mas=[c[4] for c in CATALOG] + [0] * len(points),
-        pm_dec_mas=[c[5] for c in CATALOG] + [0] * len(points))
+    if quick:
+        alts, azs = turned_places("sky", jd, lat, lon)
+    else:
+        ra, dec, pm_ra, pm_dec = _sky_points()
+        alts, azs = AstroEngine.stars_horizontal((jd - 2451545.0) / 36525.0, lat, lon, ra, dec,
+                                                 pm_ra_mas=pm_ra, pm_dec_mas=pm_dec)
     stars, catalog = [], []
     for (designation, ra, dec, mag, _pm_ra, _pm_dec, name), alt, az in zip(CATALOG, alts, azs):
         alt, az = float(alt), float(az)
@@ -725,10 +770,11 @@ def draw_sky_map(fig, scene, labels, highlight=None):
                 fontsize=SIZE_CORPS if main else SIZE_LEGENDE,
                 fontweight=600 if main else 400)
 
-    for (x1, y1), (x2, y2) in scene["lines"]:
-        line, = ax.plot([x1, x2], [y1, y2], color=Config.ENCRE_ATTENUEE, linewidth=0.8,
-                        alpha=0.4, zorder=2)
-        line.set_clip_path(dome)
+    if scene["lines"]:                                   # one artist for all the figures: fast to draw
+        figures = LineCollection(scene["lines"], colors=[to_rgba(Config.ENCRE_ATTENUEE, 0.4)],
+                                 linewidths=0.8, zorder=2)
+        ax.add_collection(figures, autolim=False)
+        figures.set_clip_path(dome)
 
     stars = scene["stars"]
     if stars:

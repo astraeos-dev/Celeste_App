@@ -56,6 +56,11 @@ def _bodies(dte=DTE):
     return jd, sun, moon, planets
 
 
+def _sky_labels():
+    return {"title": "Sky", "sun": "Sun", "moon": "Moon", "horizon": "Horizon",
+            "cardinals": ["N", "NE", "E", "SE", "S", "SW", "W", "NW"], "planets": PLANET_LABELS}
+
+
 # ──────────────────────────────────────────────────────────────────────
 # 1. Phases of the day
 # ──────────────────────────────────────────────────────────────────────
@@ -175,6 +180,30 @@ class TestSkyScene:
         objs = charts.visible_objects(scene)
         assert all(o["alt"] > 0 for o in objs)
         assert scene["sun"] not in objs          # the Sun is down at 21:30 UT
+
+    def test_quick_scene_of_the_time_bar(self):
+        """The stars turned from their places of the day: the same map to a second of arc."""
+        jd, sun, moon, planets = _bodies()
+        full = charts.sky_scene(jd, LAT, LON, 6.0, sun, moon, planets)
+        quick = charts.sky_scene(jd, LAT, LON, 6.0, sun, moon, planets, quick=True)
+        assert len(quick["catalog"]) == len(full["catalog"])
+        assert [s["name"] for s in quick["stars"]] == [s["name"] for s in full["stars"]]
+        worst = max(AstroEngine.angular_separation(a["az"] / 15.0, a["alt"], b["az"] / 15.0, b["alt"])
+                    for a, b in zip(quick["catalog"], full["catalog"]))
+        assert worst * 3600.0 < 1.0
+        assert quick["figures"].keys() == full["figures"].keys()
+        assert len(quick["lines"]) == len(full["lines"])
+
+    def test_constellations_drawn_as_one_artist(self):
+        """368 segments: one collection, not one line each (the time bar's frames)."""
+        from matplotlib.collections import LineCollection
+        jd, sun, moon, planets = _bodies()
+        scene = charts.sky_scene(jd, LAT, LON, 6.0, sun, moon, planets)
+        fig = Figure()
+        ax, _tip = charts.draw_sky_map(fig, scene, _sky_labels())
+        figures = [c for c in ax.collections if isinstance(c, LineCollection)]
+        assert len(figures) == 1 and len(figures[0].get_segments()) == len(scene["lines"])
+        assert len(ax.lines) < 30                              # grid, planets: no line per segment
 
     def test_hit_test(self):
         objs = [{"x": 0.0, "y": 0.0, "name": "a"}, {"x": 0.5, "y": 0.5, "name": "b"}]

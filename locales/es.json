@@ -296,7 +296,7 @@
     "horizon": "Horizonte",
     "mag_limit": "Magnitud límite",
     "mag_tip": "Se ocultan las estrellas más débiles que esta magnitud",
-    "hint": "Cenit en el centro, horizonte en el círculo. Pase el ratón sobre un astro para identificarlo y haga clic para ver su ficha. Rueda para acercar, arrastrar para desplazarse.",
+    "hint": "Cenit en el centro, horizonte en el círculo. Pase el ratón sobre un astro para identificarlo y haga clic para ver su ficha. Rueda para acercar, arrastrar para desplazarse; la barra bajo el mapa recorre la noche.",
     "cardinal_n": "N",
     "cardinal_ne": "NE",
     "cardinal_e": "E",
@@ -315,7 +315,12 @@
     "not_found": "Ningún astro llamado «{name}».",
     "zoom_out": "Alejar",
     "zoom_in": "Acercar (también con la rueda, sobre el puntero)",
-    "zoom_reset": "Volver al cielo entero (o doble clic)"
+    "zoom_reset": "Volver al cielo entero (o doble clic)",
+    "time_play": "Animar la noche: el cielo gira, diez minutos por imagen",
+    "time_pause": "Pausa",
+    "time_tip": "Recorrer la noche, de la puesta a la salida del Sol: solo el mapa cambia de hora",
+    "time_reset": "Volver a la hora del cálculo",
+    "time_label_tip": "Hora local del lugar, el {date} ({ut} UT)"
   },
   "detail": {
     "title": "Ficha — {name}",

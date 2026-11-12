@@ -20,7 +20,7 @@ import json
 import re
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pytest
 
@@ -2203,6 +2203,20 @@ class TestCompactLayout:
         assert right <= window.tabs.width()
         assert all(bar.tabRect(i).height() >= 44 for i in range(bar.count()))     # touch targets
 
+    def test_sky_map_toolbar_in_rows(self, window, qapp):
+        """The map's tools stacked at a phone's width, nothing over another; the time bar under the map."""
+        self._phone(window, qapp)
+        window.show_page(window._sky_page)
+        _pump(qapp, 5)
+        boxes = [w.geometry().translated(w.parentWidget().mapTo(window, w.pos()) - w.pos())
+                 for w in (window._mag_slider, window._messier_box, window._find_entry)]
+        assert boxes[0].bottom() < boxes[1].top() and boxes[1].bottom() < boxes[2].top()
+        assert window._find_entry.width() > 300 and window._mag_slider.width() > 150
+        slider = window._sky_time_slider
+        assert slider.mapTo(window, slider.rect().topLeft()).y() > window.canvas_sky.mapTo(window, window.canvas_sky.rect().bottomLeft()).y()
+        self._phone(window, qapp, 1350, 820)
+        assert window._find_entry.width() == 220 and window._mag_slider.width() == 240
+
     def test_drawer(self, window, qapp):
         self._phone(window, qapp)
         window._drawer_btn.click()
@@ -2292,6 +2306,105 @@ class TestSkyMapZoom:
         window._on_sky_release(MouseEvent("button_release_event", window.canvas_sky, x + 60, y, button=1))
         assert window._sky_center[0] < 0                     # dragged right: the view moved left
         assert window._sky_drag is None
+
+
+class TestSkyTimeBar:
+    """Ciel › Carte du ciel: the night on a time bar under the map, played with ▶ (v4.18)."""
+
+    @staticmethod
+    def _sky(window, qapp):
+        window.show_page(window._sky_page)
+        _pump(qapp, 3)
+        return window._sky_time_slider
+
+    def test_the_bar_spans_the_night(self, window, qapp):
+        import planner
+        slider = self._sky(window, qapp)
+        night = planner.night_window(DTE, window._lat, window._lon, 0.0, window._zone, depths=((-0.833, "n"),))
+        start = (night["start"] - DTE).total_seconds() / 60 - 30           # half an hour before sunset
+        end = (night["end"] - DTE).total_seconds() / 60 + 30               # and after sunrise
+        assert start - 5 < slider.minimum() <= start and end <= slider.maximum() < end + 5
+        assert slider.value() == 0 and window._sky_offset_min == 0
+        assert window._sky_time_lbl.text() == "21:30"                      # the place's time (UTC here)
+        assert not window._sky_time_reset.isEnabled()
+
+    def test_the_map_moves_not_the_calculation(self, window, qapp):
+        slider = self._sky(window, qapp)
+        sun_alt, stars = window.sun_data["alt"], list(window.visible_stars)
+        slider.setValue(120)
+        _pump(qapp, 3)
+        assert window._sky_time_lbl.text() == "23:30" and window._sky_time_reset.isEnabled()
+        assert "01/11/2026 23:30" in window.fig_sky.texts[-1].get_text()     # the map's title
+        assert window._sky_scene["sun"]["alt"] < sun_alt - 8                 # the Sun near its lowest, at midnight
+        assert window.sun_data["alt"] == sun_alt and window.visible_stars == stars
+        vega = next(s for s in window._sky_scene["catalog"] if s["name"] == "Vega")
+        calc_vega = next(s for s in window._sky_calc_scene["catalog"] if s["name"] == "Vega")
+        assert abs(vega["alt"] - calc_vega["alt"]) > 5                       # setting in the north-west
+        window._reset_sky_time()
+        assert slider.value() == 0 and window._sky_scene is window._sky_calc_scene
+        assert not window._sky_time_reset.isEnabled()
+
+    def test_steps_of_five_minutes(self, window, qapp):
+        slider = self._sky(window, qapp)
+        slider.setValue(123)
+        assert slider.value() == 125 and window._sky_offset_min == 125
+
+    def test_the_animation_plays_the_night_to_its_end(self, window, qapp):
+        from i18n import t
+        slider = self._sky(window, qapp)
+        window._toggle_sky_animation()
+        assert window._sky_animating and window._sky_play.toolTip() == t("skymap.time_pause")
+        for _ in range(500):
+            if not window._sky_animating:
+                break
+            window._sky_animation_step()
+        assert slider.value() == slider.maximum() and not window._sky_animating
+        assert window._sky_play.toolTip() == t("skymap.time_play")
+        window._toggle_sky_animation()                                      # at the end: from the start
+        assert slider.value() == slider.minimum()
+        window._stop_sky_animation()
+
+    def test_same_calculation_keeps_the_time_another_does_not(self, window, qapp):
+        slider = self._sky(window, qapp)
+        slider.setValue(60)
+        _pump(qapp, 3)
+        window.calculate()                                                  # a new magnitude limit, say
+        assert window._sky_offset_min == 60 and window._sky_scene is not window._sky_calc_scene
+        window._set_datetime(DTE + timedelta(days=1))
+        window.calculate()
+        assert window._sky_offset_min == 0 and slider.value() == 0
+        assert window._sky_scene is window._sky_calc_scene
+
+    def test_the_object_found_follows_the_bar(self, window, qapp):
+        slider = self._sky(window, qapp)
+        window._find_on_sky(("planet", "Jupiter"))
+        slider.setValue(240)
+        _pump(qapp, 3)
+        found = window._resolve_target(("planet", "Jupiter"))
+        on_map = next(p for p in window._sky_scene["planets"] if p["name"] == "Jupiter")
+        calc = next(p for p in window.planets if p["name"] == "Jupiter")
+        assert found["alt"] == pytest.approx(on_map["alt"]) and abs(found["alt"] - calc["alt"]) > 10
+
+    def test_moving_the_bar_ends_the_real_time(self, window, qapp):
+        window.btn_live.setChecked(True)
+        slider = self._sky(window, qapp)
+        slider.setValue(slider.value() + 60)
+        assert not window.live_mode and not window.btn_live.isChecked()
+
+    def test_a_hidden_animation_stops(self, window, qapp):
+        self._sky(window, qapp)
+        window._toggle_sky_animation()
+        window.show_page(window._traj_page)
+        _pump(qapp, 3)
+        assert not window._sky_animating and not window._sky_anim_timer.isActive()
+
+    def test_the_bar_survives_a_rebuild(self, window, qapp):
+        slider = self._sky(window, qapp)
+        slider.setValue(90)
+        _pump(qapp, 3)
+        window._lang_combo.setCurrentIndex(window._lang_combo.findData("en"))
+        _pump(qapp)
+        assert window._sky_time_slider.value() == 90 and window._sky_time_lbl.text() == "23:00"
 
 
 # ──────────────────────────────────────────────────────────────────────

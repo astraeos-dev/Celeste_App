@@ -296,7 +296,7 @@
     "horizon": "Horizon",
     "mag_limit": "Limiting magnitude",
     "mag_tip": "Stars fainter than this magnitude are hidden",
-    "hint": "Zenith at the centre, horizon on the circle. Hover over an object to identify it, click to open its card. Wheel to zoom, drag to move around.",
+    "hint": "Zenith at the centre, horizon on the circle. Hover over an object to identify it, click to open its card. Wheel to zoom, drag to move around; the bar under the map runs through the night.",
     "cardinal_n": "N",
     "cardinal_ne": "NE",
     "cardinal_e": "E",
@@ -315,7 +315,12 @@
     "not_found": "No object named “{name}”.",
     "zoom_out": "Zoom out",
     "zoom_in": "Zoom in (also with the wheel, on the pointer)",
-    "zoom_reset": "Back to the whole sky (or double-click)"
+    "zoom_reset": "Back to the whole sky (or double-click)",
+    "time_play": "Play the night: the sky turns, ten minutes a frame",
+    "time_pause": "Pause",
+    "time_tip": "Move through the night, from sunset to sunrise: only the map changes time",
+    "time_reset": "Back to the time of the calculation",
+    "time_label_tip": "Local time of the place, {date} ({ut} UT)"
   },
   "detail": {
     "title": "Details — {name}",

@@ -1105,6 +1105,24 @@ class AstroEngine:
         return alt.degrees, az.degrees
 
     @classmethod
+    def horizontal_tracks(cls, t, lat, lon, bodies, elevation_m=0.0, refracted=("moon",)):
+        """
+        Altitudes and azimuths (degrees) of several bodies at the instants *t*
+        (array of Julian centuries of UT), as horizontal() gives them one at a
+        time, the observer and the Earth's rotation computed once:
+        {body: (altitudes, azimuths)}; the bodies of *refracted* with the
+        standard refraction (the Moon, as in the calculation).
+        """
+        sky = _sky()
+        here = (sky["earth"] + wgs84.latlon(lat, lon, elevation_m=elevation_m)).at(cls._time_ut(t))
+        tracks = {}
+        for body in bodies:
+            air = {"temperature_C": 10.0, "pressure_mbar": 1010.0} if body in refracted else {}
+            alt, az, _ = here.observe(cls._target(body)).apparent().altaz(**air)
+            tracks[body] = (alt.degrees, az.degrees)
+        return tracks
+
+    @classmethod
     def stars_horizontal(cls, t, lat, lon, ra_hours, dec_degrees, elevation_m=0.0,
                          pm_ra_mas=None, pm_dec_mas=None):
         """
@@ -1132,6 +1150,44 @@ class AstroEngine:
         here  = (sky["earth"] + wgs84.latlon(lat, lon, elevation_m=elevation_m)).at(cls._time_ut(t))
         alt, az, _ = here.observe(stars).apparent().altaz()
         return alt.degrees, az.degrees
+
+    @classmethod
+    def stars_apparent(cls, t, ra_hours, dec_degrees, pm_ra_mas=None, pm_dec_mas=None):
+        """
+        Apparent places of stars given by their J2000 coordinates (ICRS) at t
+        (Julian centuries of UT): right ascensions (h) and declinations (°) of
+        the true equator and equinox of the date, seen from the Earth's centre
+        (proper motion, precession, nutation, aberration). In a day they move
+        by less than a second of arc: turned_horizontal turns them with the
+        sidereal time alone (the sky map's time bar).
+        """
+        motion = {} if pm_ra_mas is None else {
+            "ra_mas_per_year": np.asarray(pm_ra_mas, dtype=float),
+            "dec_mas_per_year": np.asarray(pm_dec_mas, dtype=float)}
+        stars = Star(ra_hours=np.asarray(ra_hours, dtype=float),
+                     dec_degrees=np.asarray(dec_degrees, dtype=float), **motion)
+        time = cls._time_ut(t)
+        # epoch: the one instant (epoch="date" would compute the nutation once per star)
+        ra, dec, _ = _sky()["earth"].at(time).observe(stars).apparent().radec(epoch=time)
+        return ra.hours, dec.degrees
+
+    @classmethod
+    def turned_horizontal(cls, t, lat, lon, ra_hours, dec_degrees):
+        """
+        Altitudes and azimuths (°, geometric; azimuth from the north through the
+        east) at t of apparent places of the date (stars_apparent), from the
+        local apparent sidereal time: stars_horizontal's to a second of arc
+        (the diurnal aberration, 0.3″ at most, is left out), many times faster.
+        """
+        last = (cls._time_ut(t).gast + lon / 15.0) % 24.0
+        h = np.radians((last - np.asarray(ra_hours, dtype=float)) * 15.0)
+        d = np.radians(np.asarray(dec_degrees, dtype=float))
+        phi = math.radians(lat)
+        sin_alt = math.sin(phi) * np.sin(d) + math.cos(phi) * np.cos(d) * np.cos(h)
+        alt = np.degrees(np.arcsin(np.clip(sin_alt, -1.0, 1.0)))
+        az = np.degrees(np.arctan2(-np.cos(d) * np.sin(h),
+                                   np.sin(d) * math.cos(phi) - np.cos(d) * np.cos(h) * math.sin(phi))) % 360.0
+        return alt, az
 
     # The bodies of the coordinates table, in the order of the Solar System
     BODIES  = ("sun", "moon", "Mercury", "Venus", "earth", "Mars", "Ceres", "Pallas", "Juno",

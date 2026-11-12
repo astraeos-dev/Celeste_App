@@ -64,8 +64,8 @@ would need Java calls through `QJniObject` or pyjnius. They come after 5.0, if t
 | **4.11** | `qt.py` and the move from PyQt6 to PySide6 on the desktop (same app for its users; Windows build and tests on PySide6). A first APK in GitHub Actions: an empty window that loads the engine and runs the self-test on an emulator, to settle the tools early. |
 | **4.12** | The compact layout in `gui.py`, tested by narrowing the window; user folder from `QStandardPaths`. |
 | **5.0 alpha** | The full app as a debug APK built by GitHub Actions: first start (ephemeris download with its progress), Tonight, ephemeris, sky map, planets, Targets, events; location by GPS; the four languages and the three themes. |
-| **5.0 beta** | Sky map following the phone; Android back button and screen rotation; sharing exports; speed on modest phones. A signed APK for testers. |
-| **5.0** | Release: signed APK on GitHub Releases, then Google Play if wanted. The desktop app becomes 5.0 too: the same code. |
+| **5.0 beta** | Sky map following the phone; Android back button and screen rotation; sharing exports; speed on modest phones. Google Play closed test (see below). |
+| **5.0** | Release on Google Play (closed test, then production) and the APK on GitHub Releases. The desktop app becomes 5.0 too: the same code. |
 
 ## Risks and how to meet them
 
@@ -79,9 +79,27 @@ would need Java calls through `QJniObject` or pyjnius. They come after 5.0, if t
 | Touch use of a desktop interface | The compact layout is designed for touch and tested on the desktop at phone width |
 | Store requirements (privacy policy, location permission) | Location only when the user asks, no account, no tracking: a short privacy page on the website |
 
-## Decisions to take
+## Google Play
 
-- **One app or two?** Céleste for Android as its own app, or inside the existing
-  [Ganymede](https://github.com/astraeos-dev/Ganymede) Android app.
-- **Distribution:** GitHub Releases only, or Google Play too (a developer account is needed, 25 USD once).
-- **Minimum Android version:** Android 9 (API 28) is what recent Qt 6 versions require.
+Céleste for Android is **its own app**, published on **Google Play** (and its APK on GitHub Releases). What the store
+asks, and what it means here:
+
+| Requirement | What to do |
+|---|---|
+| A developer account (25 USD once, identity checked) | Opened by the project's owner; the app's identifier chosen once and for good, e.g. `dev.astraeos.celeste` |
+| An **Android App Bundle** (`.aab`), not an APK | Check in 4.11 that the PySide6 tools produce one (python-for-android can); else build the bundle from their Gradle project |
+| A recent **target API level** (the store raises it every year) | Follow the Qt 6 version that supports it; checked at each release |
+| **16 KB memory pages** for the native libraries of apps targeting Android 15 and later | Python, NumPy and Qt libraries built with 16 KB alignment: one of the points the 4.11 trial settles |
+| **Play App Signing** | Google keeps the app's key; the project keeps an upload key, in the GitHub secrets of the release workflow |
+| A **closed test** with at least 12 testers for 14 days before the first production release (new personal accounts) | The 5.0 beta: testers invited by e-mail through the Play Console |
+| **Data safety** form and a **privacy policy** | Nothing collected or shared: the location stays on the phone and is sent nowhere but to the OpenStreetMap name lookup when the user asks; the policy published on the website |
+| Store listing: icon, screenshots of a phone and a tablet, short and long descriptions in the four languages | Made from the app itself (compact layout, the three themes) |
+
+A GitHub workflow builds and signs the bundle when `APP_VERSION` changes, like the Windows installer today, and can
+upload it to the Play Console's internal track.
+
+## Decisions taken
+
+- **Its own app**, separate from any other project.
+- **Google Play**, plus the APK on GitHub Releases.
+- **Minimum Android version:** Android 9 (API 28), what recent Qt 6 versions require.

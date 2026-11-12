@@ -264,6 +264,7 @@ Celeste_App/
 ├── history.py           # The last calculations (~/.celeste/history.json)
 ├── planner.py           # Night planner: targets of the night under the observer's constraints
 ├── mpc.py               # Comet elements of the Minor Planet Center (~/.celeste/CometEls.txt)
+├── instruments.py       # Instruments to print and build (prototype: the astrolabe for a latitude)
 ├── satellites.py        # Orbital elements (TLE) of the satellites: download, checks, cache
 ├── constellations.py    # Usual names of the bright stars
 ├── star_catalog.py      # 8,404 stars (Yale Bright Star Catalogue, magnitude ≤ 6.5), generated
@@ -470,8 +471,14 @@ launch, SmartScreen shows "Windows protected your PC" (*More info*, then *Run an
 ### Engineering and quality
 
 - [x] **Unit tests** — pytest on the engine, the charts, the interface (off screen), the themes, the updates,
-  `utils.py` and `i18n.py` (14 files, ~690 cases)
+  `utils.py` and `i18n.py` (15 files, ~700 cases)
 - [x] **Windows executable** — standalone `Celeste.exe` (PyInstaller), ephemeris downloaded at the first launch
+
+### Workshop: instruments to make
+
+- [x] **Prototype** — `instruments.py`: the plate and the rete of an astrolabe for any latitude, PDF at true scale
+- [ ] **Workshop** — planisphere, sundials, nocturnal, quadrant and the complete astrolabe, computed for the place,
+  printed at true scale with assembly and use sheets. The design: [docs/INSTRUMENTS.md](docs/INSTRUMENTS.md)
 
 ### Version 5: Android
 

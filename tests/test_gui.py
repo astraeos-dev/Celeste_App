@@ -2503,3 +2503,20 @@ def test_quality_of_the_night_in_the_targets(planner_tab):
     summary = w._plan_summary.text()
     assert summary.splitlines()[-1] == w._quality_label.text()
     assert "Qualité de la nuit" in summary
+
+
+def test_zone_without_timezonefinder(monkeypatch):
+    """Android ships no timezonefinder: the automatic zone is then the device's own."""
+    import gui
+
+    def missing():
+        raise ImportError("No module named 'timezonefinder'")
+
+    gui.common._zone_at.cache_clear()
+    monkeypatch.setattr(gui.common, "_tz_finder", missing)
+    try:
+        monkeypatch.setattr(gui.common, "_system_zone", lambda: "Europe/Paris")
+        assert gui.common._zone_at(35.68, 139.69) == "Europe/Paris"
+    finally:
+        gui.common._zone_at.cache_clear()
+    assert gui.common._system_zone() in gui.common._zone_names() or gui.common._system_zone() == "UTC"

@@ -21,6 +21,14 @@ def test_engine_packages_and_internet():
     assert permissions == "android.permission.ACCESS_FINE_LOCATION, android.permission.INTERNET"
 
 
+def test_data_files_kept():
+    exts = deploy.with_data_extensions("py,png,jpg,kv,atlas,qml,js").split(",")
+    assert exts[:7] == ["py", "png", "jpg", "kv", "atlas", "qml", "js"]
+    for ext in ("json", "npz", "gz", "csv", "tsv", "ttf"):
+        assert exts.count(ext) == 1
+    assert deploy.with_data_extensions(",".join(exts)) == ",".join(exts)
+
+
 def test_added_once():
     once = deploy.extended("python3,numpy", "android.permission.INTERNET")
     assert once[0].split(",").count("numpy") == 1

@@ -15,7 +15,7 @@ on:
   workflow_dispatch:
   push:
     branches: [ "claude/**", "beta/**" ]
-    paths: [ "android/**", "config.py", "engine.py", ".github/workflows/android.yml" ]
+    paths: [ "android/**", "*.py", "ui/**", "assets/**", "locales/**", ".github/workflows/android.yml" ]
 
 permissions:
   contents: read
@@ -31,6 +31,10 @@ env:
   # libpython3.11.so and closed at once (seen on the emulator, 4.15).
   PYSIDE_VERSION: "6.12.0"
   WHEEL_TAG: cp310-abi3
+  # full: Céleste itself (main.py, gui.py, ui/, assets/…), the 5.0 alpha; lite: android/main.py
+  # (version, theme, logo, the engine's Sun and Moon), the smallest app, to tell the tools'
+  # problems from the app's
+  CELESTE_ANDROID_APP: full
 
 jobs:
   apk:
@@ -98,14 +102,23 @@ jobs:
           sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libfontconfig1 libdbus-1-3
           project="$RUNNER_TEMP/celeste-android"
           mkdir -p "$project"
-          cp android/main.py config.py engine.py "$project/"
+          if [ "$CELESTE_ANDROID_APP" = lite ]; then
+            cp android/main.py config.py engine.py mobile.py "$project/"
+            extra=()
+          else
+            cp *.py favorites_default.json "$project/"
+            cp -r ui assets locales fonts "$project/"
+            # Qt's modules: qt.py imports them by name, which the tool does not see
+            extra=(--extra-modules Core,Gui,Widgets,Svg,Network,Positioning)
+            export CELESTE_ANDROID_REQUIREMENTS="numpy,matplotlib,pillow,certifi,jplephem,sgp4,skyfield,tzdata"
+          fi
           python android/make_images.py "$project"            # icon.png (launcher), logo.png
           cd "$project"
           wheels=(--wheel-pyside="$RUNNER_TEMP/wheels/pyside6-$PYSIDE_VERSION-$PYSIDE_VERSION-$WHEEL_TAG-android_$ARCH.whl"
                   --wheel-shiboken="$RUNNER_TEMP/wheels/shiboken6-$PYSIDE_VERSION-$PYSIDE_VERSION-$WHEEL_TAG-android_$ARCH.whl")
           # the configuration first, to give it Céleste's icon, then the build
           # android/deploy.py: pyside6-android-deploy with the engine's packages and the Internet
-          python "$GITHUB_WORKSPACE/android/deploy.py" --init --name Celeste -f "${wheels[@]}"
+          python "$GITHUB_WORKSPACE/android/deploy.py" --init --name Celeste -f "${wheels[@]}" "${extra[@]}"
           python - "$project/pysidedeploy.spec" "$project/icon.png" <<'PY'
           import configparser, sys
           spec = configparser.ConfigParser(comment_prefixes="#", allow_no_value=True, interpolation=None)
@@ -116,7 +129,7 @@ jobs:
               spec.write(f)
           print("icon:", spec["app"]["icon"])
           PY
-          python "$GITHUB_WORKSPACE/android/deploy.py" -c pysidedeploy.spec -f -v "${wheels[@]}"
+          python "$GITHUB_WORKSPACE/android/deploy.py" -c pysidedeploy.spec -f -v "${wheels[@]}" "${extra[@]}"
           ls -l
           apk=$(ls *.apk | head -1)
           test -n "$apk"

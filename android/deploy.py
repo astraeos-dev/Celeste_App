@@ -10,9 +10,12 @@ after adding, to the configuration it writes:
   its pure-Python dependencies (jplephem, sgp4 — built without its C++ part,
   PYTHON_SGP4_COMPILE=never —, certifi);
 - the Internet permission, for the download of the JPL ephemeris at the first
-  start.
+  start;
+- the extensions of Céleste's data files (assets/, locales/, fonts/), which
+  buildozer leaves out by default.
 
-CELESTE_ANDROID_REQUIREMENTS replaces the list of packages.
+CELESTE_ANDROID_REQUIREMENTS replaces the list of packages (the full app adds
+matplotlib, Pillow and tzdata: .github/workflows/android.yml).
 """
 import os
 import runpy
@@ -24,6 +27,7 @@ import PySide6
 SCRIPTS = Path(PySide6.__file__).parent / "scripts"
 REQUIREMENTS = os.environ.get("CELESTE_ANDROID_REQUIREMENTS", "numpy,certifi,jplephem,sgp4,skyfield")
 PERMISSIONS = ("android.permission.INTERNET",)
+DATA_EXTENSIONS = ("json", "npz", "gz", "csv", "tsv", "ttf", "otf", "svg", "txt", "qm")
 
 
 def extended(requirements, permissions):
@@ -33,6 +37,13 @@ def extended(requirements, permissions):
     perms = [p.strip() for p in (permissions or "").split(",") if p.strip()]
     perms += [p for p in PERMISSIONS if p not in perms]
     return ",".join(req), ", ".join(perms)
+
+
+def with_data_extensions(include_exts):
+    """buildozer's source.include_exts with Céleste's data files added once."""
+    exts = [e.strip() for e in (include_exts or "").split(",") if e.strip()]
+    exts += [e for e in DATA_EXTENSIONS if e not in exts]
+    return ",".join(exts)
 
 
 def patch(buildozer_module):
@@ -45,6 +56,9 @@ def patch(buildozer_module):
                                              self.get_value("app", "android.permissions"))
         self.set_value("app", "requirements", requirements)
         self.set_value("app", "android.permissions", permissions)
+        self.set_value("app", "source.include_exts",
+                       with_data_extensions(self.get_value("app", "source.include_exts", ignore_fail=True)),
+                       raise_warning=False)
         self.update_config()
         print("[celeste] requirements:", requirements, "| permissions:", permissions, flush=True)
 

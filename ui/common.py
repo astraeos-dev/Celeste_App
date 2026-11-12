@@ -212,12 +212,28 @@ def _tz_finder():
     return TimezoneFinder()
 
 
+def _system_zone():
+    """IANA name of the device's own time zone (Qt), or "UTC"."""
+    try:
+        name = QTimeZone.systemTimeZoneId().data().decode()
+    except Exception:  # noqa: BLE001 (no zone from the system)
+        name = ""
+    return name if name and name in _zone_names() else "UTC"
+
+
 @functools.lru_cache(maxsize=256)
 def _zone_at(lat, lon):
-    """IANA time zone of a place (timezonefinder, offline); "UTC" when unknown."""
+    """
+    IANA time zone of a place (timezonefinder, offline); without timezonefinder
+    (Android, where it is not packaged) the device's own zone; "UTC" when unknown.
+    """
     try:
-        return _tz_finder().timezone_at(lat=lat, lng=lon) or "UTC"
-    except Exception:  # timezonefinder missing or failing: universal time
+        finder = _tz_finder()
+    except ImportError:
+        return _system_zone()
+    try:
+        return finder.timezone_at(lat=lat, lng=lon) or "UTC"
+    except Exception:  # noqa: BLE001 (a failing lookup: universal time)
         return "UTC"
 
 

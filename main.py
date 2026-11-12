@@ -16,12 +16,16 @@ restart.
 import argparse
 import sys
 
-from qt.QtCore import QLocale, QTimer
+import mobile
+
+ON_ANDROID = mobile.setup()          # before the settings: the user folder of the phone
+
+from qt.QtCore import QLocale, QTimer  # noqa: E402
 from qt.QtWidgets import QApplication
 
-import settings as prefs
-from config import Config
-from i18n import resolve_lang, switch_lang, t
+import settings as prefs  # noqa: E402
+from config import Config  # noqa: E402
+from i18n import resolve_lang, switch_lang, t  # noqa: E402
 
 
 def parse_args(argv):
@@ -133,9 +137,14 @@ def main(argv=None):
     if prefs.get("auto_geoloc"):
         QTimer.singleShot(800, lambda: window.geolocate(interactive=False))
 
-    # Update: is a newer version published? (Settings › About)
-    if prefs.get("update_check"):
+    # Update: is a newer version published? (Settings › About; a Windows installer: not on a phone)
+    if prefs.get("update_check") and not ON_ANDROID:
         QTimer.singleShot(4000, lambda: window.check_updates(interactive=False))
+
+    if ON_ANDROID:                   # the line the Android workflow looks for (logcat)
+        from config import APP_RELEASE
+        print(f"Céleste {APP_RELEASE} android window OK: {len(window.visible_stars)} stars, "
+              f"{window.tabs.count()} spaces, compact {window.is_compact()}", flush=True)
 
     return app.exec()
 

@@ -10,8 +10,8 @@ android/deploy.py):
   the JPL ephemeris is downloaded (32 MB, with its progress) into the app's
   folder, then the Sun's and the Moon's altitudes are computed for now.
 
-The workflow puts next to this file config.py, engine.py, icon.png and
-logo.png. The full interface comes with the 5.0 alpha.
+The workflow puts next to this file config.py, engine.py, mobile.py, icon.png
+and logo.png. The full interface comes with the 5.0 alpha.
 
 pyside6-android-deploy requires the entry point to be named main.py.
 """
@@ -40,32 +40,10 @@ def self_test_line():
             f"Python {platform.python_version()}, {platform.machine() or 'unknown'}")
 
 
-ANDROID_CA_DIR = "/system/etc/security/cacerts"        # Android's own CA certificates (hashed PEM)
-
-
 def use_android_certificates():
-    """
-    HTTPS for urllib (the ephemeris download): Python on Android does not find
-    any CA certificate by itself (CERTIFICATE_VERIFY_FAILED). Every default
-    context loads certifi's file, and Android's own certificates when there.
-    """
-    import ssl
-    try:
-        import certifi
-        cafile = certifi.where()
-    except ImportError:
-        cafile = None
-    cafile = cafile if cafile and os.path.isfile(cafile) else None
-    capath = ANDROID_CA_DIR if os.path.isdir(ANDROID_CA_DIR) else None
-    print(f"Céleste android: CA certificates {cafile or '-'} · {capath or '-'}", flush=True)
-    if cafile is None and capath is None:
-        return False
-
-    def context(*_args, **_kwargs):
-        return ssl.create_default_context(cafile=cafile, capath=capath)
-
-    ssl._create_default_https_context = context
-    return True
+    """HTTPS for urllib on Android (mobile.py, next to this file)."""
+    import mobile
+    return mobile.use_certificates()
 
 
 class EngineRun(QObject):

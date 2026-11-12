@@ -68,6 +68,9 @@ def window(qapp, tmp_path, monkeypatch):
     monkeypatch.setattr(satellites, "CACHE", str(tmp_path / "satellites.tle"))    # none on disk
     import history
     monkeypatch.setattr(history, "FILE", str(tmp_path / "history.json"))          # empty
+    import mpc
+    monkeypatch.setattr(mpc, "CACHE", str(tmp_path / "CometEls.txt"))             # none, and no download:
+    prefs.set("planner_mpc", False)                                                # Céleste's comets only
     Config.apply_theme("nuit")
     switch_lang("fr")
     gui.apply_theme(qapp)
@@ -1298,7 +1301,8 @@ class TestSolarSystemTab:
     def test_its_own_tab_after_the_planets(self, window, qapp):
         names = [window.tabs.tabText(i) for i in range(window.tabs.count())]
         assert names == ["Éphémérides", "Trajectoires", "Carte du ciel", "Planètes", "Système solaire",
-                         "Coordonnées", "Événements", "Paramètres"]
+                         "Coordonnées", "Événements", "Cibles", ""]
+        assert window.tabs.tabToolTip(8) == "Paramètres" and not window.tabs.tabIcon(8).isNull()
         page = window.tabs.widget(4)
         assert window.canvas_orrery.isAncestorOf(window.canvas_orrery) and page.isAncestorOf(window.canvas_orrery)
         assert not window.tabs.widget(3).isAncestorOf(window.canvas_orrery)
@@ -1327,13 +1331,202 @@ class TestSolarSystemTab:
         window._planet_selector.buttons["planets"].click()
 
     @pytest.mark.parametrize("lang", ["fr", "en", "es", "de"])
-    def test_the_eight_tabs_fit_at_the_minimum_width(self, window, qapp, lang):
+    def test_the_nine_tabs_fit_at_the_minimum_width(self, window, qapp, lang):
         window._lang_combo.setCurrentIndex(window._lang_combo.findData(lang))
         _pump(qapp)
         window.resize(window.minimumWidth(), window.minimumHeight())
         _pump(qapp, 3)
-        assert window.tabs.count() == 8
+        assert window.tabs.count() == 9
         assert window.tabs.tabBar().sizeHint().width() <= window.tabs.width()
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Night planner, the Targets tab (v4.10, after uptonight)
+# ──────────────────────────────────────────────────────────────────────
+
+@pytest.fixture
+def planner_tab(window, qapp, monkeypatch):
+    """The Targets tab, its computations run at once."""
+    import gui
+
+    def run_now(func, on_done, on_error):
+        try:
+            result = func()
+        except Exception as exc:  # noqa: BLE001
+            on_error(exc)
+        else:
+            on_done(result)
+    monkeypatch.setattr(gui, "_run_in_background", run_now)
+    window.tabs.setCurrentWidget(window._planner_page)              # computes the night
+    _pump(qapp, 3)
+    return window
+
+
+class TestPlanner:
+    @staticmethod
+    def _column(window, key, name):
+        table = window._plan_tables[key]
+        col = table.property("columns").index(name)
+        return [table.item(r, col).text() for r in range(table.rowCount())]
+
+    def test_computed_when_the_tab_shows(self, planner_tab):
+        w = planner_tab
+        assert w._plan is not None and w._plan["window"]["kind"] == "astro"
+        assert w._plan_summary.text() == ("Nuit astronomique de 18:33 à 05:08. "
+                                          "Lune éclairée à 49 % : écart minimal de 45°.")
+        assert w._plan_status.text() == "8 cibles retenues sur 48 objets (Messier (110))."
+        assert self._column(w, "deep_sky", "col_target")[:2] == ["M33 Galaxie du Triangle", "M34"]
+        assert self._column(w, "deep_sky", "col_fraction")[0] == "91 %"
+        assert self._column(w, "deep_sky", "col_best")[0] == "18:33–04:08"
+        assert w._plan_tabs.tabText(0) == "Ciel profond (8)" and w._plan_tabs.tabText(1) == "Lune et planètes (6)"
+        assert w._btn_plan_export.isEnabled()
+
+    def test_not_computed_again_without_a_change(self, planner_tab, monkeypatch):
+        import gui
+        monkeypatch.setattr(gui.planner, "plan", lambda *a, **k: pytest.fail("computed again"))
+        planner_tab._compute_plan()
+        planner_tab.tabs.setCurrentIndex(0)
+        planner_tab.tabs.setCurrentWidget(planner_tab._planner_page)
+
+    def test_constraints_are_read_checked_and_kept(self, planner_tab):
+        w = planner_tab
+        w._plan_fields["fraction_min"][0].setText("80")
+        w._plan_fields["size_max"][0].setText("1 000")                 # grouped as _num writes it
+        w._plan_types["open_cluster"].setChecked(False)
+        w._compute_plan()
+        import settings as prefs
+        kept = prefs.get("planner_constraints")
+        assert kept["fraction_min"] == 0.8 and kept["size_max"] == 1000.0 and "open_cluster" not in kept["types"]
+        assert all(o["fraction"] >= 0.8 and o["type"] != "open_cluster" for o in w._plan["deep_sky"])
+        w._plan_fields["altitude_min"][0].setText("95")
+        w._compute_plan(force=True)
+        assert w._plan_fields["altitude_min"][1].error.text() == "Entre 0 et 90"
+        assert w._plan_status.text() == "Corrigez les contraintes signalées."
+        w._plan_fields["altitude_min"][0].setText("85")
+        w._compute_plan(force=True)
+        assert w._plan_fields["altitude_max"][1].error.text() == "Doit dépasser le minimum"
+
+    def test_other_catalogue(self, planner_tab):
+        w = planner_tab
+        w._plan_catalog.setCurrentIndex(w._plan_catalog.findData("caldwell"))
+        w._compute_plan()
+        assert all(o["label"].startswith("C") for o in w._plan["deep_sky"])
+        assert "Caldwell (109)" in w._plan_status.text()
+
+    def test_bucket_and_done_lists_from_the_menu(self, planner_tab, qapp):
+        import settings as prefs
+        w = planner_tab
+        table = w._plan_tables["deep_sky"]
+        table.selectRow(3)                                              # M31
+        w._plan_context_menu(table.visualItemRect(table.item(3, 0)).center())
+        actions = {a.text(): a for a in w._plan_menu.actions()}
+        assert set(actions) == {"Voir sur la carte du ciel", "Ajouter à « à faire »", "Marquer comme déjà fait"}
+        actions["Marquer comme déjà fait"].trigger()
+        w._plan_menu.close()
+        assert prefs.get("planner_done") == ["M31"]
+        assert "M31" not in [o["label"] for o in w._plan["deep_sky"]]
+        w._plan_list_add("planner_bucket", ["M31", "M42"])                # to do again: out of "done"
+        assert prefs.get("planner_done") == [] and prefs.get("planner_bucket") == ["M31", "M42"]
+        targets = self._column(w, "deep_sky", "col_target")
+        assert "★\ufe0e M42 Nébuleuse d'Orion" in targets and "★\ufe0e M31 Galaxie d'Andromède" in targets
+
+    def test_custom_targets(self, planner_tab):
+        w = planner_tab
+        target = w._parse_custom("Mon objet; 0h 42m 44s; +41° 16′ 09″; galaxy; 30; 9,0")
+        assert target == {"name": "Mon objet", "ra": pytest.approx(10.68333, abs=1e-4),
+                          "dec": pytest.approx(41.26917, abs=1e-4), "type": "galaxy", "size": 30.0, "mag": 9.0}
+        assert w._parse_custom("X; 10.5; -20")["ra"] == 10.5            # degrees without h
+        with pytest.raises(ValueError, match="illisible"):
+            w._parse_custom("X; abc; 10")
+        import settings as prefs
+        prefs.set("planner_custom", [target])
+        w._compute_plan(force=True)
+        assert "Mon objet" in self._column(w, "deep_sky", "col_target")
+
+    def test_target_shown_on_the_sky_map(self, planner_tab, qapp):
+        w = planner_tab
+        w._show_plan_target_on_map(3)                                   # M31
+        assert w.tabs.currentIndex() == 2 and w._sky_found == ("messier", 31)
+        w._plan_catalog.setCurrentIndex(w._plan_catalog.findData("caldwell"))
+        w._compute_plan()
+        w.tabs.setCurrentWidget(w._planner_page)
+        first = w._plan["deep_sky"][0]
+        row = next(r for r in range(w._plan_tables["deep_sky"].rowCount())
+                   if w._plan_tables["deep_sky"].item(r, 0).data(gui_name_role()) == first["label"])
+        w._show_plan_target_on_map(row)
+        assert w._sky_found == ("deep", first["label"]) or w._sky_found == ("messier", first.get("m"))
+        assert w._find_entry.text().startswith(first["label"])
+
+    def test_chart_follows_the_selection(self, planner_tab):
+        w = planner_tab
+        legend = lambda: [t.get_text() for t in w.fig_plan.axes[0].get_legend().get_texts()]   # noqa: E731
+        assert legend()[1:] == ["M33", "M34", "M45", "M31", "M82"]       # the first five, the Moon first
+        table = w._plan_tables["deep_sky"]
+        table.clearSelection()
+        table.selectRow(7)
+        assert legend()[1:] == ["M39"]
+
+    def test_exports(self, planner_tab, tmp_path, monkeypatch):
+        import json
+        import gui
+        w = planner_tab
+        for name, kind in (("plan.txt", "Texte (*.txt)"), ("plan.json", "JSON (*.json)"), ("plan.png", "PNG (*.png)")):
+            monkeypatch.setattr(gui.QFileDialog, "getSaveFileName",
+                                staticmethod(lambda *a, n=name, k=kind: (str(tmp_path / n), k)))
+            w._export_plan()
+        text = (tmp_path / "plan.txt").read_text(encoding="utf-8")
+        assert text.startswith("Céleste — cibles de la nuit, Cherbourg-en-Cotentin")
+        assert "Ciel profond (8)" in text and "M33 Galaxie du Triangle" in text and "91 %" in text
+        data = json.loads((tmp_path / "plan.json").read_text(encoding="utf-8"))
+        assert data["deep_sky"][0]["label"] == "M33" and data["place"] == "Cherbourg-en-Cotentin"
+        assert (tmp_path / "plan.png").read_bytes()[:4] == b"\x89PNG"
+
+    def test_polar_day(self, planner_tab):
+        w = planner_tab
+        w.entry_lat.setText("78,22")
+        w.entry_lon.setText("15,65")
+        w._set_datetime(datetime(2026, 6, 21, 22, 0))
+        w.calculate()
+        w._compute_plan()
+        assert w._plan_summary.text().startswith("Pas de nuit")
+        assert w._plan_tables["deep_sky"].rowCount() == 0 and not w._btn_plan_export.isEnabled()
+
+    def test_survives_a_change_of_language(self, planner_tab, qapp):
+        w = planner_tab
+        w._lang_combo.setCurrentIndex(w._lang_combo.findData("en"))
+        _pump(qapp)
+        assert w._plan_summary.text().startswith("Astronomical night from 18:33 to 05:08.")
+        assert w._plan_tabs.tabText(0) == "Deep sky (8)"
+
+
+class TestObservingSite:
+    def test_horizon_mask(self, window):
+        import settings as prefs
+        window._horizon_edit.setText("0 10, 90 25, 180 5, 270 15")
+        window._save_horizon()
+        assert prefs.get("horizon_points") == [[0.0, 10.0], [90.0, 25.0], [180.0, 5.0], [270.0, 15.0]]
+        assert window._horizon_field.error.isHidden()
+        assert len(window._sky_scene["horizon_mask"]) == 181                # drawn on the sky map
+        window._horizon_edit.setText("0 10, 400 25")
+        window._save_horizon()
+        assert window._horizon_field.error.text().startswith("Paires")
+        assert len(prefs.get("horizon_points")) == 4                       # unchanged
+
+    def test_environment(self, window):
+        import settings as prefs
+        window._env_temp.setText("−5,5")
+        window._env_pressure.setText("1 020")
+        window._save_environment()
+        assert prefs.get("env_temperature") == -5.5 and prefs.get("env_pressure") == 1020.0
+        window._env_pressure.setText("5000")
+        window._save_environment()
+        assert window._env_pressure_field.error.text() == "Entre 0 et 1\u202f100"           # narrow space, as _num
+        assert prefs.get("env_pressure") == 1020.0
+
+
+def gui_name_role():
+    import gui
+    return gui._NAME_ROLE
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -1707,3 +1900,34 @@ class TestUpdates:
         window._install_update(dict(self.RELEASE))
         assert launched == ["/tmp/Celeste-99.0-Setup.exe"] and timers and timers[0][0] == 300
         assert getattr(window, "_update_failure", None) is None
+
+
+def test_workshop_window(window, qapp, tmp_path, monkeypatch):
+    """The Workshop opens for the place, previews each instrument and saves its PDF."""
+    import gui
+    dlg = window.show_workshop()
+    qapp.processEvents()
+    combos = dlg.findChildren(gui.QComboBox)
+    kinds = next(c for c in combos if c.count() == 3)
+    preview = dlg.findChild(gui.QLabel, "workshopPreview")
+    assert not preview.pixmap().isNull()
+    kinds.setCurrentIndex(2)                         # horizontal sundial
+    qapp.processEvents()
+    assert not preview.pixmap().isNull()
+    target = tmp_path / "dial.pdf"
+    monkeypatch.setattr(gui.QFileDialog, "getSaveFileName", lambda *a, **k: (str(target)[:-4], ""))
+    save = next(b for b in dlg.findChildren(gui.QPushButton) if b.text() == gui.t("workshop.save"))
+    save.click()
+    assert target.read_bytes()[:5] == b"%PDF-"
+    assert "dial.pdf" in window.statusBar().currentMessage()
+    dlg.close()
+    qapp.processEvents()
+
+
+def test_workshop_refuses_the_tropics(window, qapp, monkeypatch):
+    import gui
+    shown = []
+    monkeypatch.setattr(gui.QMessageBox, "information", lambda *a: shown.append(a[2]))
+    window.entry_lat.setText("5")
+    assert window.show_workshop() is None
+    assert shown == [gui.t("workshop.latitude_range")]

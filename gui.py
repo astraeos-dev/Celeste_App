@@ -45,7 +45,7 @@ from PyQt6.QtCore import (
 )
 from PyQt6.QtGui import (
     QBrush, QColor, QDesktopServices, QFont, QFontDatabase, QKeySequence,
-    QPainter, QPainterPath, QPalette, QPen, QRegularExpressionValidator, QShortcut,
+    QPainter, QPainterPath, QPalette, QPen, QPixmap, QRegularExpressionValidator, QShortcut,
 )
 from PyQt6.QtPositioning import QGeoPositionInfo, QGeoPositionInfoSource
 from PyQt6.QtWidgets import (
@@ -65,6 +65,8 @@ from matplotlib.figure import Figure  # noqa: E402
 import charts  # noqa: E402
 import history  # noqa: E402
 import icons  # noqa: E402
+import mpc  # noqa: E402
+import planner  # noqa: E402
 import places  # noqa: E402
 import satellites  # noqa: E402
 import settings as prefs  # noqa: E402
@@ -303,6 +305,11 @@ def _default_favorites(lang=None):
     return favorites
 
 
+def _typed_number(text):
+    """A number typed in the active language's style: "1 010", "2,5", "−3" (ValueError otherwise)."""
+    return float(re.sub(r"[\s\u00a0\u202f]", "", text).replace(",", ".").replace("−", "-"))
+
+
 def _coord_text(value):
     """A coordinate shown in a field (decimal comma in French)."""
     return _num(value, 4)
@@ -345,7 +352,11 @@ def _tonight_and_upcoming(key, dte, lat, lon, elev, zone):
 
 def _messier_label(obj, named=True):
     """"M31 Andromeda Galaxy" (the common name in the active language, if it has
-    one), or "M13" with *named* False."""
+    one), or "M13" with *named* False; another deep-sky object of the planner:
+    "C14 Double Cluster", "NGC 7000 North America Nebula"."""
+    if not obj.get("m"):
+        text = planner.label(obj)
+        return f"{text} {obj['name']}" if named and obj.get("name") and obj["name"] != text else text
     if named and obj.get("name"):
         name = t(f"messier.name_{obj['m']}")
         return f"M{obj['m']} {name}"
@@ -1150,7 +1161,7 @@ class AstroApp(QMainWindow):
     def __init__(self):
         super().__init__()
         self.resize(1400, 880)
-        self.setMinimumSize(1150, 720)
+        self.setMinimumSize(1180, 720)
         self.setWindowIcon(icons.app_icon())
 
         # State
@@ -1183,6 +1194,10 @@ class AstroApp(QMainWindow):
         self._last_search        = None
         self.history             = history.load()
         self._sky_found          = None      # the object found by name on the sky map (its reference)
+        self._plan               = None      # the night planner's last result
+        self._plan_key           = None      # (night, place, settings) it was computed for
+        self._plan_busy          = False
+        self._mpc_comets         = None      # comet elements of the Minor Planet Center, once loaded
         self._deep_sky_all       = []        # the 110 Messier objects at the computed instant
         self._history_pending    = None      # the calculation shown, not yet in the history
         self._history_quiet      = False     # a calculation the user did not ask for (start, rebuild)
@@ -1240,6 +1255,7 @@ class AstroApp(QMainWindow):
         self._build_solar_system_tab()
         self._build_coordinates_tab()
         self._build_events_tab()
+        self._build_planner_tab()
         self._build_settings_tab()
         self.tabs.currentChanged.connect(self._on_tab_changed)
 
@@ -1372,6 +1388,10 @@ class AstroApp(QMainWindow):
         self.btn_history.setToolTip(tf("side.history_tip", key="Ctrl+H"))
         self.btn_history.clicked.connect(self._show_history_menu)
         lay.addWidget(self.btn_history)
+        self.btn_workshop = _button(t("workshop.open"), "workshop", "discret")
+        self.btn_workshop.setToolTip(t("workshop.open_tip"))
+        self.btn_workshop.clicked.connect(lambda _checked=False: self.show_workshop())
+        lay.addWidget(self.btn_workshop)
 
         lay.addStretch()
         self.theme_selector = ThemeSelector(Config.THEME, self._on_theme_selected)
@@ -2168,6 +2188,621 @@ class AstroApp(QMainWindow):
 
     # ── Tab 8: settings ───────────────────────────────────────────────────────
 
+    # ── Tab 8: night planner (targets of the night, after uptonight) ──────────
+
+    _PLAN_TYPES = ("galaxy", "nebula", "planetary_nebula", "open_cluster", "globular_cluster",
+                   "supernova_remnant", "galaxy_group", "star_cloud", "dark_nebula", "asterism", "double_star")
+
+    _PLAN_LIMITS = {"altitude_min": (0, 90), "altitude_max": (0, 90), "airmass_max": (1, 40),
+                    "fraction_min": (0, 100), "size_min": (0, 10000), "size_max": (0, 10000),
+                    "moon_separation_min": (0, 180), "magnitude_max": (-30, 30),
+                    "max_targets": (1, 1000), "comet_magnitude_max": (-30, 30)}
+
+    def _plan_constraints(self):
+        return {**planner.DEFAULTS, **(prefs.get("planner_constraints") or {})}
+
+    def _build_planner_tab(self):
+        page = QWidget()
+        page.setObjectName("page")
+        outer = QHBoxLayout(page)
+        outer.setContentsMargins(0, 16, 0, 16)
+        outer.setSpacing(16)
+        c = self._plan_constraints()
+
+        # left: the constraints
+        side, _inner, form = _scroll_page()
+        form.setContentsMargins(0, 0, 12, 0)
+        form.setSpacing(12)
+        side.setFixedWidth(320)
+        side.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._plan_catalog = QComboBox()
+        for key in planner.CATALOGS:
+            self._plan_catalog.addItem(t(f"planner.catalog_{key}"), key)
+        self._plan_catalog.setCurrentIndex(max(0, self._plan_catalog.findData(c["catalog"])))
+        form.addWidget(InputField(t("planner.catalog"), self._plan_catalog))
+        self._plan_fields = {}
+
+        def number_row(keys):
+            row = QHBoxLayout()
+            row.setSpacing(8)
+            for key, unit, decimals in keys:
+                edit = QLineEdit("" if c[key] is None else _num(c[key], decimals))
+                field = InputField(t(f"planner.{key}"), edit, unit=unit, numeric=True)
+                field.setToolTip(t(f"planner.{key}_tip"))
+                self._plan_fields[key] = (edit, field)
+                row.addWidget(field, stretch=1)
+            form.addLayout(row)
+
+        number_row((("altitude_min", "°", 0), ("altitude_max", "°", 0)))
+        number_row((("airmass_max", "", 1), ("fraction_min", "%", 0)))
+        number_row((("size_min", "′", 0), ("size_max", "′", 0)))
+        number_row((("moon_separation_min", "°", 0), ("magnitude_max", "", 1)))
+        number_row((("max_targets", "", 0), ("comet_magnitude_max", "", 1)))
+        self._plan_fields["fraction_min"][0].setText(_num(100 * c["fraction_min"], 0))
+        self._plan_moon_lit = QCheckBox(t("planner.moon_from_illumination"))
+        self._plan_moon_lit.setToolTip(t("planner.moon_from_illumination_tip"))
+        self._plan_moon_lit.setChecked(bool(c["moon_separation_from_illumination"]))
+        form.addWidget(self._plan_moon_lit)
+        self._plan_mpc = QCheckBox(t("planner.mpc"))
+        self._plan_mpc.setToolTip(t("planner.mpc_tip"))
+        self._plan_mpc.setChecked(bool(prefs.get("planner_mpc")))
+        form.addWidget(self._plan_mpc)
+        form.addWidget(_label(t("planner.types"), "label"))
+        self._plan_types = {}
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(8)
+        grid.setVerticalSpacing(4)
+        chosen = set(c["types"] or ())
+        for i, key in enumerate(self._PLAN_TYPES):
+            box = QCheckBox(t(f"messier.type_{key}"))
+            box.setChecked(not chosen or key in chosen)
+            self._plan_types[key] = box
+            grid.addWidget(box, i, 0)
+        form.addLayout(grid)
+        buttons = QHBoxLayout()
+        buttons.setSpacing(8)
+        btn_custom = _button(t("planner.custom_btn"), "favorite_add", "secondaire", compact=True)
+        btn_custom.setToolTip(t("planner.custom_tip"))
+        btn_custom.clicked.connect(self._edit_custom_targets)
+        btn_lists = _button(t("planner.lists_btn"), "history", "secondaire", compact=True)
+        btn_lists.setToolTip(t("planner.lists_tip"))
+        btn_lists.clicked.connect(self._edit_plan_lists)
+        buttons.addWidget(btn_custom)
+        buttons.addWidget(btn_lists)
+        buttons.addStretch()
+        form.addLayout(buttons)
+        form.addStretch()
+        outer.addWidget(side)
+
+        # right: the night, the tables, the chart
+        right = QVBoxLayout()
+        right.setSpacing(12)
+        bar = QHBoxLayout()
+        bar.setSpacing(8)
+        self._btn_plan = _button(t("planner.compute"), "search")
+        self._btn_plan.setToolTip(t("planner.compute_tip"))
+        self._btn_plan.clicked.connect(lambda _checked=False: self._compute_plan(force=True))
+        bar.addWidget(self._btn_plan)
+        self._plan_status = _label("", "legende", wrap=True)
+        bar.addWidget(self._plan_status, stretch=1)
+        self._btn_plan_export = _button(t("planner.export"), "export")
+        self._btn_plan_export.setToolTip(t("planner.export_tip"))
+        self._btn_plan_export.setEnabled(False)
+        self._btn_plan_export.clicked.connect(self._export_plan)
+        bar.addWidget(self._btn_plan_export)
+        right.addLayout(bar)
+        self._plan_summary = _label(t("planner.placeholder"), "corps", wrap=True)
+        right.addWidget(self._plan_summary)
+
+        self._plan_tabs = QTabWidget()
+        self._plan_tables = {}
+        for key, columns in (("deep_sky", ("col_target", "col_fraction", "col_best", "col_alt_max",
+                                           "col_time_max", "col_transit", "col_type", "col_const", "col_mag",
+                                           "col_size")),
+                             ("bodies", ("col_body", "col_mag", "col_alt_max", "col_time_max", "col_transit",
+                                         "col_best", "col_fraction")),
+                             ("comets", ("col_comet", "col_mag", "col_earth", "col_sun", "col_alt_max",
+                                         "col_time_max", "col_rise", "col_set"))):
+            table = self._plan_table(columns)
+            self._plan_tables[key] = table
+            self._plan_tabs.addTab(table, t(f"planner.tab_{key}"))
+        self._plan_tables["deep_sky"].itemSelectionChanged.connect(self._draw_plan_chart)
+        self._plan_tables["bodies"].itemSelectionChanged.connect(self._draw_plan_chart)
+        self._plan_tabs.currentChanged.connect(lambda _i: self._draw_plan_chart())
+        table = self._plan_tables["deep_sky"]
+        table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        table.customContextMenuRequested.connect(self._plan_context_menu)
+        table.cellDoubleClicked.connect(lambda row, _col: self._show_plan_target_on_map(row))
+        table.setToolTip(t("planner.table_tip"))
+        right.addWidget(self._plan_tabs, stretch=3)
+
+        card = _card()
+        card_l = QVBoxLayout(card)
+        card_l.setContentsMargins(8, 8, 8, 8)
+        self.fig_plan = Figure(facecolor=Config.CIEL_100)
+        self.canvas_plan = FigureCanvasQTAgg(self.fig_plan)
+        self.canvas_plan.setMinimumHeight(220)
+        card_l.addWidget(self.canvas_plan)
+        right.addWidget(card, stretch=2)
+        outer.addLayout(right, stretch=1)
+        self.tabs.addTab(page, t("tabs.planner"))
+        self._planner_page = page
+        if self._plan is not None:                        # rebuilt (language, theme): shown again
+            self._show_plan()
+
+    def _plan_table(self, columns):
+        table = QTableWidget(0, len(columns))
+        table.setHorizontalHeaderLabels([t(f"planner.{c}") for c in columns])
+        table.verticalHeader().setVisible(False)
+        table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        table.setShowGrid(False)
+        table.setWordWrap(False)
+        header = table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        header.setStretchLastSection(True)
+        header.setDefaultAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        table.verticalHeader().setDefaultSectionSize(32)
+        table.setProperty("columns", list(columns))
+        return table
+
+    # the constraints typed
+
+    def _read_plan_constraints(self):
+        """The constraints of the form, checked; None (and the fields flagged) when one is wrong."""
+        c = self._plan_constraints()
+        c["catalog"] = self._plan_catalog.currentData()
+        ok = True
+        for key, (edit, field) in self._plan_fields.items():
+            text = edit.text().strip()
+            if key == "magnitude_max" and not text:
+                c[key] = None
+                field.set_error(None)
+                continue
+            limits = self._PLAN_LIMITS[key]
+            try:
+                value = _typed_number(text)
+                if not limits[0] <= value <= limits[1]:
+                    raise ValueError
+            except ValueError:
+                field.set_error(tf("planner.range_error", low=_num(limits[0]), high=_num(limits[1])))
+                ok = False
+                continue
+            field.set_error(None)
+            c[key] = value / 100.0 if key == "fraction_min" else (int(value) if key == "max_targets" else value)
+        if ok and c["altitude_min"] >= c["altitude_max"]:
+            self._plan_fields["altitude_max"][1].set_error(t("planner.order_error"))
+            ok = False
+        if ok and c["size_min"] > c["size_max"]:
+            self._plan_fields["size_max"][1].set_error(t("planner.order_error"))
+            ok = False
+        c["moon_separation_from_illumination"] = self._plan_moon_lit.isChecked()
+        types = [k for k, box in self._plan_types.items() if box.isChecked()]
+        c["types"] = () if len(types) == len(self._plan_types) else tuple(types)
+        return c if ok else None
+
+    def _plan_inputs(self):
+        """Everything the plan depends on, and the key of the cache."""
+        environment = {"temperature": _pref_float("env_temperature", 10.0),
+                       "pressure": _pref_float("env_pressure", 1010.0)}
+        horizon = [tuple(p) for p in prefs.get("horizon_points") or []]
+        custom = list(prefs.get("planner_custom") or [])
+        bucket, done = list(prefs.get("planner_bucket") or []), list(prefs.get("planner_done") or [])
+        return environment, horizon, custom, bucket, done
+
+    def _compute_plan(self, force=False):
+        """Computes the plan of the night of the date and place typed (in the background)."""
+        if self._dte is None or self._plan_busy:
+            return
+        c = self._read_plan_constraints()
+        if c is None:
+            self._plan_status.setText(t("planner.invalid"))
+            return
+        prefs.set("planner_constraints", {k: (list(v) if isinstance(v, tuple) else v) for k, v in c.items()})
+        use_mpc = self._plan_mpc.isChecked()
+        prefs.set("planner_mpc", use_mpc)
+        environment, horizon, custom, bucket, done = self._plan_inputs()
+        night = planner.night_window(self._dte, self._lat, self._lon, self._elevation(), self._zone)
+        key = (night["start"], round(self._lat, 4), round(self._lon, 4), self._elevation(),
+               json.dumps([c, environment, horizon, custom, bucket, done, use_mpc], default=str, sort_keys=True))
+        if not force and key == self._plan_key:
+            return
+        self._plan_busy = True
+        self._btn_plan.setEnabled(False)
+        self._plan_status.setText(t("planner.computing"))
+        dte, lat, lon, elev, zone = self._dte, self._lat, self._lon, self._elevation(), self._zone
+        need_mpc = use_mpc and self._mpc_comets is None
+
+        def work():
+            comets, error = (mpc.refresh() if need_mpc else (self._mpc_comets, None))
+            result = planner.plan(dte, lat, lon, elev, zone, c, horizon, environment, custom, bucket, done,
+                                  comets if use_mpc else None)
+            return result, comets, error
+
+        def done_(answer):
+            result, comets, error = answer
+            self._plan_busy = False
+            self._btn_plan.setEnabled(True)
+            if use_mpc and comets:
+                self._mpc_comets = comets
+            self._plan, self._plan_key = result, key
+            self._show_plan()
+            if use_mpc and not comets:
+                self._plan_status.setText(tf("planner.mpc_error", detail=error or ""))
+
+        def failed(exc):
+            self._plan_busy = False
+            self._btn_plan.setEnabled(True)
+            self._plan_status.setText(tf("planner.error", detail=str(exc)))
+        _run_in_background(work, done_, failed)
+
+    # showing the plan
+
+    def _hm(self, dt):
+        return "—" if dt is None else self._format_event(dt)
+
+    def _plan_cell(self, table, row, col, text, sort=None, data=None):
+        item = _SortItem(text)
+        item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        if sort is not None:
+            item.setData(_SORT_ROLE, sort)
+        if data is not None:
+            item.setData(_NAME_ROLE, data)
+        table.setItem(row, col, item)
+        return item
+
+    def _show_plan(self):
+        """Fills the summary, the three tables and the chart from self._plan."""
+        result = self._plan
+        window = result["window"]
+        for table in self._plan_tables.values():
+            table.setSortingEnabled(False)
+            table.clearSelection()
+            table.setRowCount(0)
+        self._btn_plan_export.setEnabled(window["kind"] is not None)
+        if window["kind"] is None:
+            self._plan_summary.setText(t("planner.no_night"))
+            self._plan_status.setText("")
+            self._draw_plan_chart()
+            return
+        moon = result["moon"]
+        self._plan_summary.setText(tf(
+            "planner.summary", kind=t(f"planner.night_{window['kind']}"), start=self._hm(window["start"]),
+            end=self._hm(window["end"]), moon=_num(moon["illumination"], 0),
+            separation=_num(moon["separation_min"], 0)))
+        self._plan_status.setText(tf("planner.found", n=len(result["deep_sky"]),
+                                     total=_num(result["deep_sky_considered"]),
+                                     catalog=t(f"planner.catalog_{result['constraints']['catalog']}")))
+        table = self._plan_tables["deep_sky"]
+        table.setRowCount(len(result["deep_sky"]))
+        for r, o in enumerate(result["deep_sky"]):
+            name = _messier_label(o)                       # the common name in the interface language
+            if o.get("bucket"):
+                name = f"{SYMBOL['star']} {name}"
+            item = self._plan_cell(table, r, 0, name, r, o["label"])
+            item.setToolTip(o["id"])
+            self._plan_cell(table, r, 1, f"{_num(100 * o['fraction'], 0)} %", o["fraction"])
+            best = "—" if not o["best"] else f"{self._hm(o['best'][0])}–{self._hm(o['best'][1])}"
+            self._plan_cell(table, r, 2, best, o["best"][0].timestamp() if o["best"] else None)
+            self._plan_cell(table, r, 3, _deg(o["alt_max"], 0), o["alt_max"])
+            self._plan_cell(table, r, 4, self._hm(o["time_max"]), o["time_max"].timestamp())
+            self._plan_cell(table, r, 5, self._hm(o["transit"]), o["transit"].timestamp())
+            self._plan_cell(table, r, 6, t(f"messier.type_{o['type']}"))
+            self._plan_cell(table, r, 7, o["const"])
+            self._plan_cell(table, r, 8, "—" if o["mag"] is None else _num(o["mag"], 1), o["mag"])
+            size = "—" if o["major"] is None else f"{_num(o['major'], 0)}′"
+            self._plan_cell(table, r, 9, size, o["major"])
+        table = self._plan_tables["bodies"]
+        table.setRowCount(len(result["bodies"]))
+        for r, b in enumerate(result["bodies"]):
+            name = (f"{SYMBOL['Moon']} {t('chart.moon')}" if b["name"] == "moon"
+                    else _planet_name(b["name"], symbol=True))
+            self._plan_cell(table, r, 0, name, r, b["name"])
+            self._plan_cell(table, r, 1, "—" if b["mag"] is None else _num(b["mag"], 1), b["mag"])
+            self._plan_cell(table, r, 2, _deg(b["alt_max"], 0), b["alt_max"])
+            self._plan_cell(table, r, 3, self._hm(b["time_max"]), b["time_max"].timestamp())
+            self._plan_cell(table, r, 4, self._hm(b["transit"]), b["transit"].timestamp())
+            best = "—" if not b["best"] else f"{self._hm(b['best'][0])}–{self._hm(b['best'][1])}"
+            self._plan_cell(table, r, 5, best)
+            self._plan_cell(table, r, 6, f"{_num(100 * b['fraction'], 0)} %", b["fraction"])
+        table = self._plan_tables["comets"]
+        table.setRowCount(len(result["comets"]))
+        for r, k in enumerate(result["comets"]):
+            name = _planet_name(k["table"], numbered=True) if k["table"] else k["name"]
+            self._plan_cell(table, r, 0, f"{SYMBOL['meteors']} {name}", r, name)
+            self._plan_cell(table, r, 1, _num(k["mag"], 1), k["mag"])
+            self._plan_cell(table, r, 2, tf("units.au", value=_num(k["earth_au"], 2)), k["earth_au"])
+            self._plan_cell(table, r, 3, tf("units.au", value=_num(k["sun_au"], 2)), k["sun_au"])
+            self._plan_cell(table, r, 4, _deg(k["alt_max"], 0), k["alt_max"])
+            self._plan_cell(table, r, 5, self._hm(k["time_max"]), k["time_max"].timestamp())
+            self._plan_cell(table, r, 6, self._hm(k["rise"]))
+            self._plan_cell(table, r, 7, self._hm(k["set"]))
+        for key, table in self._plan_tables.items():
+            self._plan_tabs.setTabText(list(self._plan_tables).index(key),
+                                       tf(f"planner.tab_{key}_n", n=table.rowCount()))
+            table.setSortingEnabled(True)
+            table.sortItems(0, Qt.SortOrder.AscendingOrder)
+        self._draw_plan_chart()
+
+    def _draw_plan_chart(self):
+        """Altitude through the night of the targets chosen in the table (the first five without a choice)."""
+        if not hasattr(self, "fig_plan"):
+            return
+        result = self._plan
+        labels = {"title": t("planner.chart_title"), "xlabel": t("planner.chart_x"),
+                  "ylabel": t("chart.altitude"), "moon": t("chart.moon"), "empty": t("planner.chart_empty")}
+        if result is None or not result["times"]:
+            charts.draw_night_plan(self.fig_plan, [], [], None, (30, 80), labels)
+            self.canvas_plan.draw_idle()
+            return
+        key = "bodies" if self._plan_tabs.currentIndex() == 1 else "deep_sky"
+        table = self._plan_tables[key]
+        rows = sorted({i.row() for i in table.selectedItems()}) or list(range(min(5, table.rowCount())))
+        names = [table.item(r, 0).data(_NAME_ROLE) for r in rows[:8]]
+        items = {o["label"]: o for o in result["deep_sky"]} if key == "deep_sky" else \
+            {b["name"]: b for b in result["bodies"]}
+        series = []
+        for name in names:
+            item = items.get(name)
+            if item is not None:
+                title = (t("chart.moon") if name == "moon" else _planet_name(name)) if key == "bodies" else name
+                series.append((title, item["altitudes"]))
+        start = self._local(result["times"][0])
+        hours = [start.hour + start.minute / 60 + (self._local(x) - start).total_seconds() / 3600
+                 for x in result["times"]]
+        moon = next((b["altitudes"] for b in result["bodies"] if b["name"] == "moon"), None)
+        c = result["constraints"]
+        labels["title"] = tf("planner.chart_title_date", date=self._local(result["times"][0]).strftime("%d/%m/%Y"))
+        labels["xlabel"] = tf("chart.hour_local", offset=_fmt_offset(self._offset_at(result["times"][0])))
+        charts.draw_night_plan(self.fig_plan, hours, series, moon, (c["altitude_min"], c["altitude_max"]), labels)
+        self.canvas_plan.draw_idle()
+
+    def _offset_at(self, dt):
+        local = self._local(dt)
+        return (local - dt).total_seconds() / 3600.0
+
+    # lists and targets of the user's
+
+    def _plan_selected(self):
+        table = self._plan_tables["deep_sky"]
+        return [table.item(r, 0).data(_NAME_ROLE) for r in sorted({i.row() for i in table.selectedItems()})]
+
+    def _plan_context_menu(self, pos):
+        table = self._plan_tables["deep_sky"]
+        item = table.itemAt(pos)
+        if item is None:
+            return
+        if item.row() not in {i.row() for i in table.selectedItems()}:
+            table.selectRow(item.row())
+        labels = self._plan_selected()
+        bucket, done = list(prefs.get("planner_bucket") or []), list(prefs.get("planner_done") or [])
+        menu = QMenu(self)
+        menu.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        if len(labels) == 1:
+            menu.addAction(t("planner.show_on_map")).triggered.connect(
+                lambda: self._show_plan_target_on_map(table.currentRow()))
+        if any(lb not in bucket for lb in labels):
+            menu.addAction(t("planner.add_bucket")).triggered.connect(lambda: self._plan_list_add("planner_bucket", labels))
+        else:
+            menu.addAction(t("planner.remove_bucket")).triggered.connect(lambda: self._plan_list_remove("planner_bucket", labels))
+        menu.addAction(t("planner.add_done")).triggered.connect(lambda: self._plan_list_add("planner_done", labels))
+        self._plan_menu = menu
+        menu.popup(table.viewport().mapToGlobal(pos))
+
+    def _plan_list_add(self, key, labels):
+        values = list(prefs.get(key) or [])
+        values += [lb for lb in labels if lb not in values]
+        prefs.set(key, values)
+        other = "planner_done" if key == "planner_bucket" else "planner_bucket"
+        prefs.set(other, [v for v in prefs.get(other) or [] if v not in labels])
+        self._compute_plan(force=True)
+
+    def _plan_list_remove(self, key, labels):
+        prefs.set(key, [v for v in prefs.get(key) or [] if v not in labels])
+        self._compute_plan(force=True)
+
+    def _show_plan_target_on_map(self, row):
+        """The target of a row circled on the sky map."""
+        table = self._plan_tables["deep_sky"]
+        if self._plan is None or row < 0 or table.item(row, 0) is None:
+            return
+        name = table.item(row, 0).data(_NAME_ROLE)
+        target = next((o for o in self._plan["deep_sky"] if o["label"] == name), None)
+        if target is None:
+            return
+        ref = ("messier", target["m"]) if target.get("m") else ("deep", target["label"])
+        self.tabs.setCurrentIndex(2)
+        self._find_on_sky(ref)
+
+    def _list_dialog(self, title, hint):
+        dlg = QDialog(self)
+        dlg.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        dlg.setWindowTitle(title)
+        dlg.setMinimumWidth(520)
+        lay = QVBoxLayout(dlg)
+        lay.setContentsMargins(24, 24, 24, 16)
+        lay.setSpacing(12)
+        lay.addWidget(_label(title, "sous-titre"))
+        lay.addWidget(_label(hint, "legende", wrap=True))
+        return dlg, lay
+
+    def _edit_plan_lists(self):
+        """Window: the bucket list and the done list, one name per line."""
+        dlg, lay = self._list_dialog(t("planner.lists_title"), t("planner.lists_hint"))
+        from PyQt6.QtWidgets import QPlainTextEdit
+        edits = {}
+        row = QHBoxLayout()
+        row.setSpacing(16)
+        for key in ("planner_bucket", "planner_done"):
+            col = QVBoxLayout()
+            col.addWidget(_label(t(f"planner.{key}"), "label"))
+            edit = QPlainTextEdit("\n".join(prefs.get(key) or []))
+            edit.setMinimumHeight(200)
+            col.addWidget(edit)
+            edits[key] = edit
+            row.addLayout(col)
+        lay.addLayout(row)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
+        lay.addWidget(buttons)
+
+        def save():
+            for key, edit in edits.items():
+                prefs.set(key, [ln.strip() for ln in edit.toPlainText().splitlines() if ln.strip()])
+            dlg.accept()
+            self._compute_plan(force=True)
+        buttons.accepted.connect(save)
+        buttons.rejected.connect(dlg.reject)
+        self._lists_dialog = dlg
+        dlg.open()
+
+    def _edit_custom_targets(self):
+        """Window: the user's own targets, one per line: name; RA; Dec; type; size; magnitude."""
+        dlg, lay = self._list_dialog(t("planner.custom_title"), t("planner.custom_hint"))
+        from PyQt6.QtWidgets import QPlainTextEdit
+        lines = []
+        for c in prefs.get("planner_custom") or []:
+            lines.append("; ".join([c["name"], _ra(c["ra"] / 15.0, "dms"), _dec(c["dec"], "dms"), c.get("type", ""),
+                                    "" if c.get("size") is None else _num(c["size"], 0),
+                                    "" if c.get("mag") is None else _num(c["mag"], 1)]))
+        edit = QPlainTextEdit("\n".join(lines))
+        edit.setPlaceholderText("Mon objet; 0h 42m 44s; +41° 16′ 09″; galaxy; 190; 3,4")
+        edit.setMinimumHeight(180)
+        lay.addWidget(edit)
+        error = _label("", "legende", tone="alerte", wrap=True)
+        lay.addWidget(error)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
+        lay.addWidget(buttons)
+
+        def save():
+            try:
+                targets = [self._parse_custom(line) for line in edit.toPlainText().splitlines() if line.strip()]
+            except ValueError as exc:
+                error.setText(str(exc))
+                return
+            prefs.set("planner_custom", targets)
+            dlg.accept()
+            self._compute_plan(force=True)
+        buttons.accepted.connect(save)
+        buttons.rejected.connect(dlg.reject)
+        self._custom_dialog = dlg
+        dlg.open()
+
+    @staticmethod
+    def _parse_angle(text, hours):
+        """"0h 42m 44s", "00:42:44", "10.68" (degrees, or hours with an h) → degrees."""
+        raw = text.strip().replace(",", ".").replace("−", "-")
+        sign = -1.0 if raw.startswith("-") else 1.0
+        numbers = [float(x) for x in re.findall(r"\d+(?:\.\d+)?", raw)]
+        if not numbers:
+            raise ValueError(text)
+        value = sum(n / 60 ** i for i, n in enumerate(numbers[:3]))
+        in_hours = hours and (len(numbers) > 1 or "h" in raw.lower())
+        return sign * value * (15.0 if in_hours else 1.0)
+
+    def _parse_custom(self, line):
+        parts = [p.strip() for p in line.split(";")]
+        if len(parts) < 3 or not parts[0]:
+            raise ValueError(tf("planner.custom_error", line=line))
+        try:
+            ra = self._parse_angle(parts[1], True)
+            dec = self._parse_angle(parts[2], False)
+            size = float(parts[4].replace(",", ".")) if len(parts) > 4 and parts[4] else None
+            mag = float(parts[5].replace(",", ".").replace("−", "-")) if len(parts) > 5 and parts[5] else None
+        except ValueError:
+            raise ValueError(tf("planner.custom_error", line=line)) from None
+        if not (0 <= ra < 360 and -90 <= dec <= 90):
+            raise ValueError(tf("planner.custom_error", line=line))
+        kind = parts[3] if len(parts) > 3 and parts[3] in planner.DEEP_SKY_TYPES else "nebula"
+        return {"name": parts[0], "ra": round(ra, 5), "dec": round(dec, 5), "type": kind, "size": size, "mag": mag}
+
+    def _export_plan(self):
+        """Saves the plan: a text report, JSON or the chart (PNG)."""
+        if self._plan is None:
+            return
+        name = f"celeste-plan-{self._local(self._plan['window']['start']).strftime('%Y-%m-%d')}"
+        path, chosen = QFileDialog.getSaveFileName(
+            self, t("planner.export"), os.path.join(os.path.expanduser("~"), name + ".txt"),
+            f"{t('planner.export_txt')} (*.txt);;JSON (*.json);;PNG (*.png)")
+        if not path:
+            return
+        try:
+            if path.lower().endswith(".png") or "png" in chosen.lower():
+                self.fig_plan.savefig(path if path.lower().endswith(".png") else path + ".png", dpi=150,
+                                      facecolor=self.fig_plan.get_facecolor())
+            elif path.lower().endswith(".json") or "json" in chosen.lower():
+                with open(path, "w", encoding="utf-8") as f:
+                    f.write(planner.report_json(self._plan, self.location_name or ""))
+            else:
+                with open(path, "w", encoding="utf-8") as f:
+                    f.write(self._plan_report_text())
+        except OSError as exc:
+            QMessageBox.critical(self, t("errors.error_title"), str(exc))
+            return
+        self.statusBar().showMessage(tf("planner.exported", path=path), 6000)
+
+    def _plan_report_text(self):
+        """The plan as text, in the interface language (uptonight's txt report)."""
+        r = self._plan
+        c = r["constraints"]
+        place = self.location_name or f"{_fmt_lat(self._lat)}, {_fmt_lon(self._lon)}"
+        out = [tf("planner.report_title", place=place), self._plan_summary.text(), "",
+               tf("planner.report_constraints", alt_min=_num(c["altitude_min"]), alt_max=_num(c["altitude_max"]),
+                  airmass=_num(c["airmass_max"], 1), size_min=_num(c["size_min"]), size_max=_num(c["size_max"]),
+                  fraction=_num(100 * c["fraction_min"]), catalog=t(f"planner.catalog_{c['catalog']}")), ""]
+        for key in ("deep_sky", "bodies", "comets"):
+            table = self._plan_tables[key]
+            out.append(tf(f"planner.tab_{key}_n", n=table.rowCount()))
+            heads = [table.horizontalHeaderItem(i).text() for i in range(table.columnCount())]
+            rows = [[table.item(r, i).text() if table.item(r, i) else "" for i in range(table.columnCount())]
+                    for r in range(table.rowCount())]
+            widths = [max([len(h)] + [len(row[i]) for row in rows]) for i, h in enumerate(heads)]
+            out.append("  ".join(h.ljust(w) for h, w in zip(heads, widths)).rstrip())
+            out += ["  ".join(v.ljust(w) for v, w in zip(row, widths)).rstrip() for row in rows]
+            out.append("")
+        return "\n".join(out)
+
+    # the observing site (settings)
+
+    @staticmethod
+    def _horizon_text(points):
+        return ", ".join(f"{_num(a, 0)} {_num(h, 0)}" for a, h in points)
+
+    def _save_horizon(self):
+        """"0 10, 90 15, 180 5" → [[0, 10], [90, 15], [180, 5]] (azimuth, altitude)."""
+        text = self._horizon_edit.text().strip()
+        points = []
+        try:
+            for part in [p for p in re.split(r"[;,]\s*(?=\d)|\s*[;]\s*|,\s+", text) if p.strip()]:
+                numbers = [float(x.replace(",", ".")) for x in re.findall(r"-?\d+(?:[.,]\d+)?", part)]
+                if len(numbers) != 2 or not (0 <= numbers[0] <= 360 and 0 <= numbers[1] < 90):
+                    raise ValueError(part)
+                points.append([numbers[0], numbers[1]])
+        except ValueError:
+            self._horizon_field.set_error(t("observatory.horizon_error"))
+            return
+        self._horizon_field.set_error(None)
+        prefs.set("horizon_points", sorted(points))
+        self._horizon_edit.setText(self._horizon_text(sorted(points)))
+        if self._dte is not None:
+            self._calculate_quietly()
+
+    def _save_environment(self):
+        values = {}
+        for key, edit, field, low, high in (("env_temperature", self._env_temp, self._env_temp_field, -60, 60),
+                                            ("env_pressure", self._env_pressure, self._env_pressure_field, 0, 1100)):
+            try:
+                value = _typed_number(edit.text())
+                if not low <= value <= high:
+                    raise ValueError
+            except ValueError:
+                field.set_error(tf("planner.range_error", low=_num(low), high=_num(high)))
+                continue
+            field.set_error(None)
+            values[key] = value
+        for key, value in values.items():
+            prefs.set(key, value)
+
     def _build_settings_tab(self):
         scroll, _page, lay = _scroll_page()
 
@@ -2250,6 +2885,28 @@ class AstroApp(QMainWindow):
         self._iv_lbl.setText(tf("units.ms", value=_num(self._iv_slider.value() * 500)))
         box.addLayout(iv)
 
+        # Observing site: refraction and horizon mask (night planner, sky map)
+        box = section(t("observatory.section"))
+        box.addWidget(_label(t("observatory.hint"), "legende", wrap=True))
+        row = QHBoxLayout()
+        row.setSpacing(16)
+        self._env_temp = QLineEdit(_num(_pref_float("env_temperature", 10.0), 1))
+        self._env_pressure = QLineEdit(_num(_pref_float("env_pressure", 1010.0), 0))
+        for edit in (self._env_temp, self._env_pressure):
+            edit.editingFinished.connect(self._save_environment)
+        self._env_temp_field = InputField(t("observatory.temperature"), self._env_temp, unit="°C", numeric=True)
+        self._env_pressure_field = InputField(t("observatory.pressure"), self._env_pressure, unit="hPa",
+                                              numeric=True, hint=t("observatory.pressure_hint"))
+        row.addWidget(self._env_temp_field, stretch=1, alignment=Qt.AlignmentFlag.AlignTop)
+        row.addWidget(self._env_pressure_field, stretch=1, alignment=Qt.AlignmentFlag.AlignTop)
+        box.addLayout(row)
+        self._horizon_edit = QLineEdit(self._horizon_text(prefs.get("horizon_points") or []))
+        self._horizon_edit.setPlaceholderText(t("observatory.horizon_placeholder"))
+        self._horizon_edit.editingFinished.connect(self._save_horizon)
+        self._horizon_field = InputField(t("observatory.horizon"), self._horizon_edit,
+                                         hint=t("observatory.horizon_hint"))
+        box.addWidget(self._horizon_field)
+
         # Reset (irreversible: danger button and confirmation)
         box = section(t("settings.reset_section"))
         box.addWidget(_label(t("settings.reset_hint"), "legende", wrap=True))
@@ -2294,7 +2951,12 @@ class AstroApp(QMainWindow):
             box.addLayout(row)
 
         lay.addStretch()
-        self.tabs.addTab(scroll, t("tabs.settings"))
+        # nine tabs: the settings show as an icon, named in its tooltip and for screen readers
+        index = self.tabs.addTab(scroll, _icon("settings", Config.ENCRE_ATTENUEE, 18), "")
+        self.tabs.setTabToolTip(index, t("tabs.settings"))
+        self.tabs.tabBar().setAccessibleTabName(index, t("tabs.settings")) \
+            if hasattr(self.tabs.tabBar(), "setAccessibleTabName") else None
+        self._settings_page = scroll
 
     # ── Status bar ────────────────────────────────────────────────────────────
 
@@ -2891,8 +3553,9 @@ class AstroApp(QMainWindow):
         self._deep_sky_all = [{**obj, "alt": float(alt), "az": float(az)}
                               for obj, alt, az in zip(messier_catalog(), alts, azs)]
         deep_sky = [o for o in self._deep_sky_all if o["alt"] > 0] if prefs.get("show_messier") else []
-        self._sky_scene = charts.sky_scene(jd, lat, lon, self._mag_limit(),
-                                           self.sun_data, self.moon_data, self.planets + bright, deep_sky)
+        self._sky_scene = charts.sky_scene(jd, lat, lon, self._mag_limit(), self.sun_data, self.moon_data,
+                                           self.planets + bright, deep_sky,
+                                           [tuple(p) for p in prefs.get("horizon_points") or []])
         self._refresh_sky_objects()
         self.visible_stars = [s["name"] for s in self._sky_scene["stars"]]
         self.visible_planets_map = [p["name"] for p in self.planets if p["alt"] > 0]
@@ -2941,6 +3604,136 @@ class AstroApp(QMainWindow):
         """"01/11/2026 21:30 UT · Cherbourg-en-Cotentin" (or the coordinates of an unnamed place)."""
         place = item["name"] or f"{_fmt_lat(item['lat'])}, {_fmt_lon(item['lon'])}"
         return f"{history.when(item):%d/%m/%Y %H:%M} {t('chart.ut')} · {place}"
+
+    # ── Workshop ──────────────────────────────────────────────────────────
+
+    def _workshop_place(self):
+        """The place and date of the Workshop's instruments, from the side panel; None
+        when the coordinates are invalid or out of the Workshop's latitudes."""
+        import workshop
+        try:
+            dte, lat, lon = self.current_inputs()
+        except ValueError:
+            return None
+        if not 10.0 <= abs(lat) <= 80.0:
+            return None
+        name = self.entry_place.text().strip()
+        return workshop.Place(name, lat, lon, _zone(self.tz_name, lat, lon), dte)
+
+    def show_workshop(self):
+        """Window of the Workshop: an instrument, its preview, and the PDF to save."""
+        import workshop
+        place = self._workshop_place()
+        if place is None:
+            QMessageBox.information(self, t("workshop.title"), t("workshop.latitude_range"))
+            return
+        dlg = QDialog(self)
+        dlg.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        dlg.setWindowTitle(t("workshop.title"))
+        dlg.setMinimumSize(860, 640)
+        outer = QHBoxLayout(dlg)
+        outer.setContentsMargins(24, 24, 24, 16)
+        outer.setSpacing(24)
+
+        left = QVBoxLayout()
+        left.setSpacing(12)
+        left.addWidget(_label(t("workshop.title"), "sous-titre"))
+        left.addWidget(_label(tf("workshop.intro", place=place.describe()), "legende", wrap=True))
+        kinds = QComboBox()
+        for kind in workshop.INSTRUMENTS:
+            kinds.addItem(t(f"workshop.{kind}"), kind)
+        left.addWidget(InputField(t("workshop.instrument"), kinds))
+        description = _label("", "corps", wrap=True)
+        description.setMinimumWidth(280)
+        left.addWidget(description)
+        paper = QComboBox()
+        for key in workshop.PAPERS:
+            paper.addItem(t(f"workshop.paper_{key}"), key)
+        left.addWidget(InputField(t("workshop.paper"), paper))
+        left.addStretch()
+        save = _button(t("workshop.save"), "export", "principal")
+        left.addWidget(save)
+        close = _button(t("detail.close"))
+        close.clicked.connect(dlg.reject)
+        left.addWidget(close)
+        outer.addLayout(left, stretch=2)
+
+        right = QVBoxLayout()
+        right.setSpacing(8)
+        preview = QLabel()
+        preview.setObjectName("workshopPreview")
+        preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        preview.setMinimumSize(420, 560)
+        preview.setStyleSheet("background: white; border-radius: 4px;")
+        right.addWidget(preview, stretch=1)
+        nav = QHBoxLayout()
+        previous = _icon_button("previous", t("workshop.previous_page"), compact=True)
+        following = _icon_button("next", t("workshop.next_page"), compact=True)
+        page_label = _label("", "legende")
+        nav.addStretch()
+        nav.addWidget(previous)
+        nav.addWidget(page_label)
+        nav.addWidget(following)
+        nav.addStretch()
+        right.addLayout(nav)
+        outer.addLayout(right, stretch=3)
+
+        state = {"page": 0, "pages": 1}
+
+        def refresh():
+            kind, size = kinds.currentData(), paper.currentData()
+            description.setText(t(f"workshop.desc_{kind}"))
+            QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+            try:
+                png, count = workshop.preview_png(kind, place, size, state["page"], dpi=72)
+            finally:
+                QApplication.restoreOverrideCursor()
+            state["pages"] = count
+            state["page"] = min(state["page"], count - 1)
+            pixmap = QPixmap()
+            pixmap.loadFromData(png, "PNG")
+            preview.setPixmap(pixmap.scaled(preview.size() - QSize(16, 16), Qt.AspectRatioMode.KeepAspectRatio,
+                                            Qt.TransformationMode.SmoothTransformation))
+            page_label.setText(tf("workshop.page", page=state["page"] + 1, pages=count))
+            previous.setEnabled(state["page"] > 0)
+            following.setEnabled(state["page"] < count - 1)
+
+        def turn(step):
+            state["page"] = max(0, min(state["pages"] - 1, state["page"] + step))
+            refresh()
+
+        def choose():
+            state["page"] = 0
+            refresh()
+
+        def save_pdf():
+            kind = kinds.currentData()
+            default = os.path.join(os.path.expanduser("~"), f"{t(f'workshop.{kind}')}.pdf")
+            path, _filter = QFileDialog.getSaveFileName(dlg, t("workshop.save_title"), default,
+                                                        t("workshop.pdf_filter"))
+            if not path:
+                return
+            if not path.lower().endswith(".pdf"):
+                path += ".pdf"
+            QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+            try:
+                count = workshop.print_instrument(kind, path, place, paper.currentData())
+            except OSError as exc:
+                QApplication.restoreOverrideCursor()
+                QMessageBox.warning(dlg, t("errors.error_title"), tf("workshop.save_error", error=exc))
+                return
+            QApplication.restoreOverrideCursor()
+            self.statusBar().showMessage(tf("workshop.saved", path=path, pages=count), 12000)
+
+        kinds.currentIndexChanged.connect(lambda _i: choose())
+        paper.currentIndexChanged.connect(lambda _i: refresh())
+        previous.clicked.connect(lambda _checked=False: turn(-1))
+        following.clicked.connect(lambda _checked=False: turn(1))
+        save.clicked.connect(lambda _checked=False: save_pdf())
+        self._workshop_dialog = dlg
+        dlg.show()
+        refresh()
+        return dlg
 
     def _show_history_menu(self):
         """Menu under the History button: the last calculations, the most recent first."""
@@ -3297,6 +4090,8 @@ class AstroApp(QMainWindow):
             self._toggle_orrery()                         # a hidden animation does not run
         self._draw_visible_chart()
         self._refresh_coordinates()
+        if self.tabs.currentWidget() is getattr(self, "_planner_page", None):
+            self._compute_plan()                          # only when the night or the place changed
 
     def _draw_visible_chart(self):
         """Draws the chart of the shown tab when it is out of date: in real time,
@@ -3377,7 +4172,17 @@ class AstroApp(QMainWindow):
             return t(f"constellations.{ref[1]}")
         if kind == "messier":
             return _messier_label(next(o for o in messier_catalog() if o["m"] == ref[1]))
+        if kind == "deep":
+            return _messier_label(self._deep_object(ref[1]))
         return self._star_label(next(s for s in self._sky_scene["catalog"] if s["designation"] == ref[1]))
+
+    def _deep_object(self, label):
+        """A deep-sky object of the planner's catalogues or of the user's targets, by its label."""
+        custom = [planner.custom_target(**c) for c in prefs.get("planner_custom") or []]
+        for obj in list(planner.deep_sky_catalog()) + custom:
+            if planner.label(obj) == label or obj["id"] == label:
+                return obj
+        return None
 
     def _sky_targets(self):
         """Everything the search knows, [(label, search key, reference)]: the Sun, the
@@ -3433,6 +4238,14 @@ class AstroApp(QMainWindow):
             obj = self._body_object(ref[1])
         elif kind == "messier":
             obj = next(({**o, "kind": "deep_sky"} for o in self._deep_sky_all if o["m"] == ref[1]), None)
+        elif kind == "deep":
+            found = self._deep_object(ref[1])
+            if found is None:
+                return None
+            tc = AstroEngine.julian_century_j2000(self._dte)
+            alt, az = AstroEngine.stars_horizontal(tc, self._lat, self._lon, [found["ra"] / 15.0], [found["dec"]],
+                                                   self._elevation())
+            obj = {**found, "kind": "deep_sky", "alt": float(alt[0]), "az": float(az[0])}
         else:
             alt, az = scene["figures"][ref[1]]
             obj = {"kind": "figure", "name": ref[1], "alt": alt, "az": az}
@@ -3448,7 +4261,7 @@ class AstroApp(QMainWindow):
         found = self._resolve_target(self._sky_found)
         if found is None or found["kind"] == "figure" or found["alt"] <= 0:
             return
-        same = (lambda o: o.get("m") == found.get("m")) if found["kind"] == "deep_sky" else \
+        same = (lambda o: o.get("id") == found.get("id")) if found["kind"] == "deep_sky" else \
             (lambda o: o.get("name") == found.get("name"))
         if not any(o["kind"] == found["kind"] and same(o) for o in self._sky_objects):
             self._sky_objects.append(found)

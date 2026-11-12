@@ -7,6 +7,25 @@ Write for them: short sentences, as dashes, no bold or code (the window of versi
 markup as it is), about 800 characters at most (the window cuts the rest, GitHub does not). See the wiki page
 "Publier une version".
 
+## 4.11
+
+- New Workshop, from the side panel: instruments to print at true scale, cut out and assemble, computed for your
+  place.
+- A planisphere of your sky, with its date ring set for your longitude.
+- An equatorial sundial and a horizontal sundial that read your time zone's hours, with the curves of the solstices
+  and the equinoxes.
+- Each comes with sheets in your language: how to assemble it, how to use it, the astronomy behind it, the table of
+  the equation of time and an example computed for the chosen date.
+
+## 4.10
+
+- New Targets tab: what to observe or photograph tonight from here, among the Messier, Caldwell or 12,700 NGC and
+  IC objects, with your constraints (altitude, airmass, size, time in the night, distance to the Moon), the Moon and
+  the planets, and the comets brighter than magnitude 12.
+- Your own targets, a to-do list and a done list; an altitude chart of the night; export as text, JSON or image.
+- Settings: the obstacles of your horizon (also drawn on the sky map), the temperature and the pressure.
+- The settings tab is now a gear icon, at the end of the tabs.
+
 ## 4.9
 
 - Sky map: 8,400 stars down to magnitude 6.5 instead of 513, and the figures of all 88 constellations, each of which

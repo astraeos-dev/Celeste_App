@@ -64,6 +64,15 @@ The interface is translated into French, English, Spanish and German.
 - **Jupiter's moons and Saturn's rings** — in their data windows: Io, Europa, Ganymede and Callisto drawn to scale
   around Jupiter, with those in front of the planet, behind it or in its shadow; the rings of Saturn at their tilt of
   the moment, the face seen and their apparent size
+- **Targets: the night planner** — after [uptonight](https://github.com/mawinkler/uptonight): the deep-sky objects
+  of a catalogue (Messier, Caldwell, or the 12,700 NGC and IC objects of OpenNGC) that meet your constraints tonight:
+  altitude limits, airmass, size, share of the night observable, distance to the Moon (fixed or from its phase),
+  magnitude and type; ranked by the share of the night; your own targets, a to-do list (always shown) and a done
+  list (never shown); the Moon and the planets of the night; the comets brighter than magnitude 12, from Céleste's
+  table or every comet the Minor Planet Center follows; the altitude of the chosen targets through the night;
+  export as a text report, JSON or PNG
+- **Observing site** — a horizon mask (azimuth and altitude pairs: trees, houses), used by the planner and drawn on
+  the sky map; temperature and pressure for the refraction
 - **Search on the sky map** — the name of a star (Vega, "alpha cyg"), a planet, a comet, a Messier object ("m31",
   "andromeda") or a constellation: the object is circled in gold, with its altitude and direction, or its next rise
   when it is below the horizon
@@ -175,6 +184,10 @@ Changing the date computes everything again after a moment.
   elevation and time zone. A calculation is kept once you have stayed on it for a few seconds: stepping through the
   dates only keeps the date you stop on, and the real-time mode stays out. "Clear the history" empties it
   (`~/.celeste/history.json`)
+- **Workshop** — instruments to print, cut out and assemble, computed for the typed place (latitudes 10° to 80°):
+  a planisphere, an equatorial sundial and a horizontal sundial. The window previews each page and saves the PDF;
+  print it at 100 % and check the 100 mm ruler of each page. The last pages explain the assembly, the use, the
+  astronomy behind the instrument, and give an example computed for the date of the side panel
 - **Nuit · Jour · Observation** — theme selector, at the bottom of the side panel
 
 **Events:** the buttons of the tab search for the eclipses of the next 12 lunations, the events of the coming year and
@@ -253,6 +266,10 @@ Celeste_App/
 ├── settings.py          # Persistent preferences (~/.celeste/settings.json)
 ├── places.py            # Offline place search (GeoNames cities)
 ├── history.py           # The last calculations (~/.celeste/history.json)
+├── planner.py           # Night planner: targets of the night under the observer's constraints
+├── mpc.py               # Comet elements of the Minor Planet Center (~/.celeste/CometEls.txt)
+├── instruments.py       # Geometry of the instruments to make: planisphere, sundials, astrolabe (no Qt)
+├── workshop.py          # The Workshop: PDF pages at true scale and their explanation sheets
 ├── satellites.py        # Orbital elements (TLE) of the satellites: download, checks, cache
 ├── constellations.py    # Usual names of the bright stars
 ├── star_catalog.py      # 8,404 stars (Yale Bright Star Catalogue, magnitude ≤ 6.5), generated
@@ -459,8 +476,23 @@ launch, SmartScreen shows "Windows protected your PC" (*More info*, then *Run an
 ### Engineering and quality
 
 - [x] **Unit tests** — pytest on the engine, the charts, the interface (off screen), the themes, the updates,
-  `utils.py` and `i18n.py` (13 files, ~650 cases)
+  `utils.py` and `i18n.py` (16 files, ~750 cases)
 - [x] **Windows executable** — standalone `Celeste.exe` (PyInstaller), ephemeris downloaded at the first launch
+
+### Workshop: instruments to make
+
+- [x] **Prototype** — `instruments.py`: the plate and the rete of an astrolabe for any latitude, PDF at true scale
+- [x] **Workshop 1** (4.11) — the Workshop window; planisphere, equatorial and horizontal sundials computed for the
+  place, with assembly, use and astronomy sheets in four languages
+- [ ] **Workshop 2 and 3** — the complete astrolabe, the nocturnal, the horary quadrant, a declining wall dial and a
+  noon mark. The design: [docs/INSTRUMENTS.md](docs/INSTRUMENTS.md)
+
+### Version 5: Android
+
+- [ ] **PySide6** (4.12) — Qt for Python, whose official tool builds Android apps; a first APK in GitHub Actions
+- [ ] **Compact layout** (4.13) — the same Qt interface below 600 pixels of width: drawer, bottom bar, touch targets
+- [ ] **Android app** (5.0) — the same code as the desktop, with the phone's location and a sky map following the
+  phone. The plan: [docs/ANDROID.md](docs/ANDROID.md)
 
 ---
 

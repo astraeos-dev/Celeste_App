@@ -91,14 +91,30 @@ jobs:
           ls ~/.pyside6_android_deploy
 
       - name: Build the APK
+        env:
+          QT_QPA_PLATFORM: offscreen
         run: |
+          sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libfontconfig1 libdbus-1-3
           project="$RUNNER_TEMP/celeste-android"
           mkdir -p "$project"
           cp android/main.py config.py "$project/"
+          python android/make_images.py "$project"            # icon.png (launcher), logo.png
           cd "$project"
-          pyside6-android-deploy --name Celeste -f -v \
-            --wheel-pyside="$RUNNER_TEMP/wheels/pyside6-$PYSIDE_VERSION-$PYSIDE_VERSION-$WHEEL_TAG-android_$ARCH.whl" \
-            --wheel-shiboken="$RUNNER_TEMP/wheels/shiboken6-$PYSIDE_VERSION-$PYSIDE_VERSION-$WHEEL_TAG-android_$ARCH.whl"
+          wheels=(--wheel-pyside="$RUNNER_TEMP/wheels/pyside6-$PYSIDE_VERSION-$PYSIDE_VERSION-$WHEEL_TAG-android_$ARCH.whl"
+                  --wheel-shiboken="$RUNNER_TEMP/wheels/shiboken6-$PYSIDE_VERSION-$PYSIDE_VERSION-$WHEEL_TAG-android_$ARCH.whl")
+          # the configuration first, to give it Céleste's icon, then the build
+          pyside6-android-deploy --init --name Celeste -f "${wheels[@]}"
+          python - "$project/pysidedeploy.spec" "$project/icon.png" <<'PY'
+          import configparser, sys
+          spec = configparser.ConfigParser(comment_prefixes="#", allow_no_value=True, interpolation=None)
+          spec.optionxform = str
+          spec.read(sys.argv[1])
+          spec["app"]["icon"] = sys.argv[2]
+          with open(sys.argv[1], "w") as f:
+              spec.write(f)
+          print("icon:", spec["app"]["icon"])
+          PY
+          pyside6-android-deploy -c pysidedeploy.spec -f -v "${wheels[@]}"
           ls -l
           apk=$(ls *.apk | head -1)
           test -n "$apk"

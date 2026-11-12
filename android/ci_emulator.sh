@@ -12,8 +12,13 @@ sleep 45
 adb logcat -d > logcat.txt
 echo "--- process"
 adb shell pidof "$package" || echo "not running"
-echo "--- what the app and the system said about it"
-grep -E "python|Python|Qt|qt\.|Céleste|Celeste|AndroidRuntime|FATAL|linker|dlopen|$package" logcat.txt | grep -v "extracting _python_bundle" | tail -200
+echo "--- everything the app's process wrote (but the unpacking), and the crash reports"
+pid=$(sed -n "s/.*Start proc \([0-9]*\):$package.*/\1/p" logcat.txt | tail -1)
+echo "pid: ${pid:-unknown}"
+if [ -n "$pid" ]; then
+  grep -E "^\S+ \S+ +$pid " logcat.txt | grep -v "extracting _python_bundle" | tail -250
+fi
+grep -E " F |DEBUG +:|libc +:|crash_dump|tombstone|Fatal signal|backtrace" logcat.txt | tail -80
 if grep -q "android self-test OK" logcat.txt; then
   echo "Céleste started on the emulator"
 else

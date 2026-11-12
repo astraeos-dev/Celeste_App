@@ -13,6 +13,8 @@ pyside6-android-deploy requires the entry point to be named main.py.
 import platform
 import sys
 
+print("Céleste android: Python", platform.python_version(), "started", flush=True)
+
 from PySide6.QtCore import Qt, qVersion
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QApplication, QLabel, QVBoxLayout, QWidget
@@ -70,4 +72,11 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        code = main()
+    except BaseException:                  # in logcat (tag python) rather than a silent exit
+        import traceback
+        traceback.print_exc()
+        sys.stdout.flush()
+        raise
+    sys.exit(code)

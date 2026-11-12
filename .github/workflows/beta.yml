@@ -15,7 +15,7 @@ on:
   workflow_dispatch:
   push:
     branches: [ "claude/**", "beta/**" ]
-    paths-ignore: [ "**.md", "docs/**" ]
+    paths-ignore: [ "**.md", "docs/**", "android/**", ".github/workflows/android.yml" ]
 
 permissions:
   contents: write

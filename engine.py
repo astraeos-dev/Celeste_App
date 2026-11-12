@@ -47,6 +47,11 @@ v4.3:
   • Sedna among MINOR_PLANETS; MINOR_PLANET_NUMBERS, the Minor Planet
     Center's numbers ("(136199) Eris")
 
+v4.9:
+  • COMETS, COMET_DESIGNATIONS, COMET_SHORT — read from the comet table:
+    scripts/make_comets.py is the only place where a comet is declared
+  • the star catalogue goes down to magnitude 6.5 (8,404 stars)
+
 v4.8:
   • galilean_moons() — Io, Europa, Ganymede and Callisto around Jupiter (Meeus,
     chap. 44): position, transit, occultation, eclipse, shadow on the disc

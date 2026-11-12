@@ -7,6 +7,14 @@ Write for them: short sentences, as dashes, no bold or code (the window of versi
 markup as it is), about 800 characters at most (the window cuts the rest, GitHub does not). See the wiki page
 "Publier une version".
 
+## 4.9
+
+- Sky map: 8,400 stars down to magnitude 6.5 instead of 513, and the figures of all 88 constellations, each of which
+  can be found by its name.
+- The sky map now shows the sky as you see it: north up, east on the left.
+- The map of the Solar System has its own tab, and the Planets tab shows all the bodies at once.
+- Comet C/2025 A6 (Lemmon) joins the comets followed.
+
 ## 4.8
 
 - History: the History button (Ctrl+H) lists your last calculations and brings one back in a click, with its date,

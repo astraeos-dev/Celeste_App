@@ -207,6 +207,24 @@ class TestBodiesAndComets:
             assert exact is not None and abs(exact - approx) < 0.1, element["designation"]
 
 
+class TestWithoutPandas:
+    def test_comets_without_pandas(self):
+        """The Windows build leaves pandas out, which skyfield.data.mpc imports."""
+        import subprocess
+        code = ("import sys\n"
+                "class Block:\n"
+                "    def find_spec(self, name, path, target=None):\n"
+                "        if name.split('.')[0] == 'pandas': raise ImportError('no pandas')\n"
+                "sys.meta_path.insert(0, Block())\n"
+                "import mpc\nfrom engine import _sky\n"
+                "e = mpc.parse(open('tests/data/CometEls_sample.txt', encoding='ascii').read())[0]\n"
+                "print(round(mpc.magnitude(e, _sky()['ts'].ut1_jd(2461346.0)), 2))\n")
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        out = subprocess.run([sys.executable, "-c", code], cwd=root, capture_output=True, text=True)
+        assert out.returncode == 0, out.stderr
+        assert float(out.stdout) > 10
+
+
 class TestMpcFile:
     def test_refresh_keeps_a_recent_file(self, tmp_path, monkeypatch):
         sample = open(os.path.join(os.path.dirname(__file__), "data", "CometEls_sample.txt"), encoding="ascii").read()

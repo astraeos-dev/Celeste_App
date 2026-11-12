@@ -64,6 +64,15 @@ The interface is translated into French, English, Spanish and German.
 - **Jupiter's moons and Saturn's rings** — in their data windows: Io, Europa, Ganymede and Callisto drawn to scale
   around Jupiter, with those in front of the planet, behind it or in its shadow; the rings of Saturn at their tilt of
   the moment, the face seen and their apparent size
+- **Targets: the night planner** — after [uptonight](https://github.com/mawinkler/uptonight): the deep-sky objects
+  of a catalogue (Messier, Caldwell, or the 12,700 NGC and IC objects of OpenNGC) that meet your constraints tonight:
+  altitude limits, airmass, size, share of the night observable, distance to the Moon (fixed or from its phase),
+  magnitude and type; ranked by the share of the night; your own targets, a to-do list (always shown) and a done
+  list (never shown); the Moon and the planets of the night; the comets brighter than magnitude 12, from Céleste's
+  table or every comet the Minor Planet Center follows; the altitude of the chosen targets through the night;
+  export as a text report, JSON or PNG
+- **Observing site** — a horizon mask (azimuth and altitude pairs: trees, houses), used by the planner and drawn on
+  the sky map; temperature and pressure for the refraction
 - **Search on the sky map** — the name of a star (Vega, "alpha cyg"), a planet, a comet, a Messier object ("m31",
   "andromeda") or a constellation: the object is circled in gold, with its altitude and direction, or its next rise
   when it is below the horizon
@@ -253,6 +262,8 @@ Celeste_App/
 ├── settings.py          # Persistent preferences (~/.celeste/settings.json)
 ├── places.py            # Offline place search (GeoNames cities)
 ├── history.py           # The last calculations (~/.celeste/history.json)
+├── planner.py           # Night planner: targets of the night under the observer's constraints
+├── mpc.py               # Comet elements of the Minor Planet Center (~/.celeste/CometEls.txt)
 ├── satellites.py        # Orbital elements (TLE) of the satellites: download, checks, cache
 ├── constellations.py    # Usual names of the bright stars
 ├── star_catalog.py      # 8,404 stars (Yale Bright Star Catalogue, magnitude ≤ 6.5), generated
@@ -459,8 +470,14 @@ launch, SmartScreen shows "Windows protected your PC" (*More info*, then *Run an
 ### Engineering and quality
 
 - [x] **Unit tests** — pytest on the engine, the charts, the interface (off screen), the themes, the updates,
-  `utils.py` and `i18n.py` (13 files, ~650 cases)
+  `utils.py` and `i18n.py` (14 files, ~690 cases)
 - [x] **Windows executable** — standalone `Celeste.exe` (PyInstaller), ephemeris downloaded at the first launch
+
+### Version 5: Android
+
+- [ ] **Shared core** (4.11) — the Qt-free modules in one `celeste` package, with a JSON-ready API
+- [ ] **Android app** (5.0) — Kotlin and Jetpack Compose interface on the same Python engine (Chaquopy): Tonight,
+  sky map following the phone, Targets, Events, notifications and a widget. The plan: [docs/ANDROID.md](docs/ANDROID.md)
 
 ---
 

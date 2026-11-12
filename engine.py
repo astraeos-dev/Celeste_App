@@ -47,6 +47,10 @@ v4.3:
   • Sedna among MINOR_PLANETS; MINOR_PLANET_NUMBERS, the Minor Planet
     Center's numbers ("(136199) Eris")
 
+v4.10:
+  • the night planner (planner.py, mpc.py) builds on this engine: _fast_time,
+    _local_day, observations(), comets_at(), find_events()
+
 v4.9:
   • COMETS, COMET_DESIGNATIONS, COMET_SHORT — read from the comet table:
     scripts/make_comets.py is the only place where a comet is declared

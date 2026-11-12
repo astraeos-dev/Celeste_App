@@ -50,23 +50,23 @@ def parse(text):
     return comets
 
 
-class _Row(dict):
-    """What skyfield.data.mpc.comet_orbit reads: the columns as attributes and items."""
-    __getattr__ = dict.__getitem__
-
-
 def target(element):
-    """Skyfield vector of the comet, from the Solar System barycentre (as the
-    planets), for observe()."""
+    """
+    Skyfield vector of the comet, from the Solar System barycentre (as the
+    planets), for observe(). What skyfield.data.mpc.comet_orbit() does,
+    without that module, which imports pandas (left out of the Windows build).
+    """
     from engine import _sky
-    from skyfield.data.mpc import comet_orbit
+    from skyfield.data.spice import inertial_frames
+    from skyfield.keplerlib import _KeplerOrbit
     sky = _sky()
+    q, e = element["q"], element["e"]
+    p = q * 2.0 if e == 1.0 else q / (1.0 - e) * (1.0 - e * e)
     year, month, day = element["perihelion"]
-    row = _Row(designation=element["designation"], perihelion_year=year, perihelion_month=month,
-               perihelion_day=day, perihelion_distance_au=element["q"], eccentricity=element["e"],
-               argument_of_perihelion_degrees=element["peri"],
-               longitude_of_ascending_node_degrees=element["node"], inclination_degrees=element["i"])
-    return sky["sun"] + comet_orbit(row, sky["ts"], _GM_SUN_KM3_S2)
+    orbit = _KeplerOrbit._from_periapsis(p, e, element["i"], element["node"], element["peri"],
+                                         sky["ts"].tt(year, month, day), _GM_SUN_KM3_S2, 10, element["designation"])
+    orbit._rotation = inertial_frames["ECLIPJ2000"].T
+    return sky["sun"] + orbit
 
 
 def magnitudes(elements, time_):

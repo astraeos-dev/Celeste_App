@@ -295,7 +295,7 @@
     "horizon": "Horizon",
     "mag_limit": "Limiting magnitude",
     "mag_tip": "Stars fainter than this magnitude are hidden",
-    "hint": "Zenith at the centre, horizon on the circle. Hover over an object to identify it, click to open its card.",
+    "hint": "Zenith at the centre, horizon on the circle. Hover over an object to identify it, click to open its card. Wheel to zoom, drag to move around.",
     "cardinal_n": "N",
     "cardinal_ne": "NE",
     "cardinal_e": "E",
@@ -311,7 +311,10 @@
     "found": "{name}: altitude {alt}, direction {dir} (azimuth {az}), circled in gold on the map.",
     "found_below": "{name} is below the horizon ({alt}).",
     "found_below_rise": "{name} is below the horizon ({alt}); it rises at {time}.",
-    "not_found": "No object named “{name}”."
+    "not_found": "No object named “{name}”.",
+    "zoom_out": "Zoom out",
+    "zoom_in": "Zoom in (also with the wheel, on the pointer)",
+    "zoom_reset": "Back to the whole sky (or double-click)"
   },
   "detail": {
     "title": "Details — {name}",

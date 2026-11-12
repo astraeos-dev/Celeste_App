@@ -55,7 +55,7 @@ The interface is translated into French, English, Spanish and German.
   location settings
 - **24-hour paths** — altitude curves over a background coloured by the time of day (day, twilights, night), over the
   local day (local time below, UT above), tooltip on hover
-- **Polar sky map** — zenith at the centre, north up and east on the left as in the sky, 8,404 stars down to magnitude 6.5
+- **Polar sky map** — zoom up to ×12 (wheel on the pointer, buttons; drag to move around), zenith at the centre, north up and east on the left as in the sky, 8,404 stars down to magnitude 6.5
   (Yale Bright Star Catalogue, brought to the
   date: proper motion, precession, nutation, aberration) sized by magnitude, the figures of the 88 constellations, planets; tooltip on hover
   and detailed card on click (constellation, magnitude, coordinates)

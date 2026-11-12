@@ -8,6 +8,11 @@ from ui import common
 from ui.common import *  # noqa: F401,F403
 
 
+SKY_HALF = 1.17          # half the width of the whole map (charts.draw_sky_map)
+SKY_ZOOM_STEP = 1.25     # a notch of the wheel, a click of the buttons
+SKY_ZOOM_MAX = 12.0
+
+
 class SkySpace:
     def _build_trajectories_tab(self):
         page, self.fig_traj, self.canvas_traj = self._chart_page(
@@ -40,6 +45,17 @@ class SkySpace:
         self._messier_box.setChecked(bool(prefs.get("show_messier")))
         self._messier_box.toggled.connect(self._on_messier_toggled)
         bar.addWidget(self._messier_box)
+        bar.addSpacing(12)
+        # zoom: the wheel (on the pointer), these buttons, a drag to move around
+        for key, tip, slot in (("zoom_out", "skymap.zoom_out", lambda: self._sky_zoom_by(1 / SKY_ZOOM_STEP)),
+                               ("zoom_in", "skymap.zoom_in", lambda: self._sky_zoom_by(SKY_ZOOM_STEP)),
+                               ("reset", "skymap.zoom_reset", lambda: self._sky_reset_view())):
+            button = _icon_button(key, t(tip), compact=True)
+            button.clicked.connect(slot)
+            bar.addWidget(button)
+        self._sky_zoom_lbl = _label("", "donnee")
+        self._sky_zoom_lbl.setMinimumWidth(40)
+        bar.addWidget(self._sky_zoom_lbl)
         bar.addStretch()
         # find a star, a planet, a Messier object or a constellation by its name
         self._find_entry = QLineEdit()
@@ -69,8 +85,14 @@ class SkySpace:
         self._sky_ax = None
         self._sky_tip = _TooltipLayer(self.canvas_sky)
         self.canvas_sky.mpl_connect("motion_notify_event", self._on_sky_hover)
-        self.canvas_sky.mpl_connect("button_press_event", self._on_sky_click)
+        self.canvas_sky.mpl_connect("button_press_event", self._on_sky_press)
+        self.canvas_sky.mpl_connect("button_release_event", self._on_sky_release)
+        self.canvas_sky.mpl_connect("scroll_event", self._on_sky_scroll)
         self.canvas_sky.mpl_connect("figure_leave_event", self._on_sky_leave)
+        if not hasattr(self, "_sky_zoom"):                 # kept through the rebuilds
+            self._sky_zoom, self._sky_center = 1.0, (0.0, 0.0)
+        self._sky_drag = None
+        self._show_sky_zoom()
         self._sky_page = page
         self._add_page(page, t("tabs.skymap"))
 
@@ -112,6 +134,9 @@ class SkySpace:
             highlight = {"x": found["x"], "y": found["y"], "label": self._target_label(self._sky_found),
                          "wide": found["kind"] == "figure"}
         self._sky_ax, tip = charts.draw_sky_map(self.fig_sky, self._sky_scene, labels, highlight)
+        for text in self._sky_ax.texts:                    # zoomed in: no label outside the map
+            text.set_clip_on(True)
+        self._apply_sky_view()
         self._show_find_result()
         self._sky_tip.attach(tip)
         self._sky_hover = None
@@ -341,7 +366,79 @@ class SkySpace:
     def _sky_object_at(self, event):
         if event.inaxes is not self._sky_ax or event.xdata is None:
             return None
-        return charts.hit_test(self._sky_objects, event.xdata, event.ydata)
+        return charts.hit_test(self._sky_objects, event.xdata, event.ydata, radius=0.06 / self._sky_zoom)
+
+    # ── Zoom and move on the sky map ──────────────────────────────────────────
+
+    def _apply_sky_view(self):
+        """The map's limits for the zoom and the centre."""
+        ax = self._sky_ax
+        if ax is None:
+            return
+        half = SKY_HALF / self._sky_zoom
+        cx, cy = self._sky_center
+        ax.set_xlim(cx - half, cx + half)
+        ax.set_ylim(cy - half, cy + half)
+
+    def _show_sky_zoom(self):
+        label = getattr(self, "_sky_zoom_lbl", None)
+        if label is not None:
+            label.setText("" if self._sky_zoom == 1.0 else f"×{_num(self._sky_zoom, 1)}")
+
+    def _sky_set_view(self, zoom, center):
+        zoom = min(SKY_ZOOM_MAX, max(1.0, zoom))
+        limit = SKY_HALF - SKY_HALF / zoom                 # the map's edge stays in view
+        cx, cy = center
+        self._sky_zoom = zoom
+        self._sky_center = (0.0, 0.0) if zoom == 1.0 else (max(-limit, min(limit, cx)),
+                                                          max(-limit, min(limit, cy)))
+        self._show_sky_zoom()
+        if self._sky_ax is not None:
+            self._apply_sky_view()
+            self._sky_tip.hide()
+            self.canvas_sky.draw_idle()
+
+    def _sky_zoom_by(self, factor, at=None):
+        """Zooms by *factor*, keeping the point *at* (map coordinates) under the pointer."""
+        cx, cy = self._sky_center
+        px, py = at if at is not None else (cx, cy)
+        zoom = min(SKY_ZOOM_MAX, max(1.0, self._sky_zoom * factor))
+        ratio = self._sky_zoom / zoom
+        self._sky_set_view(zoom, (px + (cx - px) * ratio, py + (cy - py) * ratio))
+
+    def _sky_reset_view(self):
+        self._sky_set_view(1.0, (0.0, 0.0))
+
+    def _on_sky_scroll(self, event):
+        if event.inaxes is not self._sky_ax or event.xdata is None:
+            return
+        step = getattr(event, "step", 0) or (1 if event.button == "up" else -1)
+        self._sky_zoom_by(SKY_ZOOM_STEP ** step, (event.xdata, event.ydata))
+
+    def _on_sky_press(self, event):
+        if getattr(event, "button", None) != 1 or event.inaxes is not self._sky_ax:
+            return
+        if getattr(event, "dblclick", False):
+            self._sky_reset_view()
+            return
+        self._sky_drag = (event.x, event.y, self._sky_center, False)
+
+    def _sky_drag_move(self, event):
+        """Moving the pressed pointer: the map follows it (when zoomed in)."""
+        x0, y0, center, moved = self._sky_drag
+        if not moved and math.hypot(event.x - x0, event.y - y0) < 5:
+            return
+        self._sky_drag = (x0, y0, center, True)
+        if self._sky_zoom == 1.0 or self._sky_ax is None:
+            return
+        inverse = self._sky_ax.transData.inverted()
+        (ax0, ay0), (ax1, ay1) = inverse.transform([(x0, y0), (event.x, event.y)])
+        self._sky_set_view(self._sky_zoom, (center[0] - (ax1 - ax0), center[1] - (ay1 - ay0)))
+
+    def _on_sky_release(self, event):
+        drag, self._sky_drag = self._sky_drag, None
+        if drag is not None and not drag[3]:
+            self._on_sky_click(event)                      # a click, not a drag: the object's card
 
     def _on_sky_leave(self, _event):
         self.canvas_sky.unsetCursor()
@@ -349,6 +446,10 @@ class SkySpace:
         self._sky_tip.hide()
 
     def _on_sky_hover(self, event):
+        if self._sky_drag is not None and getattr(event, "x", None) is not None:
+            self._sky_drag_move(event)
+            if self._sky_drag[3]:
+                return
         tip = self._sky_tip.artist
         if tip is None:
             return

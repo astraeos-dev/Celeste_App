@@ -2236,3 +2236,57 @@ class TestCompactLayout:
         _pump(qapp, 5)
         assert window.is_compact()
         assert window.tabs.tabPosition() == self.QTabWidget.TabPosition.South
+
+
+class TestSkyMapZoom:
+    @staticmethod
+    def _sky(window, qapp):
+        window.show_page(window._sky_page)
+        _pump(qapp, 3)
+        window.canvas_sky.draw()
+        return window._sky_ax
+
+    def test_whole_sky_by_default(self, window, qapp):
+        ax = self._sky(window, qapp)
+        assert ax.get_xlim() == pytest.approx((-1.17, 1.17))
+        assert window._sky_zoom_lbl.text() == ""
+
+    def test_zoom_keeps_the_point_under_the_pointer(self, window, qapp):
+        ax = self._sky(window, qapp)
+        window._sky_zoom_by(2.0, (0.5, 0.2))
+        x0, x1 = ax.get_xlim()
+        assert x1 - x0 == pytest.approx(1.17)
+        # the point (0.5, 0.2) stays at the same fraction of the view
+        assert (0.5 - x0) / (x1 - x0) == pytest.approx((0.5 + 1.17) / 2.34)
+        assert window._sky_zoom_lbl.text() == "×2,0"
+
+    def test_kept_when_the_map_is_redrawn(self, window, qapp):
+        ax = self._sky(window, qapp)
+        window._sky_zoom_by(3.0, (0.0, 0.5))
+        window.calculate()
+        window._dirty.add("sky")
+        window._draw_visible_chart()
+        x0, x1 = window._sky_ax.get_xlim()
+        assert x1 - x0 == pytest.approx(2.34 / 3.0)
+        window._sky_reset_view()
+        assert window._sky_ax.get_xlim() == pytest.approx((-1.17, 1.17))
+
+    def test_limits(self, window, qapp):
+        self._sky(window, qapp)
+        window._sky_zoom_by(0.5)
+        assert window._sky_zoom == 1.0
+        window._sky_zoom_by(1000.0, (5.0, 5.0))
+        assert window._sky_zoom == 12.0
+        cx, cy = window._sky_center
+        assert cx <= 1.17 and cy <= 1.17                       # the map's edge stays in view
+
+    def test_drag_moves_a_zoomed_map(self, window, qapp):
+        from matplotlib.backend_bases import MouseEvent
+        ax = self._sky(window, qapp)
+        window._sky_zoom_by(4.0)
+        x, y = ax.transData.transform((0.0, 0.0))
+        window._on_sky_press(MouseEvent("button_press_event", window.canvas_sky, x, y, button=1))
+        window._on_sky_hover(MouseEvent("motion_notify_event", window.canvas_sky, x + 60, y, button=1))
+        window._on_sky_release(MouseEvent("button_release_event", window.canvas_sky, x + 60, y, button=1))
+        assert window._sky_center[0] < 0                     # dragged right: the view moved left
+        assert window._sky_drag is None

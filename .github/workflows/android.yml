@@ -4,7 +4,10 @@ name: Android — test APK
 # official tool of Qt for Python, pyside6-android-deploy:
 #   1. the Android wheels of PySide6 and Shiboken (download.qt.io), for arm64 phones;
 #   2. the Android NDK and SDK, downloaded by pyside-setup's script (cached);
-#   3. the debug APK (python-for-android, Qt bootstrap), kept as an artifact.
+#   3. the debug APK (python-for-android, Qt bootstrap), kept as an artifact, for arm64
+#      phones and for the x86_64 emulator;
+#   4. the x86_64 APK started on an Android emulator: its system log (logcat) is kept,
+#      and main.py's self-test line must be in it.
 # 4.14: the smallest app (version, theme): the tools are settled before the interface
 # moves; the engine and the full interface come with the 5.0 alpha.
 on:
@@ -22,13 +25,18 @@ concurrency:
 
 env:
   PYSIDE_VERSION: "6.11.3"          # the desktop's PySide6; its Android wheels are for CPython 3.11
-  ARCH: aarch64
 
 jobs:
   apk:
-    name: APK (arm64)
+    name: APK (${{ matrix.arch }})
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [ aarch64, x86_64 ]
+    env:
+      ARCH: ${{ matrix.arch }}
     steps:
       - uses: actions/checkout@v4
 
@@ -69,7 +77,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.pyside6_android_deploy
-          key: android-ndk-sdk-${{ env.PYSIDE_VERSION }}
+          key: android-ndk-sdk-${{ env.PYSIDE_VERSION }}-${{ matrix.arch }}
 
       - name: Android NDK and SDK
         run: |
@@ -91,10 +99,50 @@ jobs:
           test -n "$apk"
           mkdir -p "$GITHUB_WORKSPACE/dist"
           version=$(python -c "import sys; sys.path.insert(0, '$GITHUB_WORKSPACE'); from config import APP_VERSION; print(APP_VERSION)")
-          cp "$apk" "$GITHUB_WORKSPACE/dist/Celeste-$version-android-arm64-debug.apk"
+          cp "$apk" "$GITHUB_WORKSPACE/dist/Celeste-$version-android-$ARCH-debug.apk"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Celeste-Android-arm64
+          name: Celeste-Android-${{ matrix.arch }}
           path: dist/*.apk
           if-no-files-found: error
+
+  emulator:
+    name: Start on an emulator (x86_64)
+    needs: apk
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: Celeste-Android-x86_64
+          path: apk
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Package name
+        id: package
+        run: |
+          apk=$(ls apk/*.apk | head -1)
+          aapt=$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)aapt2
+          package=$("$aapt" dump badging "$apk" | sed -n "s/^package: name='\([^']*\)'.*/\1/p")
+          echo "$apk: $package"
+          echo "apk=$apk" >> "$GITHUB_OUTPUT"
+          echo "package=$package" >> "$GITHUB_OUTPUT"
+      - name: Start Céleste on the emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          script: bash android/ci_emulator.sh "${{ steps.package.outputs.apk }}" "${{ steps.package.outputs.package }}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Celeste-Android-logcat
+          path: logcat.txt
+          if-no-files-found: ignore

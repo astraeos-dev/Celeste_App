@@ -295,7 +295,7 @@
     "horizon": "Horizon",
     "mag_limit": "Magnitude limite",
     "mag_tip": "Les étoiles plus faibles que cette magnitude sont masquées",
-    "hint": "Zénith au centre, horizon sur le cercle. Survolez un astre pour l'identifier, cliquez pour afficher sa fiche.",
+    "hint": "Zénith au centre, horizon sur le cercle. Survolez un astre pour l'identifier, cliquez pour afficher sa fiche. Molette pour zoomer, glisser pour se déplacer.",
     "cardinal_n": "N",
     "cardinal_ne": "NE",
     "cardinal_e": "E",
@@ -311,7 +311,10 @@
     "found": "{name} : hauteur {alt}, direction {dir} (azimut {az}), cerclé d'or sur la carte.",
     "found_below": "{name} est sous l'horizon ({alt}).",
     "found_below_rise": "{name} est sous l'horizon ({alt}) ; lever à {time}.",
-    "not_found": "Aucun astre nommé « {name} »."
+    "not_found": "Aucun astre nommé « {name} ».",
+    "zoom_out": "Dézoomer",
+    "zoom_in": "Zoomer (aussi à la molette, sur le pointeur)",
+    "zoom_reset": "Revenir au ciel entier (ou double-clic)"
   },
   "detail": {
     "title": "Fiche — {name}",

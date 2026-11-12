@@ -11,6 +11,7 @@ markup as it is), about 800 characters at most (the window cuts the rest, GitHub
 
 - On a narrow window, and soon on phones: a compact layout, with the date and the place in a drawer, the five spaces in
   a bar at the bottom and larger touch targets.
+- Sky map: zoom with the wheel or the buttons, drag to move around, double-click for the whole sky.
 - Targets: on a narrow screen, the constraints have a page of their own.
 - Also since 4.12: the five spaces (Tonight, Sky, Bodies, Calendar, Observe), Céleste's icon in the taskbar, and Qt
   for Python (PySide6) under the hood.

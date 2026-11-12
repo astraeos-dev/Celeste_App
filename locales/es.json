@@ -295,7 +295,7 @@
     "horizon": "Horizonte",
     "mag_limit": "Magnitud límite",
     "mag_tip": "Se ocultan las estrellas más débiles que esta magnitud",
-    "hint": "Cenit en el centro, horizonte en el círculo. Pase el ratón sobre un astro para identificarlo y haga clic para ver su ficha.",
+    "hint": "Cenit en el centro, horizonte en el círculo. Pase el ratón sobre un astro para identificarlo y haga clic para ver su ficha. Rueda para acercar, arrastrar para desplazarse.",
     "cardinal_n": "N",
     "cardinal_ne": "NE",
     "cardinal_e": "E",
@@ -311,7 +311,10 @@
     "found": "{name}: altura {alt}, dirección {dir} (acimut {az}), rodeado de oro en el mapa.",
     "found_below": "{name} está bajo el horizonte ({alt}).",
     "found_below_rise": "{name} está bajo el horizonte ({alt}); sale a las {time}.",
-    "not_found": "Ningún astro llamado «{name}»."
+    "not_found": "Ningún astro llamado «{name}».",
+    "zoom_out": "Alejar",
+    "zoom_in": "Acercar (también con la rueda, sobre el puntero)",
+    "zoom_reset": "Volver al cielo entero (o doble clic)"
   },
   "detail": {
     "title": "Ficha — {name}",

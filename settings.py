@@ -68,6 +68,8 @@ _DEFAULTS = {
     "env_temperature": 10.0,        # °C, for the refraction
     "env_pressure":   1010.0,       # hPa; 0: no refraction
     "horizon_points": [],           # horizon mask: [[azimuth, altitude], ...] degrees
+    "bortle":         0,            # light pollution of the place, Bortle class 1–9; 0: not given
+    "weather_forecast": False,      # quality of the night: the clouds forecast by Open-Meteo
     "planner_constraints": {},      # the user's values of planner.DEFAULTS
     "planner_bucket": [],           # targets always shown
     "planner_done":   [],           # targets never shown

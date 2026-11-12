@@ -49,6 +49,7 @@ import charts  # noqa: E402
 import history  # noqa: E402
 import icons  # noqa: E402
 import mpc  # noqa: E402
+import night_quality  # noqa: E402
 import planner  # noqa: E402
 import places  # noqa: E402
 import satellites  # noqa: E402
@@ -732,6 +733,66 @@ class DataCard(QFrame):
         self.unit.setText(unit)
         self.unit.setVisible(bool(unit))
         self.detail.setText(detail)
+
+
+class NightStrip(QWidget):
+    """
+    The hours of the night side by side, from dusk to dawn: each cell in the
+    colour of its score (ciel-200 for a lost hour, signal-ok for a perfect
+    one), a lune-coloured bar over the hours with the Moon up, the hour under
+    every other cell. The tooltip gives the hour's score, clouds and Moon.
+    """
+
+    CELL_H, MOON_H, LABEL_H = 18, 4, 16
+
+    def __init__(self):
+        super().__init__()
+        self._hours, self._labels, self._tips = [], [], []
+        self.setMouseTracking(True)
+        self.setFixedHeight(self.MOON_H + 3 + self.CELL_H + 2 + self.LABEL_H)
+        self.setMinimumWidth(120)
+
+    def set_hours(self, hours, labels, tips):
+        """*hours*: night_quality's hours; *labels*, *tips*: their hour text and tooltip."""
+        self._hours, self._labels, self._tips = list(hours), list(labels), list(tips)
+        self.setAccessibleDescription(" · ".join(tips))
+        self.update()
+
+    def _cell(self, i):
+        n = max(1, len(self._hours))
+        w = self.width() / n
+        return QRectF(i * w + 1, self.MOON_H + 3, max(1.0, w - 2), self.CELL_H)
+
+    def paintEvent(self, _event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        font = QFont(self.font())
+        font.setPixelSize(11)
+        p.setFont(font)
+        for i, hour in enumerate(self._hours):
+            cell = self._cell(i)
+            p.setPen(Qt.PenStyle.NoPen)
+            p.setBrush(QColor(mix(Config.SIGNAL_OK, Config.CIEL_200, hour["score"] / 100.0)))
+            p.drawRoundedRect(cell, 3, 3)
+            if hour["glare"] > 0:
+                moon = QColor(Config.LUNE)
+                moon.setAlphaF(0.35 + 0.65 * min(1.0, hour["glare"]))
+                p.setBrush(moon)
+                p.drawRoundedRect(QRectF(cell.x(), 0, cell.width(), self.MOON_H), 2, 2)
+            if i % 2 == 0 and i < len(self._labels):
+                p.setPen(QColor(Config.ENCRE_ATTENUEE))
+                p.drawText(QRectF(cell.x() - 8, cell.bottom() + 2, cell.width() + 16, self.LABEL_H),
+                           Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop, self._labels[i])
+        p.end()
+
+    def mouseMoveEvent(self, event):
+        x = event.position().x()
+        n = len(self._hours)
+        i = int(x / max(1.0, self.width() / max(1, n))) if n else -1
+        if 0 <= i < len(self._tips):
+            QToolTip.showText(event.globalPosition().toPoint(), self._tips[i], self)
+        else:
+            QToolTip.hideText()
 
 
 class MoonPhase(QWidget):

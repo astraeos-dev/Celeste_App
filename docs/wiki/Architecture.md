@@ -13,6 +13,7 @@ Le projet suit le modèle **modèle-vue-contrôleur** : le moteur calcule, l'int
 | [`i18n.py`](https://github.com/astraeos-dev/Celeste_App/blob/master/i18n.py) | `t("clé")`, `tf("clé", valeur=…)`, choix de la langue |
 | [`updater.py`](https://github.com/astraeos-dev/Celeste_App/blob/master/updater.py) | Mises à jour : dernière Release GitHub, téléchargement vérifié (SHA-256), installation silencieuse |
 | [`places.py`](https://github.com/astraeos-dev/Celeste_App/blob/master/places.py) | Recherche de lieu hors ligne : villes de GeoNames (`assets/cities.tsv.gz`), ville la plus proche d'un point |
+| [`night_quality.py`](https://github.com/astraeos-dev/Celeste_App/blob/master/night_quality.py) | Qualité de la nuit : obscurité, Lune, nuages et humidité prévus par Open-Meteo (activés par l'utilisateur), classe de Bortle du lieu ; sans Qt |
 | [`planner.py`](https://github.com/astraeos-dev/Celeste_App/blob/master/planner.py) | Onglet Cibles : cibles de la nuit selon les contraintes de l'observateur (d'après uptonight), masque d'horizon, rapport JSON |
 | [`instruments.py`](https://github.com/astraeos-dev/Celeste_App/blob/master/instruments.py) | Atelier : géométrie des instruments (carte tournante, cadrans solaires, astrolabe), sans Qt |
 | [`workshop.py`](https://github.com/astraeos-dev/Celeste_App/blob/master/workshop.py) | Atelier : pages PDF à l'échelle exacte et fiches d'explications ([fiche](Ajouter-un-instrument.md)) |

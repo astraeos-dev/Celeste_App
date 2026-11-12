@@ -7,6 +7,12 @@ Write for them: short sentences, as dashes, no bold or code (the window of versi
 markup as it is), about 800 characters at most (the window cuts the rest, GitHub does not). See the wiki page
 "Publier une version".
 
+## 4.16
+
+- Tonight: the quality of the night, from excellent to bad, with its best window and its hours in colour: how dark
+  it gets, the Moon and, if you turn it on, the clouds forecast by Open-Meteo.
+- Settings: the light pollution of your place on the Bortle scale, with the naked-eye limiting magnitude it means.
+
 ## 4.15
 
 - On a narrow window, and soon on phones: a compact layout, with the date and the place in a drawer, the five spaces in

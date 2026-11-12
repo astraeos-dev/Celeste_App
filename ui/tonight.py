@@ -38,7 +38,23 @@ class TonightSpace:
         head.addWidget(_label(SYMBOL["star"], "symbol", tone="or"))
         head.addWidget(_label(t("tonight.title"), "sous-titre"))
         head.addStretch()
+        # the clouds of the night: forecast by Open-Meteo, only when asked (the place is sent)
+        self._weather_btn = _icon_button("cloud", t("quality.weather_tip"), compact=True, checkable=True)
+        self._weather_btn.setChecked(bool(prefs.get("weather_forecast")))
+        self._weather_btn.toggled.connect(self._on_weather_toggled)
+        head.addWidget(self._weather_btn)
         outer.addLayout(head)
+        # the quality of the night: its rating, the hours, the sky of the place
+        self._quality_label = _label("", "corps", wrap=True)
+        self._night_strip = NightStrip()
+        self._quality_note = _label("", "legende", tone="attenuee", wrap=True)
+        self._weather_credit = _label("", "legende", tone="attenuee")
+        self._weather_credit.setTextFormat(Qt.TextFormat.RichText)
+        self._weather_credit.setOpenExternalLinks(True)
+        self._weather_credit.setText(f'<a href="https://open-meteo.com/">{t("quality.credit")}</a>')
+        for widget in (self._quality_label, self._night_strip, self._quality_note, self._weather_credit):
+            outer.addWidget(widget)
+        outer.addSpacing(6)
         self._tonight_box = QVBoxLayout()
         self._tonight_box.setSpacing(6)
         outer.addLayout(self._tonight_box)
@@ -213,6 +229,8 @@ class TonightSpace:
             return
         self._tonight_key = key
         self._tonight, self._upcoming = _tonight_and_upcoming(key, dte, lat, lon, elev, self._zone)
+        self._tonight_place = (lat, lon)
+        self._update_night_quality()
         while self._tonight_box.count():
             item = self._tonight_box.takeAt(0)
             if item.widget():
@@ -221,6 +239,94 @@ class TonightSpace:
         for text, tone in self._tonight_lines():
             self._tonight_box.addWidget(_label(text, "corps" if tone is None else "legende",
                                                tone=tone or None, wrap=True))
+
+    # ── The quality of the night ──────────────────────────────────────────────
+
+    def _on_weather_toggled(self, on):
+        prefs.set("weather_forecast", bool(on))
+        self._update_night_quality()
+
+    def _weather_key(self):
+        lat, lon = self._tonight_place
+        return (round(lat, 2), round(lon, 2))
+
+    def _night_weather(self):
+        """
+        The forecast of the place, or None: kept an hour (five minutes after a
+        failure); asked in the background when missing, the quality drawn
+        again when it comes.
+        """
+        lat, lon = self._tonight_place
+        key = self._weather_key()
+        cached = getattr(self, "_weather", None)
+        fresh = cached is not None and cached[0] == key and (
+            time.monotonic() - cached[1] < (3600 if cached[2] is not None else 300))
+        if not fresh and getattr(self, "_weather_pending", None) != key:
+            self._weather_pending = key
+
+            def done(data):
+                self._weather, self._weather_pending, self._weather_error = (key, time.monotonic(), data), None, None
+                self._update_night_quality()
+
+            def failed(exc):
+                self._weather, self._weather_pending, self._weather_error = (key, time.monotonic(), None), None, exc
+                self._update_night_quality()
+
+            common._run_in_background(
+                lambda: night_quality.load_forecast(lat, lon, user_agent=f"Celeste/{APP_VERSION}"), done, failed)
+            cached = getattr(self, "_weather", None)      # already there when the answer came at once
+        return cached[2] if cached is not None and cached[0] == key else None
+
+    def _update_night_quality(self):
+        """The rating of the night, its hours and the sky of the place, in the Tonight card."""
+        night = getattr(self, "_tonight", None)
+        if night is None or not hasattr(self, "_quality_label"):
+            return
+        use_weather = bool(prefs.get("weather_forecast"))
+        weather = self._night_weather() if use_weather else None
+        if use_weather and weather is None and getattr(self, "_weather", (None,))[0] == self._weather_key():
+            weather = self._weather[2]
+        q = night_quality.assess(night, weather)
+        self._night_quality = q
+        clock = self._clock
+        if q["rating"] == "no_night":
+            self._quality_label.setText(t("quality.no_night"))
+            self._night_strip.hide()
+        else:
+            parts = [tf("quality.line", rating=t(f"quality.rating_{q['rating']}"), score=q["score"])]
+            if q["best"]:
+                parts.append(tf("quality.best", start=clock(q["best"]["start"]), end=clock(q["best"]["end"])))
+            if q["weather"]:
+                parts.append(tf("quality.clouds", pct=_num(q["cloud"])))
+            elif not use_weather:
+                parts.append(t("quality.moon_only"))
+            elif getattr(self, "_weather_pending", None) is not None:
+                parts.append(t("quality.weather_loading"))
+            elif getattr(self, "_weather_error", None) is not None:
+                parts.append(t("quality.weather_error"))
+            else:
+                parts.append(t("quality.beyond_forecast"))
+            self._quality_label.setText(" · ".join(parts))
+            labels, tips = [], []
+            for hour in q["hours"]:
+                local = self._local(hour["time"])
+                labels.append(self._fmt_clock(local).replace(":00", ""))
+                tip = [tf("quality.tip_score", time=clock(hour["time"]), score=hour["score"])]
+                if hour["dark"] < 1.0:
+                    tip.append(t("quality.tip_twilight"))
+                if hour["cloud"] is not None:
+                    tip.append(tf("quality.clouds", pct=_num(hour["cloud"])))
+                tip.append(t("quality.tip_moon_up" if hour["glare"] > 0 else "quality.tip_moon_down"))
+                tips.append(" · ".join(tip))
+            self._night_strip.set_hours(q["hours"], labels, tips)
+            self._night_strip.show()
+        bortle = int(prefs.get("bortle") or 0)
+        if bortle:
+            self._quality_note.setText(tf("quality.bortle", n=bortle, label=t(f"quality.bortle_{bortle}"),
+                                          mag=_num(night_quality.limiting_magnitude(bortle), 1)))
+        else:
+            self._quality_note.setText(t("quality.bortle_unset"))
+        self._weather_credit.setVisible(q["weather"])
 
     def _tonight_lines(self):
         """[(text, tone)] of the summary: the night, the Moon, a line per visible planet, what comes next."""

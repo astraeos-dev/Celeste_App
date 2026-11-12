@@ -38,6 +38,10 @@ The interface is translated into French, English, Spanish and German.
 
 **Main features:**
 
+- **Quality of the night** — in Tonight: a rating from excellent to bad and the best window, from how dark the sky
+  gets, the Moon and, when turned on (cloud button), the clouds and the damp air forecast by
+  [Open-Meteo](https://open-meteo.com) (CC BY 4.0); the hours of the night in colour; the light pollution of the
+  place on the Bortle scale (Settings › Observing site) with its naked-eye limiting magnitude
 - **Tonight** — at the top of the ephemeris: the dark night, the Moon, the visible planets (and comets) with their best
   moment, the finest deep-sky objects, the satellite passes and the next three events visible from here
 - **Instant positions** — right ascension, declination, altitude, azimuth, distance
@@ -292,6 +296,7 @@ Celeste_App/
 ├── places.py            # Offline place search (GeoNames cities)
 ├── history.py           # The last calculations (~/.celeste/history.json)
 ├── astro_calendar.py    # The astronomical calendar: every event of a period, by category
+├── night_quality.py     # Quality of the night: darkness, Moon, clouds (Open-Meteo), Bortle class
 ├── planner.py           # Night planner: targets of the night under the observer's constraints
 ├── mpc.py               # Comet elements of the Minor Planet Center (~/.celeste/CometEls.txt)
 ├── instruments.py       # Geometry of the instruments to make: planisphere, sundials, astrolabe (no Qt)
@@ -552,6 +557,7 @@ Céleste has no account, no analytics and no advertising, and keeps its settings
 | NASA JPL (naif.jpl.nasa.gov) | first launch: the DE440 ephemeris | an ordinary download request |
 | GitHub (api.github.com, github.com) | at startup, to look for a new version (Settings › About; can be turned off) | an ordinary request with Céleste's version |
 | Minor Planet Center, CelesTrak, AMSAT | when the comets' or the satellites' orbits are out of date | an ordinary download request |
+| Open-Meteo (api.open-meteo.com) | only when you turn on the cloud forecast (cloud button of Tonight), at most once an hour | the place's latitude and longitude |
 | OpenStreetMap (tile.openstreetmap.org, nominatim.openstreetmap.org) | only when you open the place map | the area of the map shown; the point you pick, to name it |
 | ipwho.is, ipapi.co, ip-api.com | only when you ask for your position and the system cannot give it | your IP address, which they turn into an approximate place |
 

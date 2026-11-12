@@ -47,6 +47,10 @@ v4.3:
   • Sedna among MINOR_PLANETS; MINOR_PLANET_NUMBERS, the Minor Planet
     Center's numbers ("(136199) Eris")
 
+v4.16:
+  • tonight() gives the night hour by hour (Sun and Moon altitudes), for the
+    quality of the night (night_quality.py)
+
 v4.15:
   • unchanged: the window gets a compact layout for phones and narrow windows
 
@@ -2483,7 +2487,10 @@ class AstroEngine:
             than magnitude 10 (dicts name, period 'evening' | 'morning' |
             'night', best, alt, az, mag, rise and set during the night or
             None), by best time; deep_sky: the five brightest Messier objects
-            at least 30° high in the dark (dicts m, alt, az, best, mag).
+            at least 30° high in the dark (dicts m, alt, az, best, mag);
+            hours: the 24 hours from noon to noon (dicts time, the UT start
+            of the hour; sun, moon: their altitudes in the middle of it, °),
+            for the quality of the night (night_quality.py).
         """
         sky = _sky()
         here = sky["earth"] + wgs84.latlon(lat, lon, elevation_m=elevation_m)
@@ -2553,8 +2560,10 @@ class AstroEngine:
                             "rise": when(crossing(alt, -0.57, True, lo, hi)),
                             "set": when(crossing(alt, -0.57, False, lo, hi))})
         planets.sort(key=lambda p: p["best"])
+        hours = [{"time": when(jds[12 * k]), "sun": float(sun[12 * k + 6]), "moon": float(moon_alt[12 * k + 6])}
+                 for k in range(24)]
         return {"start": start, "end": when(jds[-1]), "dark": dark, "dusk": when(dusk), "dawn": when(dawn),
-                "moon": moon, "planets": planets,
+                "moon": moon, "planets": planets, "hours": hours,
                 "deep_sky": cls._tonight_deep_sky(jds, sun, here, lat, lon, start)}
 
     @classmethod

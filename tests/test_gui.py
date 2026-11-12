@@ -2290,3 +2290,67 @@ class TestSkyMapZoom:
         window._on_sky_release(MouseEvent("button_release_event", window.canvas_sky, x + 60, y, button=1))
         assert window._sky_center[0] < 0                     # dragged right: the view moved left
         assert window._sky_drag is None
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Quality of the night in the Tonight card (v4.16, night_quality.py)
+# ──────────────────────────────────────────────────────────────────────
+
+class TestNightQuality:
+    @staticmethod
+    def _forecast(window, cloud):
+        import night_quality
+        return {night_quality._forecast_key(h["time"]): {"cloud": cloud, "humidity": 70.0}
+                for h in window._tonight["hours"]}
+
+    def test_rated_from_the_moon_by_default(self, window):
+        import settings as prefs
+        assert not prefs.get("weather_forecast") and not window._weather_btn.isChecked()
+        text = window._quality_label.text()
+        assert text.startswith("Qualité de la nuit : ") and "/100" in text
+        assert "d'après la Lune seule" in text
+        assert window._night_strip.isVisibleTo(window) and window._night_strip._hours
+        assert not window._weather_credit.isVisibleTo(window)
+        assert "échelle de Bortle" in window._quality_note.text()
+
+    def test_bortle_of_the_place(self, window):
+        import settings as prefs
+        combo = window._bortle_combo
+        assert combo.count() == 10 and combo.currentData() == 0
+        combo.setCurrentIndex(combo.findData(4))
+        assert prefs.get("bortle") == 4
+        assert window._quality_note.text().startswith("Ciel du lieu : Bortle 4")
+        assert "6,3" in window._quality_note.text()
+
+    def test_forecast_turned_on(self, window, monkeypatch):
+        import gui
+        import settings as prefs
+        asked = []
+
+        def at_once(func, on_done, on_error):
+            asked.append(func)
+            on_done(self._forecast(window, 50.0))
+
+        monkeypatch.setattr(gui.common, "_run_in_background", at_once)
+        window._weather_btn.setChecked(True)
+        assert prefs.get("weather_forecast") is True and len(asked) == 1
+        assert "nuages 50 %" in window._quality_label.text()
+        assert window._weather_credit.isVisibleTo(window)
+        assert "Open-Meteo" in window._weather_credit.text()
+        window._update_night_quality()
+        assert len(asked) == 1                                    # kept: not asked again
+        window._weather_btn.setChecked(False)
+        assert "d'après la Lune seule" in window._quality_label.text()
+        assert not window._weather_credit.isVisibleTo(window)
+
+    def test_forecast_unavailable(self, window, monkeypatch):
+        import gui
+        monkeypatch.setattr(gui.common, "_run_in_background",
+                            lambda func, on_done, on_error: on_error(OSError("no network")))
+        window._weather_btn.setChecked(True)
+        assert "indisponible" in window._quality_label.text()
+
+    def test_hour_tooltips(self, window):
+        tips = window._night_strip._tips
+        assert tips and all("/100" in tip for tip in tips)
+        assert any("Lune" in tip for tip in tips)

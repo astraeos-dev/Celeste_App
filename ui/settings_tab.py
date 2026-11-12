@@ -234,6 +234,14 @@ class SettingsSpace:
         self._horizon_field = InputField(t("observatory.horizon"), self._horizon_edit,
                                          hint=t("observatory.horizon_hint"))
         box.addWidget(self._horizon_field)
+        # light pollution of the place (quality of the night)
+        self._bortle_combo = QComboBox()
+        self._bortle_combo.addItem(t("quality.bortle_none"), 0)
+        for n in range(1, 10):
+            self._bortle_combo.addItem(tf("quality.bortle_item", n=n, label=t(f"quality.bortle_{n}")), n)
+        self._bortle_combo.setCurrentIndex(max(0, self._bortle_combo.findData(int(prefs.get("bortle") or 0))))
+        self._bortle_combo.currentIndexChanged.connect(self._on_bortle_changed)
+        box.addWidget(InputField(t("quality.bortle_field"), self._bortle_combo, hint=t("quality.bortle_hint")))
 
         # Reset (irreversible: danger button and confirmation)
         box = section(t("settings.reset_section"))
@@ -289,6 +297,10 @@ class SettingsSpace:
     # ──────────────────────────────────────────────────────────────────────────
     # SETTINGS HANDLERS
     # ──────────────────────────────────────────────────────────────────────────
+
+    def _on_bortle_changed(self, _index):
+        prefs.set("bortle", int(self._bortle_combo.currentData() or 0))
+        self._update_night_quality()
 
     def _on_theme_selected(self, key):
         if not key or key == Config.THEME:

@@ -13,7 +13,7 @@ adb logcat -d > logcat.txt
 echo "--- process"
 adb shell pidof "$package" || echo "not running"
 echo "--- what the app and the system said about it"
-grep -E "python|Python|Qt|qt\.|Céleste|Celeste|AndroidRuntime|FATAL|linker|dlopen|$package" logcat.txt | tail -200
+grep -E "python|Python|Qt|qt\.|Céleste|Celeste|AndroidRuntime|FATAL|linker|dlopen|$package" logcat.txt | grep -v "extracting _python_bundle" | tail -200
 if grep -q "android self-test OK" logcat.txt; then
   echo "Céleste started on the emulator"
 else

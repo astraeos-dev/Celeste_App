@@ -24,7 +24,12 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  PYSIDE_VERSION: "6.11.3"          # the desktop's PySide6; its Android wheels are for CPython 3.11
+  # PySide6 6.12: its deploy tool pins python-for-android (CPython 3.14 on the phone) and its
+  # Android wheels are built for it (abi3). 6.11's tool followed python-for-android's moving
+  # develop branch, whose Python no longer matched its cp311 wheels: the app could not load
+  # libpython3.11.so and closed at once (seen on the emulator, 4.15).
+  PYSIDE_VERSION: "6.12.0"
+  WHEEL_TAG: cp310-abi3
 
 jobs:
   apk:
@@ -42,7 +47,7 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
 
       - uses: actions/setup-java@v4
         with:
@@ -69,7 +74,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/wheels"
           cd "$RUNNER_TEMP/wheels"
           for package in pyside6 shiboken6; do
-            curl -fsSLO "$base/$package/$package-$PYSIDE_VERSION-$PYSIDE_VERSION-cp311-cp311-android_$ARCH.whl"
+            curl -fsSLO "$base/$package/$package-$PYSIDE_VERSION-$PYSIDE_VERSION-$WHEEL_TAG-android_$ARCH.whl"
           done
           ls -l
 
@@ -92,8 +97,8 @@ jobs:
           cp android/main.py config.py "$project/"
           cd "$project"
           pyside6-android-deploy --name Celeste -f -v \
-            --wheel-pyside="$RUNNER_TEMP/wheels/pyside6-$PYSIDE_VERSION-$PYSIDE_VERSION-cp311-cp311-android_$ARCH.whl" \
-            --wheel-shiboken="$RUNNER_TEMP/wheels/shiboken6-$PYSIDE_VERSION-$PYSIDE_VERSION-cp311-cp311-android_$ARCH.whl"
+            --wheel-pyside="$RUNNER_TEMP/wheels/pyside6-$PYSIDE_VERSION-$PYSIDE_VERSION-$WHEEL_TAG-android_$ARCH.whl" \
+            --wheel-shiboken="$RUNNER_TEMP/wheels/shiboken6-$PYSIDE_VERSION-$PYSIDE_VERSION-$WHEEL_TAG-android_$ARCH.whl"
           ls -l
           apk=$(ls *.apk | head -1)
           test -n "$apk"

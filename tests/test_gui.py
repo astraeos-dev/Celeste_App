@@ -68,6 +68,8 @@ def window(qapp, tmp_path, monkeypatch):
     monkeypatch.setattr(satellites, "CACHE", str(tmp_path / "satellites.tle"))    # none on disk
     import history
     monkeypatch.setattr(history, "FILE", str(tmp_path / "history.json"))          # empty
+    monkeypatch.setattr(gui.OsmMap, "fetch", False)                              # no map tiles from the network
+    monkeypatch.setattr(gui.OsmMap, "CACHE", str(tmp_path / "tiles"))
     import mpc
     monkeypatch.setattr(mpc, "CACHE", str(tmp_path / "CometEls.txt"))             # none, and no download:
     prefs.set("planner_mpc", False)                                                # Céleste's comets only
@@ -1003,12 +1005,22 @@ class TestGeolocation:
         its time zone and the elevation of the nearest city."""
         import gui
         picker = gui.PlacePicker(window, 49.63, -1.62)
+        picker.resize(800, 600)
+        picker.show()
         picker.search.setText("Brest, FR")
         picker._find()
         assert picker.chosen == pytest.approx((48.39, -4.49), abs=0.05) and picker.name == "Brest"
-        assert picker.use.isEnabled()
-        picker.choose(45.0, 6.0)                                 # a click in the Alps
-        assert picker.chosen == (45.0, 6.0)
+        assert picker.use.isEnabled() and picker.map.zoom == 13
+        m = picker.map                                           # a click on the map: the point under it
+        lat, lon = m.to_latlon(m.width() / 2 + 40, m.height() / 2 - 25)
+        x, y = m.to_screen(lat, lon)
+        assert (x, y) == pytest.approx((m.width() / 2 + 40, m.height() / 2 - 25), abs=1e-6)
+        m.on_pick(lat, lon)
+        assert picker.chosen == (lat, lon)
+        before = m.to_latlon(100, 100)                           # the wheel keeps the point under the pointer
+        m.zoom_by(1, (100, 100))
+        assert m.to_latlon(100, 100) == pytest.approx(before, abs=1e-6)
+        picker.grab()                                            # offline: Céleste's coastlines and cities
         picker.close()
 
         class Fake:
@@ -1819,8 +1831,21 @@ class TestMoonsAndRings:
         texts = self._texts(window._companions_card(window._body_object("Saturn")))
         assert texts[2] == "0,1° · face sud, non éclairée"
 
-    def test_in_the_data_window_of_these_two_planets_only(self, window, qapp):
-        assert window._companions_card(window._body_object("Mars")) is None
+    def test_moons_of_the_other_planets(self, window, qapp):
+        """Mars, Saturn (after its rings), Uranus, Neptune and Pluto show their moons too (4.12)."""
+        import gui
+        window._set_datetime(datetime(2026, 11, 12, 21, 0))
+        window.calculate()
+        texts = self._texts(window._companions_card(window._body_object("Mars")))
+        assert texts[0] == "Lunes" and "Phobos" in texts and "Déimos" in texts
+        card = window._companions_card(window._body_object("Saturn"))
+        texts = self._texts(card)
+        assert texts.index("Lunes") > texts.index("Taille apparente") and "Titan" in texts and "Japet" in texts
+        assert "devant Saturne" in " ".join(texts)                     # Mimas in front of the globe
+        card.findChild(gui.PlanetMoons).grab()                         # it draws
+
+    def test_in_the_data_window_of_planets_only(self, window, qapp):
+        assert window._companions_card(window._body_object("Venus")) is None
         assert window._companions_card(window._body_object("sun")) is None
         assert window._companions_card(None) is None
         dlg = window._build_detail_dialog(window._body_object("Jupiter"))
@@ -2093,3 +2118,28 @@ def test_workshop_refuses_the_tropics(window, qapp):
     assert f["problem"].text() == gui.t("workshop.latitude_range")
     dlg.close()
     qapp.processEvents()
+
+
+def test_astronomical_calendar(window, qapp, tmp_path, monkeypatch):
+    """The calendar of the Events tab: a year of events in a month grid, a day's details,
+    the filters, and the .ics export of what they let through."""
+    import gui
+    from datetime import date
+    monkeypatch.setattr(gui, "_run_in_background", lambda func, done, err: done(func()))
+    window.show_calendar()
+    qapp.processEvents()
+    cal = window._cal_state
+    assert cal["items"] and len(cal["items"]) > 150
+    window._cal_choose(date(2026, 11, 24))
+    widgets = window._cal_widgets
+    assert widgets["day_title"].text().startswith("24/11/2026")
+    assert any("Pleine lune" in c.lines.text() for c in widgets["cells"])
+    n_all = len(window._ics_items)
+    widgets["boxes"]["moon"].setChecked(False)
+    assert 0 < len(window._ics_items) < n_all
+    target = tmp_path / "ciel.ics"
+    monkeypatch.setattr(gui.QFileDialog, "getSaveFileName", lambda *a, **k: (str(target), ""))
+    window._export_ics()
+    text = target.read_text(encoding="utf-8")
+    assert text.count("BEGIN:VEVENT") == len(window._ics_items) and "Pleine lune" in text
+    widgets["boxes"]["moon"].setChecked(True)

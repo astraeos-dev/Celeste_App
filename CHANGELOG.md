@@ -9,12 +9,11 @@ markup as it is), about 800 characters at most (the window cuts the rest, GitHub
 
 ## 4.12
 
-- Workshop: a complete planispheric astrolabe (plate of your latitude, rete of the stars of the year, rule, back
-  with calendar and shadow square, alidade) and a nocturnal that tells the time at night from the Great Bear.
-- The Workshop window has its own place, time zone and date: no need to change the side panel.
-- Location: pick your place on a map, when Windows does not let Céleste use its location service.
-- Targets: a sky map of the night as uptonight draws it, in Céleste's colours, with the numbered targets, the
-  planets, the comets and the header of the night; in a large window, the legend shows or hides each target.
+- Workshop: a complete astrolabe and a nocturnal, with their own place, time zone and date.
+- New astronomical calendar (Events): every event of a period, filtered by kind, exported as .ics.
+- The moons of Mars, Saturn, Uranus, Neptune and Pluto; the passes of the naked-eye satellites.
+- Targets: the night's sky map as uptonight draws it, in Céleste's colours; larger charts; "select all" types.
+- Location: pick your place on an OpenStreetMap map. Eclipse maps drawn without steps.
 
 ## 4.11
 

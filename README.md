@@ -74,6 +74,14 @@ The interface is translated into French, English, Spanish and German.
   comets, the Moon, the header of the night (Sun, Moon, constraints), in the colours of the theme, the east on
   either side; a large window with the whole table, a slider through the night, the details under the pointer and
   a legend whose lines show, hide or bring out each target; export as a text report, JSON or PNG
+- **Astronomical calendar** — in the Events tab: every event Céleste computes (Moon phases, eclipses,
+  conjunctions, oppositions and elongations, minor planets, comets, the Moon's events, seasons, meteor showers,
+  satellite passes) over a period, a year by default, in a month grid; filters by kind; the day's details; the
+  .ics export of what the filters let through
+- **Moons of the planets** — in the data windows: Jupiter's Galilean moons, and Phobos, Deimos, eight moons of
+  Saturn, five of Uranus, Triton and Charon from JPL Horizons (2020 to 2040, within 0.1″), drawn as in a telescope
+- **Naked-eye satellites** — besides the ISS, Tiangong and Hubble, the passes of the 150 or so satellites of
+  CelesTrak's "visual" group, on request
 - **Observing site** — a horizon mask (azimuth and altitude pairs: trees, houses), used by the planner and drawn on
   the sky map; temperature and pressure for the refraction
 - **Search on the sky map** — the name of a star (Vega, "alpha cyg"), a planet, a comet, a Messier object ("m31",
@@ -178,9 +186,10 @@ Changing the date computes everything again after a moment.
 **Buttons:**
 
 - Clock, to the right of the date — back to the present instant
-- Map, to the right of the latitude — pick the place on a map: the wheel zooms, a drag moves the map, a click sets
-  the point (named after the nearest city); fills the coordinates, the time zone and the elevation. For computers
-  whose location service cannot be allowed
+- Map, to the right of the latitude — pick the place on an OpenStreetMap map: the wheel zooms, a drag moves the
+  map, a click sets the point (named after the nearest city); fills the coordinates, the time zone and the
+  elevation. The tiles are kept a week in `~/.celeste/tiles`; offline, Céleste's coastlines and cities stand in.
+  For computers whose location service cannot be allowed
 - Crosshair, to the right of the longitude — fills the latitude, the longitude and the time zone from the device's
   location service (to be allowed in the privacy settings of Windows or macOS); otherwise, from the IP address
   (three services in turn), and a window offers the map
@@ -275,6 +284,7 @@ Celeste_App/
 ├── settings.py          # Persistent preferences (~/.celeste/settings.json)
 ├── places.py            # Offline place search (GeoNames cities)
 ├── history.py           # The last calculations (~/.celeste/history.json)
+├── astro_calendar.py    # The astronomical calendar: every event of a period, by category
 ├── planner.py           # Night planner: targets of the night under the observer's constraints
 ├── mpc.py               # Comet elements of the Minor Planet Center (~/.celeste/CometEls.txt)
 ├── instruments.py       # Geometry of the instruments to make: planisphere, sundials, astrolabe (no Qt)

@@ -1104,8 +1104,9 @@ def draw_eclipse_map(fig, scene, labels, observer=None):
                            colors=Config.OR, linewidths=0.7, zorder=3)
         ax.clabel(lines, fmt=lambda v: f"{v:.2f}".replace(".", labels.get("decimal", ".")).rstrip("0")
                   .rstrip(labels.get("decimal", ".")) if v > 0.01 else "0", fontsize=SIZE_LEGENDE * 0.8)
-        if scene["path"]:
-            path = [poly for lat, lon in scene["path"] for poly in _wrapped(lon, lat)]
+        band = scene.get("limits") or scene["path"]
+        if band:
+            path = [poly for lat, lon in band for poly in _wrapped(lon, lat)]
             ax.add_collection(PolyCollection(path, facecolors=to_rgba(Config.OR, 0.85),
                                              edgecolors="none", zorder=4))
             handles.append(Patch(color=to_rgba(Config.OR, 0.85), label=labels["path"]))

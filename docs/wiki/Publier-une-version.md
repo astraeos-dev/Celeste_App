@@ -125,17 +125,57 @@ reçoit plus de fichier `.pfx`. D'où deux voies, que le dépôt sait déjà uti
 | **SignPath Foundation** (signpath.org), gratuit pour les projets libres (Céleste est sous licence MIT) | gratuit, sur dossier | dans le workflow *Build*, à chaque version publiée |
 | **Certificat « Open Source Code Signing » de Certum**, avec SimplySign (clé dans le nuage) | quelques dizaines d'euros par an | sur ton PC, avec `python scripts/build_exe.py` |
 
-**SignPath** : demander l'adhésion sur signpath.org (projet libre, dépôt public), créer le projet `Celeste_App` et une
-politique `release-signing` qui signe un fichier `.exe`, puis dans GitHub, *Settings › Secrets and variables ›
-Actions* :
+**SignPath : la demande.** Le formulaire est sur [signpath.org/apply](https://signpath.org/apply). Les
+conditions ([signpath.org/terms](https://signpath.org/terms)) : licence libre approuvée par l'OSI pour tout le
+projet (MIT : oui), aucun composant propriétaire, projet maintenu et déjà publié sous la forme à signer (les
+Releases GitHub), fonctionnement décrit sur la page de téléchargement (le README), double authentification (2FA)
+sur GitHub et sur SignPath pour toute l'équipe, chaque signature approuvée à la main. Ce qu'on renseigne :
 
-- variable `SIGNPATH_ORGANIZATION_ID` : l'identifiant de l'organisation SignPath ;
-- secret `SIGNPATH_API_TOKEN` : le jeton d'un utilisateur CI de SignPath ;
-- facultatif : variables `SIGNPATH_PROJECT_SLUG` et `SIGNPATH_POLICY_SLUG` si les noms diffèrent.
+| Information | Pour Céleste |
+|---|---|
+| Nom du projet | Céleste |
+| Dépôt | https://github.com/astraeos-dev/Celeste_App |
+| Page d'accueil / de téléchargement | https://github.com/astraeos-dev/Celeste_App (README) et https://github.com/astraeos-dev/Celeste_App/releases |
+| Licence | MIT |
+| Description | Application de bureau d'astronomie : positions du Soleil, de la Lune, des planètes et des étoiles, évènements, carte du ciel, instruments à imprimer (Python, Qt) |
+| Fichiers à signer | le programme d'installation Windows `Celeste-<version>-Setup.exe` (Inno Setup), construit par GitHub Actions |
+| Système de construction | GitHub Actions (workflow `build.yml`), sur les runners hébergés par GitHub |
+| Politique de signature | la section « Code signing policy » du README |
+| Confidentialité | la section « Privacy » du README (Céleste se connecte à quelques services : la section les liste) |
+| Rôles | auteur, relecteur et approbateur : le compte astraeos-dev |
 
-Le workflow *Build* envoie alors le programme d'installation à SignPath, attend la signature (SignPath Foundation
-demande une approbation à chaque version) et publie le fichier signé. Sans ces réglages, il publie comme avant,
-sans signature. Les bêtas ne sont pas signées.
+**SignPath : après l'acceptation.**
+
+1. Dans SignPath, *Trusted Build Systems* : ajouter le système prédéfini **GitHub.com** à l'organisation, puis le
+   lier au projet.
+2. Installer l'application GitHub [SignPath](https://github.com/apps/signpath) sur le dépôt `Celeste_App`.
+3. Dans le projet SignPath : une configuration d'artefact qui signe le programme d'installation à l'intérieur de
+   l'archive que GitHub Actions envoie (un zip) :
+
+   ```xml
+   <?xml version="1.0" encoding="utf-8"?>
+   <artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+     <zip-file>
+       <pe-file path="Celeste-*-Setup.exe">
+         <authenticode-sign/>
+       </pe-file>
+     </zip-file>
+   </artifact-configuration>
+   ```
+
+   SignPath Foundation peut demander d'y ajouter des contraintes sur les métadonnées du fichier (nom du produit
+   « Céleste », éditeur « Astræos » : le programme d'installation les porte).
+4. Créer un utilisateur CI dans SignPath, avec le droit de soumettre des demandes sur la politique
+   `release-signing`, et copier son jeton d'API.
+5. Dans GitHub, *Settings › Secrets and variables › Actions* :
+   - variable `SIGNPATH_ORGANIZATION_ID` : l'identifiant de l'organisation SignPath ;
+   - secret `SIGNPATH_API_TOKEN` : le jeton de l'utilisateur CI ;
+   - facultatif : variables `SIGNPATH_PROJECT_SLUG` (par défaut `Celeste_App`) et `SIGNPATH_POLICY_SLUG` (par
+     défaut `release-signing`) si les noms diffèrent.
+
+Le workflow *Build* envoie alors le programme d'installation à SignPath, attend la signature (approuvée à la main
+dans SignPath à chaque version) et publie le fichier signé. Sans ces réglages, il publie comme avant, sans
+signature. Les bêtas ne sont pas signées.
 
 **Sur son PC** (certificat installé dans Windows, par exemple Certum SimplySign connecté) :
 

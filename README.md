@@ -530,6 +530,33 @@ launch, SmartScreen shows "Windows protected your PC" (*More info*, then *Run an
 - [ ] **Android app** (5.0) — the same code as the desktop, with the phone's location and a sky map following the
   phone. The plan: [docs/ANDROID.md](docs/ANDROID.md)
 
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by
+[SignPath Foundation](https://signpath.org) (once the project is accepted: until then the Windows installer is
+unsigned).
+
+- Committers and reviewers: [the maintainers of this repository](https://github.com/astraeos-dev/Celeste_App/graphs/contributors);
+  changes from other contributors are reviewed in a pull request before they are merged
+- Approvers: [astraeos-dev](https://github.com/astraeos-dev), who approves each release before it is signed
+- What is signed: the Windows installer `Celeste-<version>-Setup.exe`, built from this repository's source by the
+  *Build* workflow of GitHub Actions; nothing built elsewhere is signed
+
+## Privacy
+
+Céleste has no account, no analytics and no advertising, and keeps its settings, favourites and history in
+`~/.celeste` on your computer. It connects to the following services, and to no other:
+
+| Service | When | What it receives |
+|---|---|---|
+| NASA JPL (naif.jpl.nasa.gov) | first launch: the DE440 ephemeris | an ordinary download request |
+| GitHub (api.github.com, github.com) | at startup, to look for a new version (Settings › About; can be turned off) | an ordinary request with Céleste's version |
+| Minor Planet Center, CelesTrak, AMSAT | when the comets' or the satellites' orbits are out of date | an ordinary download request |
+| OpenStreetMap (tile.openstreetmap.org, nominatim.openstreetmap.org) | only when you open the place map | the area of the map shown; the point you pick, to name it |
+| ipwho.is, ipapi.co, ip-api.com | only when you ask for your position and the system cannot give it | your IP address, which they turn into an approximate place |
+
+Every request goes straight to these services: Céleste sends nothing to its authors.
+
 ---
 
 ## Licence

@@ -51,3 +51,13 @@ database (messier.seds.org); M102 is taken to be NGC 5866.
 `data/constellations.lines.json` and `data/constellations.json`), © 2015 Olaf Frohn, BSD 3-Clause licence: see
 `LICENSE-d3-celestial.txt`. The French, Spanish and German names of the constellations in `locales/` come from the
 same files; the English interface uses the Latin names of the IAU.
+
+## Deep-sky catalogue of the night planner
+
+`deep_sky.csv.gz`: every object of **OpenNGC** that is not a star (12,822: NGC, IC and OpenNGC's addendum), with
+its type, J2000 position, constellation, magnitude, size, Messier and Caldwell numbers and English common name,
+extracted by `scripts/make_deep_sky.py` at the same fixed commit as `messier.csv`. © Mattia Verga, licence
+[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/); this file is shared under the same licence.
+
+The comets of the Minor Planet Center are not shipped: `mpc.py` downloads their elements (`CometEls.txt`) when the
+user asks for them, and keeps them a week in `~/.celeste`.

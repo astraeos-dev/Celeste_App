@@ -232,6 +232,66 @@ def sample_day(dte, lat, lon, step_min=5, elevation_m=0.0, tz=0):
     return [minute / 60.0 for minute in minutes], sun_alts.tolist(), moon_alts.tolist()
 
 
+# colours of the targets of the night chart, then repeated
+def _target_colors():
+    return (Config.OR, Config.LUNE, Config.SIGNAL_OK, Config.ENCRE, mix(Config.OR, Config.LUNE, 0.5),
+            Config.SIGNAL_ALERTE, mix(Config.LUNE, Config.SIGNAL_OK, 0.5), Config.ENCRE_ATTENUEE)
+
+
+def draw_night_plan(fig, hours, series, moon_alts, limits, labels):
+    """
+    Altitude of the planner's targets through the night, as uptonight's
+    altitude-time diagrams: one line per target, the Moon dotted, the
+    altitude limits shaded.
+
+    Args:
+        fig: matplotlib Figure (cleared first).
+        hours (sequence): times of the samples, local hours (may pass 24).
+        series (list): (label, altitudes) of each target drawn.
+        moon_alts (sequence | None): altitudes of the Moon at the same times.
+        limits (tuple): (altitude_min, altitude_max) of the constraints.
+        labels (dict): title, xlabel, ylabel, moon, empty (shown without series).
+
+    Returns:
+        axes
+    """
+    fig.clear()
+    fig.set_layout_engine("constrained")
+    fig.get_layout_engine().set(w_pad=0.16, h_pad=0.12)
+    fig.patch.set_facecolor(Config.CIEL_100)
+    ax = fig.add_subplot(111)
+    _style_axes(ax)
+    hours = list(hours)
+    low, high = limits
+    ax.axhspan(0, low, color=to_rgba(Config.CIEL_200, 0.55), lw=0, zorder=0)
+    ax.axhspan(high, 90, color=to_rgba(Config.CIEL_200, 0.55), lw=0, zorder=0)
+    for level in (low, high):
+        ax.axhline(level, color=Config.ENCRE_ATTENUEE, linewidth=0.8, linestyle=(0, (4, 3)), zorder=1)
+    if moon_alts is not None and len(hours):
+        ax.plot(hours, moon_alts, color=Config.LUNE, linewidth=1.2, linestyle=(0, (1, 2)),
+                label=f"{SYMBOL['Moon']}  {labels['moon']}", zorder=2)
+    colors = _target_colors()
+    for i, (name, alts) in enumerate(series):
+        ax.plot(hours, alts, color=colors[i % len(colors)], linewidth=2.0, label=name, zorder=3)
+    if hours:
+        ax.set_xlim(hours[0], hours[-1])
+    ax.set_ylim(0, 90)
+    ax.yaxis.set_major_locator(MultipleLocator(15))
+    ax.xaxis.set_major_locator(MultipleLocator(1 if len(hours) and hours[-1] - hours[0] < 8 else 2))
+    ax.xaxis.set_major_formatter(FuncFormatter(lambda x, _p: _hour_label(x % 24)))
+    _title(fig, ax, labels["title"])
+    ax.set_xlabel(labels["xlabel"], color=Config.ENCRE_ATTENUEE, fontsize=SIZE_LEGENDE)
+    ax.set_ylabel(labels["ylabel"], color=Config.ENCRE_ATTENUEE, fontsize=SIZE_LEGENDE)
+    if series or moon_alts is not None:
+        legend = ax.legend(loc="upper left", bbox_to_anchor=(1.01, 1.0), frameon=False,
+                           fontsize=SIZE_LEGENDE, labelcolor=Config.ENCRE, handlelength=1.6)
+        legend.set_zorder(5)
+    if not series:
+        ax.text(0.5, 0.5, labels["empty"], transform=ax.transAxes, ha="center", va="center",
+                color=Config.ENCRE_ATTENUEE, fontsize=SIZE_CORPS)
+    return ax
+
+
 def draw_trajectory(fig, hours, sun_alts, moon_alts, now_hour, sun_now, moon_now,
                     labels, utc_offset=0):
     """
@@ -324,7 +384,7 @@ def star_marker_size(mag):
     return diameter * diameter
 
 
-def sky_scene(jd, lat, lon, mag_limit, sun, moon, planets, deep_sky=()):
+def sky_scene(jd, lat, lon, mag_limit, sun, moon, planets, deep_sky=(), horizon=()):
     """
     Collects what the sky map shows.
 
@@ -336,6 +396,7 @@ def sky_scene(jd, lat, lon, mag_limit, sun, moon, planets, deep_sky=()):
         planets (list[dict]): name, alt, az, ra, dec, dist for each planet.
         deep_sky (list[dict]): Messier objects above the horizon (m, type,
             alt, az, ra, dec, mag, label...).
+        horizon: (azimuth, altitude) points of the observer's horizon mask.
 
     Returns:
         dict: stars (above the horizon and bright enough), constellation
@@ -382,9 +443,16 @@ def sky_scene(jd, lat, lon, mag_limit, sun, moon, planets, deep_sky=()):
         x, y = sky_xy(body["alt"], body["az"])
         return {**body, "kind": kind, "x": x, "y": y}
 
+    mask = []
+    if horizon:
+        import planner
+        azs_mask = np.arange(0.0, 361.0, 2.0)
+        mask = [sky_xy(float(h), float(a)) for a, h in zip(azs_mask, planner.horizon_altitude(azs_mask, horizon))]
+
     return {
         "stars": stars,
         "catalog": catalog,
+        "horizon_mask": mask,
         "figures": figures,
         "lines": lines,
         "sun": placed(sun, "sun"),
@@ -589,6 +657,11 @@ def draw_sky_map(fig, scene, labels, highlight=None):
                 markeredgewidth=0, zorder=7)
         _body_label(ax, sun["x"], sun["y"], f"{SYMBOL['Sun']} {labels['sun']}",
                     Config.OR, size=SIZE_CORPS, weight=600)
+
+    mask = scene.get("horizon_mask")
+    if mask:
+        ax.plot([p[0] for p in mask], [p[1] for p in mask], color=Config.OR, linewidth=1.0,
+                linestyle=(0, (2, 2)), alpha=0.8, zorder=2)
 
     if highlight is not None:
         radius = 0.16 if highlight.get("wide") else 0.045

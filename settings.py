@@ -64,6 +64,15 @@ _DEFAULTS = {
     # Planets tab
     "planet_group":   "planets",    # bodies of the table: all | planets | minor | comets
     "planet_visible_only": False,   # only the bodies above the horizon
+    # Observing site and night planner (planner.py)
+    "env_temperature": 10.0,        # °C, for the refraction
+    "env_pressure":   1010.0,       # hPa; 0: no refraction
+    "horizon_points": [],           # horizon mask: [[azimuth, altitude], ...] degrees
+    "planner_constraints": {},      # the user's values of planner.DEFAULTS
+    "planner_bucket": [],           # targets always shown
+    "planner_done":   [],           # targets never shown
+    "planner_custom": [],           # the user's own targets (planner.custom_target keywords)
+    "planner_mpc":    True,         # every comet of the Minor Planet Center, not only Céleste's
     # Updates (updater.py)
     "update_check":   True,         # look for a new version at startup
     "update_skipped": "",           # version the user chose to skip

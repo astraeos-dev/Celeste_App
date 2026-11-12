@@ -22,7 +22,7 @@ permissions:
 
 concurrency:
   group: android-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false         # a run under way finishes (its emulator test tells something); the newest waits
 
 env:
   # PySide6 6.12: its deploy tool pins python-for-android (CPython 3.14 on the phone) and its

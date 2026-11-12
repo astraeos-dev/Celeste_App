@@ -12,7 +12,7 @@ markup as it is), about 800 characters at most (the window cuts the rest, GitHub
 - New observation log, in Observer: what you saw, when and where, with your instrument, the seeing, the
   transparency, your notes and the quality of the night computed by Céleste; export as a spreadsheet (CSV).
 - Log a target straight from the Targets list (right click).
-- Tonight: the quality of the next seven nights, to choose your night (calendar button).
+- Tonight: the quality of the next seven nights, to choose your night (calendar button); Targets shows tonight's.
 - Qt's own buttons and dialogs (Save, Cancel, Close…) now speak your language.
 
 ## 4.16

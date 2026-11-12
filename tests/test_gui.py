@@ -1472,8 +1472,8 @@ class TestPlanner:
     def test_computed_when_the_tab_shows(self, planner_tab):
         w = planner_tab
         assert w._plan is not None and w._plan["window"]["kind"] == "astro"
-        assert w._plan_summary.text() == ("Nuit astronomique de 18:33 à 05:08. "
-                                          "Lune éclairée à 49 % : écart minimal de 45°.")
+        assert w._plan_summary.text().splitlines()[0] == ("Nuit astronomique de 18:33 à 05:08. "
+                                                          "Lune éclairée à 49 % : écart minimal de 45°.")
         assert w._plan_status.text() == "8 cibles retenues sur 48 objets (Messier (110))."
         assert self._column(w, "deep_sky", "col_target")[:2] == ["M33 Galaxie du Triangle", "M34"]
         assert self._column(w, "deep_sky", "col_fraction")[0] == "91 %"
@@ -2495,3 +2495,11 @@ class TestWeekQuality:
         assert table.item(0, 4).text() == "80 %"
         assert table.item(6, 4).text() == "—"                                  # beyond the sample forecast
         dlg.reject()
+
+
+def test_quality_of_the_night_in_the_targets(planner_tab):
+    """Observer › Targets: the quality of the night under the planner's summary, as in Tonight."""
+    w = planner_tab
+    summary = w._plan_summary.text()
+    assert summary.splitlines()[-1] == w._quality_label.text()
+    assert "Qualité de la nuit" in summary

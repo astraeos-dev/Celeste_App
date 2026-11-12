@@ -228,6 +228,14 @@ class ObserveSpace:
         self._plan_side.setVisible(not compact or shown)
         self._plan_right.setVisible(not compact or not shown)
 
+    def _refresh_plan_summary(self):
+        """The planner's summary of the night, with the quality of the night of Tonight under it."""
+        base = getattr(self, "_plan_summary_base", None)
+        if base is None or not hasattr(self, "_plan_summary"):
+            return
+        quality = getattr(self, "_quality_text", "")
+        self._plan_summary.setText(f"{base}\n{quality}" if quality else base)
+
     def _plan_table(self, columns):
         table = QTableWidget(0, len(columns))
         table.setHorizontalHeaderLabels([t(f"planner.{c}") for c in columns])
@@ -365,10 +373,11 @@ class ObserveSpace:
             self._draw_plan_chart()
             return
         moon = result["moon"]
-        self._plan_summary.setText(tf(
+        self._plan_summary_base = tf(
             "planner.summary", kind=t(f"planner.night_{window['kind']}"), start=self._hm(window["start"]),
             end=self._hm(window["end"]), moon=_num(moon["illumination"], 0),
-            separation=_num(moon["separation_min"], 0)))
+            separation=_num(moon["separation_min"], 0))
+        self._refresh_plan_summary()
         self._plan_status.setText(tf("planner.found", n=len(result["deep_sky"]),
                                      total=_num(result["deep_sky_considered"]),
                                      catalog=t(f"planner.catalog_{result['constraints']['catalog']}")))

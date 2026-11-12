@@ -295,6 +295,7 @@ class TonightSpace:
         clock = self._clock
         if q["rating"] == "no_night":
             self._quality_label.setText(t("quality.no_night"))
+            self._quality_text = ""
             self._night_strip.hide()
         else:
             parts = [tf("quality.line", rating=t(f"quality.rating_{q['rating']}"), score=q["score"])]
@@ -311,6 +312,7 @@ class TonightSpace:
             else:
                 parts.append(t("quality.beyond_forecast"))
             self._quality_label.setText(" · ".join(parts))
+            self._quality_text = " · ".join(parts)
             labels, tips = [], []
             for hour in q["hours"]:
                 local = self._local(hour["time"])
@@ -331,6 +333,7 @@ class TonightSpace:
         else:
             self._quality_note.setText(t("quality.bortle_unset"))
         self._weather_credit.setVisible(q["weather"])
+        self._refresh_plan_summary()                       # Observer › Targets shows it too
 
     # ── The coming nights ─────────────────────────────────────────────────
 

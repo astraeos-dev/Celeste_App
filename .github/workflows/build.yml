@@ -94,6 +94,38 @@ jobs:
           QT_QPA_PLATFORM: offscreen
         run: python scripts/build_exe.py
 
+      # Code signing of the installer by SignPath (free for open-source projects,
+      # signpath.org), when the repository is set up for it: variable
+      # SIGNPATH_ORGANIZATION_ID and secret SIGNPATH_API_TOKEN (wiki: Publier une
+      # version). Without them, the installer stays unsigned.
+      - name: Upload the installer to sign
+        id: unsigned
+        if: steps.version.outputs.build == 'true' && vars.SIGNPATH_ORGANIZATION_ID != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: Celeste-Windows-Setup-unsigned
+          path: dist/Celeste-*-Setup.exe
+          if-no-files-found: error
+
+      - name: Sign the installer (SignPath)
+        if: steps.unsigned.outcome == 'success'
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG || 'Celeste_App' }}
+          signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG || 'release-signing' }}
+          github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: dist/signed
+
+      - name: Use the signed installer
+        if: steps.unsigned.outcome == 'success'
+        shell: bash
+        run: |
+          ls -l dist/signed
+          mv -f dist/signed/Celeste-*-Setup.exe dist/
+
       # Artifacts download as .zip files: the installer as it is, and the
       # application folder (no second zip inside)
       - name: Upload the installer

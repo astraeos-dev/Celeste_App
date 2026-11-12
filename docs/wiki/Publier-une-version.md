@@ -111,6 +111,44 @@ gardés). On peut aussi lancer le workflow à la main sur n'importe quelle branc
 Le cycle : on travaille sur la branche, chaque push donne une bêta à essayer ; quand elle convient, on ouvre la pull
 request ; sa fusion publie la version (étape 3).
 
+## 7. Signer l'application (fin de l'avertissement SmartScreen)
+
+Sans signature, Windows affiche « Windows a protégé votre ordinateur » et « éditeur inconnu » au premier lancement
+du programme d'installation. Une signature de code nomme l'éditeur ; SmartScreen se tait ensuite à mesure que la
+réputation du certificat grandit (quelques centaines d'installations, ou tout de suite avec un certificat EV).
+
+Depuis juin 2023, les clés de signature de code restent sur un matériel (clé USB, ou service en ligne) : on ne
+reçoit plus de fichier `.pfx`. D'où deux voies, que le dépôt sait déjà utiliser :
+
+| Voie | Coût | Où se fait la signature |
+|---|---|---|
+| **SignPath Foundation** (signpath.org), gratuit pour les projets libres (Céleste est sous licence MIT) | gratuit, sur dossier | dans le workflow *Build*, à chaque version publiée |
+| **Certificat « Open Source Code Signing » de Certum**, avec SimplySign (clé dans le nuage) | quelques dizaines d'euros par an | sur ton PC, avec `python scripts/build_exe.py` |
+
+**SignPath** : demander l'adhésion sur signpath.org (projet libre, dépôt public), créer le projet `Celeste_App` et une
+politique `release-signing` qui signe un fichier `.exe`, puis dans GitHub, *Settings › Secrets and variables ›
+Actions* :
+
+- variable `SIGNPATH_ORGANIZATION_ID` : l'identifiant de l'organisation SignPath ;
+- secret `SIGNPATH_API_TOKEN` : le jeton d'un utilisateur CI de SignPath ;
+- facultatif : variables `SIGNPATH_PROJECT_SLUG` et `SIGNPATH_POLICY_SLUG` si les noms diffèrent.
+
+Le workflow *Build* envoie alors le programme d'installation à SignPath, attend la signature (SignPath Foundation
+demande une approbation à chaque version) et publie le fichier signé. Sans ces réglages, il publie comme avant,
+sans signature. Les bêtas ne sont pas signées.
+
+**Sur son PC** (certificat installé dans Windows, par exemple Certum SimplySign connecté) :
+
+```bash
+set CELESTE_SIGN_THUMBPRINT=<empreinte SHA-1 du certificat>
+```
+```bash
+python scripts/build_exe.py
+```
+
+`Celeste.exe` puis le programme d'installation sont signés avec `signtool` (Windows SDK) et horodatés. Un ancien
+certificat en fichier `.pfx` reste possible : `CELESTE_SIGN_PFX` (chemin) et `CELESTE_SIGN_PASSWORD`.
+
 ## Construire sur son PC
 
 ```bash

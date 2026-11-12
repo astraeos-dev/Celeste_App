@@ -12,10 +12,13 @@ scripts/build_exe.py — Builds Céleste.exe for Windows
 6. with Inno Setup 6, builds the installer dist/Celeste-<version>-Setup.exe
    (installer/celeste.iss), with Céleste's icon.
 
-A beta build: CELESTE_BETA=<n> writes _build_info.py (config.APP_BETA), and the files
-are named Celeste-<version>-beta.<n>-… (the Beta workflow, on the work branches).
-
-Usage, on Windows: python scripts/build_exe.py      (pip install pyinstaller)
+Signature on this PC: with a code-signing certificate installed in Windows
+(a USB token, or Certum SimplySign: since 2023 the keys stay on a hardware
+device), CELESTE_SIGN_THUMBPRINT = its SHA-1 thumbprint; with an older .pfx
+file, CELESTE_SIGN_PFX (and CELESTE_SIGN_PASSWORD). Celeste.exe and the
+installer are then signed with signtool (Windows SDK) and timestamped.
+Without either, the build is unsigned. The Build workflow signs the release
+installer with SignPath instead (wiki: Publier une version).
 """
 import os
 import platform
@@ -121,6 +124,50 @@ def iscc():
     return next((c for c in candidates if c and os.path.isfile(c)), None)
 
 
+TIMESTAMP_URL = "http://timestamp.digicert.com"
+
+
+def signtool():
+    """signtool.exe: $SIGNTOOL, the PATH, then the newest Windows SDK."""
+    candidates = [os.environ.get("SIGNTOOL"), shutil.which("signtool")]
+    base = os.environ.get("ProgramFiles(x86)")
+    if base:
+        kits = os.path.join(base, "Windows Kits", "10", "bin")
+        if os.path.isdir(kits):
+            for version in sorted(os.listdir(kits), reverse=True):
+                candidates.append(os.path.join(kits, version, "x64", "signtool.exe"))
+    return next((c for c in candidates if c and os.path.isfile(c)), None)
+
+
+def sign_command(path, tool="signtool", pfx=None, password=None, thumbprint=None):
+    """The signtool command that signs *path* (SHA-256, timestamped)."""
+    command = [tool, "sign", "/fd", "SHA256"]
+    if thumbprint:
+        command += ["/sha1", thumbprint]
+    else:
+        command += ["/f", pfx]
+        if password:
+            command += ["/p", password]
+    return command + ["/tr", TIMESTAMP_URL, "/td", "SHA256", "/d", "Céleste", path]
+
+
+def sign(path):
+    """Signs *path* when a certificate is named (CELESTE_SIGN_*); True when signed."""
+    thumbprint = os.environ.get("CELESTE_SIGN_THUMBPRINT")
+    pfx = os.environ.get("CELESTE_SIGN_PFX")
+    if not (thumbprint or pfx):
+        return False
+    if pfx and not thumbprint and not os.path.isfile(pfx):
+        sys.exit(f"CELESTE_SIGN_PFX: no file {pfx}")
+    tool = signtool()
+    if tool is None:
+        sys.exit("signtool.exe not found (Windows SDK): cannot sign")
+    subprocess.check_call(sign_command(path, tool, pfx, os.environ.get("CELESTE_SIGN_PASSWORD"), thumbprint))
+    subprocess.check_call([tool, "verify", "/pa", path])
+    print("signed:", path)
+    return True
+
+
 def make_installer():
     """The Inno Setup installer, when the compiler is there (Windows)."""
     version = release_name()
@@ -132,6 +179,7 @@ def make_installer():
                            os.path.join(ROOT, "installer", "celeste.iss")], cwd=ROOT)
     setup = os.path.join(ROOT, "dist", f"Celeste-{version}-Setup.exe")
     print("installer:", setup)
+    sign(setup)
     return setup
 
 
@@ -142,6 +190,8 @@ def main():
     subprocess.check_call([sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean",
                            "celeste.spec"], cwd=ROOT)
     check_no_ephemeris()
+    if not sign(executable()):
+        print("no certificate (CELESTE_SIGN_THUMBPRINT, CELESTE_SIGN_PFX): unsigned")
     self_test()
     package()
     make_installer()

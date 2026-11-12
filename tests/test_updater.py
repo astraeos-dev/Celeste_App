@@ -276,3 +276,36 @@ def test_beta_build_info(tmp_path, monkeypatch):
         (tmp_path / "_build_info.py").unlink()
         importlib.reload(config)
     assert config.APP_BETA == 0 and config.APP_RELEASE == config.APP_VERSION
+
+
+def _build_exe():
+    import sys
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"))
+    import build_exe
+    return build_exe
+
+
+def test_sign_command():
+    """The signature: SHA-256, the certificate, its password, a timestamp."""
+    build_exe = _build_exe()
+    command = build_exe.sign_command("dist/Celeste.exe", "signtool.exe", "cert.pfx", "secret")
+    assert command[:2] == ["signtool.exe", "sign"]
+    assert command[command.index("/fd") + 1] == "SHA256"
+    assert command[command.index("/f") + 1] == "cert.pfx"
+    assert command[command.index("/p") + 1] == "secret"
+    assert command[command.index("/tr") + 1] == build_exe.TIMESTAMP_URL
+    assert command[-1] == "dist/Celeste.exe"
+    assert "/p" not in build_exe.sign_command("a.exe", "signtool.exe", "cert.pfx", "")
+    token = build_exe.sign_command("a.exe", "signtool.exe", thumbprint="ABC123")
+    assert token[token.index("/sha1") + 1] == "ABC123" and "/f" not in token
+
+
+def test_unsigned_without_certificate(monkeypatch):
+    """No CELESTE_SIGN_PFX: the build goes on, unsigned."""
+    build_exe = _build_exe()
+    monkeypatch.delenv("CELESTE_SIGN_PFX", raising=False)
+    monkeypatch.delenv("CELESTE_SIGN_THUMBPRINT", raising=False)
+    assert build_exe.sign("whatever.exe") is False
+    monkeypatch.setenv("CELESTE_SIGN_PFX", "/no/such/cert.pfx")
+    with pytest.raises(SystemExit):
+        build_exe.sign("whatever.exe")

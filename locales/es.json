@@ -488,6 +488,7 @@
     "no_upcoming": "Nada visible desde aquí en los próximos 30 días",
     "deep_sky": "Cielo profundo: {objects}",
     "deep_sky_item": "{name} ({alt}°, {time})",
+    "algol": "Algol en su mínimo hacia las {time} (±{uncertainty} min), a {alt}° de altura ({dir}): pasa de la magnitud 2,1 a 3,4 y vuelve en unas diez horas",
     "satellites": "Pasos: {passes}",
     "satellite_item": "{name} {start}–{end} ({alt}° {dir})"
   },
@@ -1303,6 +1304,7 @@
     "cat_moon": "Luna",
     "cat_seasons": "Estaciones",
     "cat_meteors": "Estrellas fugaces",
+    "cat_variables": "Estrellas variables",
     "cat_satellites": "Satélites (10 días)",
     "weekday_0": "Lun",
     "weekday_1": "Mar",
@@ -1311,5 +1313,9 @@
     "weekday_4": "Vie",
     "weekday_5": "Sáb",
     "weekday_6": "Dom"
+  },
+  "variables": {
+    "algol_minimum": "Mínimo de Algol",
+    "algol_details": "Algol a {alt}° de altura ({dir}), con ±{uncertainty} min de margen: pasa de la magnitud 2,1 a 3,4 y vuelve en unas diez horas"
   }
 }

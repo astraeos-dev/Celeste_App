@@ -488,6 +488,7 @@
     "no_upcoming": "In den nächsten 30 Tagen nichts von hier aus sichtbar",
     "deep_sky": "Deep Sky: {objects}",
     "deep_sky_item": "{name} ({alt}°, {time})",
+    "algol": "Algol am schwächsten gegen {time} (±{uncertainty} min), in {alt}° Höhe ({dir}): er sinkt von 2,1 auf 3,4 mag und kehrt in etwa zehn Stunden zurück",
     "satellites": "Überflüge: {passes}",
     "satellite_item": "{name} {start}–{end} ({alt}° {dir})"
   },
@@ -1303,6 +1304,7 @@
     "cat_moon": "Mond",
     "cat_seasons": "Jahreszeiten",
     "cat_meteors": "Sternschnuppen",
+    "cat_variables": "Veränderliche Sterne",
     "cat_satellites": "Satelliten (10 Tage)",
     "weekday_0": "Mo",
     "weekday_1": "Di",
@@ -1311,5 +1313,9 @@
     "weekday_4": "Fr",
     "weekday_5": "Sa",
     "weekday_6": "So"
+  },
+  "variables": {
+    "algol_minimum": "Algol-Minimum",
+    "algol_details": "Algol in {alt}° Höhe ({dir}), auf ±{uncertainty} min genau: er sinkt von 2,1 auf 3,4 mag und kehrt in etwa zehn Stunden zurück"
   }
 }

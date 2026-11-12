@@ -31,6 +31,15 @@ def test_only_the_categories_asked():
     assert len([i for i in items if i["category"] == "phases"]) in (8, 9)
 
 
+def test_minima_of_algol():
+    """v4.18: the minima of Algol worth watching from the place (variables.py), none without a place."""
+    items = astro_calendar.collect(START, START + timedelta(days=60), 49.63, -1.62, 0, ZoneInfo("Europe/Paris"),
+                                   categories=("variables",))
+    assert items and {i["category"] for i in items} == {"variables"}
+    assert all(i["kind"] == "algol_minimum" and i["event"]["alt"] >= 15 for i in items)
+    assert not astro_calendar.collect(START, START + timedelta(days=60), categories=("variables",))
+
+
 def test_month_grid():
     weeks = astro_calendar.month_grid(2026, 12)
     assert len(weeks) == 6 and all(len(w) == 7 for w in weeks)

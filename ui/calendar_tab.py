@@ -593,7 +593,7 @@ class CalendarSpace:
 
     _CAL_SYMBOLS = {"phases": "Moon", "eclipses": "Sun", "planets": "conjunction", "minor": "conjunction",
                     "comets": "meteors", "moon": "Moon", "seasons": "Sun", "meteors": "meteors",
-                    "satellites": "star"}
+                    "variables": "star", "satellites": "star"}
 
     def _calendar_title(self, item):
         """Title of an event of the calendar, in the interface language."""
@@ -605,6 +605,8 @@ class CalendarSpace:
             return f"{title} ({t('events.subtype_' + ev['sub_type'])})"
         if cat == "satellites":
             return tf("astro_calendar.pass", name=_satellite_name(ev["name"], short=True))
+        if cat == "variables":
+            return t("variables.algol_minimum")
         return self._event_title(ev, symbol=False)
 
     def _calendar_symbol(self, item):
@@ -626,6 +628,9 @@ class CalendarSpace:
         elif item["category"] == "satellites":
             lines.append(tf("satellites.highest", time=self._clock(ev["max"]), alt=_num(ev["max_alt"]),
                             dir=self._wind(ev["max_az"])))
+        elif item["category"] == "variables":
+            lines.append(tf("variables.algol_details", alt=_num(ev["alt"]), dir=self._wind(ev["az"]),
+                            uncertainty=variables.UNCERTAINTY_MIN))
         else:
             vis = ev.get("visibility")
             if vis is not None and item["category"] not in ("phases", "seasons"):

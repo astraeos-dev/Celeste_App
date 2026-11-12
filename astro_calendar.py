@@ -12,6 +12,7 @@ iCalendar file (.ics):
 - the Moon's events (perigee, apogee, conjunctions with the planets and the
   bright stars), the seasons and the Earth's perihelion and aphelion;
 - the peaks of the meteor showers;
+- the minima of Algol that can be watched from the place (variables.py);
 - the visible passes of the ISS, Tiangong and Hubble (the next 10 days only,
   from the orbits kept on disk: no download here).
 
@@ -20,10 +21,12 @@ No Qt: the interface (gui.py) runs collect() in the background.
 import math
 from datetime import timedelta
 
+import variables
 from engine import AstroEngine
 
 # The categories, in the order of the interface's filters
-CATEGORIES = ("phases", "eclipses", "planets", "minor", "comets", "moon", "seasons", "meteors", "satellites")
+CATEGORIES = ("phases", "eclipses", "planets", "minor", "comets", "moon", "seasons", "meteors", "variables",
+              "satellites")
 DEFAULT_DAYS = 365
 _PHASES = ("new_moon", "first_quarter", "full_moon", "last_quarter")
 
@@ -75,6 +78,10 @@ def collect(start, end, lat=None, lon=None, elevation_m=0.0, tz=0, satellite_ele
     for ev in events:
         items.append({"date": ev["date"], "end": None, "category": ev.get("group", "planets"),
                       "kind": ev["type"], "event": ev})
+    if "variables" in wanted and lat is not None:
+        for minimum in variables.visible_minima(start, end, lat, lon, elevation_m):
+            items.append({"date": minimum["date"], "end": None, "category": "variables",
+                          "kind": "algol_minimum", "event": minimum})
     if "satellites" in wanted and satellite_elements and lat is not None:
         span = min(days, 10)
         for p in AstroEngine.satellite_passes(satellite_elements, start, lat, lon, elevation_m, span):

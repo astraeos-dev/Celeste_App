@@ -55,6 +55,7 @@ import places  # noqa: E402
 import satellites  # noqa: E402
 import settings as prefs  # noqa: E402
 import updater  # noqa: E402
+import variables  # noqa: E402
 from config import APP_BETA, APP_VERSION, FONT_MONO, FONT_SANS, THEME_NAMES, Config, mix  # noqa: E402
 from engine import (  # noqa: E402
     COMET_DESIGNATIONS, COMET_SHORT, COMETS, EPHEMERIS_YEARS, GALILEAN_MOONS, MINOR_PLANET_NUMBERS, MINOR_PLANETS, MOON_PLANETS,
@@ -390,6 +391,7 @@ def _tonight_and_upcoming(key, dte, lat, lon, elev, zone):
         elements = satellites.load()                     # no network here: the orbits on disk
         if elements and satellites.epoch_age_days(elements) <= satellites.STALE_DAYS:
             night["satellites"] = AstroEngine.satellite_passes(elements, night["start"], lat, lon, elev, 1)
+        night["algol"] = variables.visible_minima(night["start"], night["end"], lat, lon, elev)
         _TONIGHT_CACHE[key] = (night, AstroEngine.upcoming_events(dte, lat, lon, elev, zone))
     return _TONIGHT_CACHE[key]
 

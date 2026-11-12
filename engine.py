@@ -47,6 +47,12 @@ v4.3:
   • Sedna among MINOR_PLANETS; MINOR_PLANET_NUMBERS, the Minor Planet
     Center's numbers ("(136199) Eris")
 
+v4.18:
+  • horizontal_tracks(): several bodies over many instants, the observer
+    computed once; stars_apparent() and turned_horizontal(): the stars'
+    places of the day turned by the sidereal time (the sky map's time bar,
+    within a second of arc); the minima of Algol (variables.py) build on it
+
 v4.17:
   • unchanged: the observation log (journal.py) and the engine on Android
     (android/main.py) build on it

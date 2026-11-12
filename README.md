@@ -66,7 +66,8 @@ The interface is translated into French, English, Spanish and German.
 - **Polar sky map** — zoom up to ×12 (wheel on the pointer, buttons; drag to move around), zenith at the centre, north up and east on the left as in the sky, 8,404 stars down to magnitude 6.5
   (Yale Bright Star Catalogue, brought to the
   date: proper motion, precession, nutation, aberration) sized by magnitude, the figures of the 88 constellations, planets; tooltip on hover
-  and detailed card on click (constellation, magnitude, coordinates)
+  and detailed card on click (constellation, magnitude, coordinates); a time bar under the map runs through the night,
+  sunset to sunrise, and ▶ plays it (the sky turns ten minutes a frame; the calculation keeps its date)
 - **Planets** — Mercury, Venus, Mars, Jupiter, Saturn, Uranus and Neptune: coordinates, altitude and azimuth,
   distance, elongation, magnitude, times of rise, culmination and set (name dimmed below the horizon); all the bodies
   or one group, "Visible only", sort by clicking a header
@@ -88,7 +89,7 @@ The interface is translated into French, English, Spanish and German.
   a legend whose lines show, hide or bring out each target; export as a text report, JSON or PNG
 - **Astronomical calendar** — in the Events tab: every event Céleste computes (Moon phases, eclipses,
   conjunctions, oppositions and elongations, minor planets, comets, the Moon's events, seasons, meteor showers,
-  satellite passes) over a period, a year by default, in a month grid; filters by kind; the day's details; the
+  minima of Algol, satellite passes) over a period, a year by default, in a month grid; filters by kind; the day's details; the
   .ics export of what the filters let through
 - **Moons of the planets** — in the data windows: Jupiter's Galilean moons, and Phobos, Deimos, eight moons of
   Saturn, five of Uranus, Triton and Charon from JPL Horizons (2020 to 2040, within 0.1″), drawn as in a telescope
@@ -132,6 +133,9 @@ The interface is translated into French, English, Spanish and German.
   per step
 - **Deep sky** — the 110 Messier objects on the sky map (atlas symbols, card on click) and the finest of the night in
   "Tonight"
+- **Variable stars** — the minima of Algol you can watch from your place (the star at least 15° high in a dark sky),
+  in "Tonight" and in the calendar, to within half an hour: an ephemeris fitted to the CCD minima of the BAV's
+  Lichtenknecker Database, the light time across the Earth's orbit included
 - **Satellite passes** — International Space Station, Tiangong and Hubble over 10 days: time of appearance, highest
   point, entry into the Earth's shadow; CelesTrak orbits (AMSAT as a fallback) refreshed every two days
 - **Visibility from here** — for each event, the night to see it (evening, morning or all night), with the altitude,
@@ -250,6 +254,8 @@ A satellite pass is counted when the satellite rises at least 10° above the hor
   see the sky lying on your back with your head to the north; the slider sets the limiting magnitude of the stars
   (up to 6.5)
 - Hover over a body of the map to identify it, click to show its card
+- Move the bar under the map to see the sky at another hour of the night, or press ▶ to watch it turn; the time shows
+  in gold while the map is not at the calculation's time
 - Type a name in "Find an object…" to circle it on the map; emptying the field removes the circle
 
 ---
@@ -302,6 +308,7 @@ Celeste_App/
 ├── astro_calendar.py    # The astronomical calendar: every event of a period, by category
 ├── journal.py           # Observation log: entries in ~/.celeste/journal.json, CSV export
 ├── night_quality.py     # Quality of the night: darkness, Moon, clouds (Open-Meteo), Bortle class
+├── variables.py         # Variable stars: the minima of Algol seen from the place
 ├── planner.py           # Night planner: targets of the night under the observer's constraints
 ├── mpc.py               # Comet elements of the Minor Planet Center (~/.celeste/CometEls.txt)
 ├── instruments.py       # Geometry of the instruments to make: planisphere, sundials, astrolabe (no Qt)
@@ -416,6 +423,9 @@ only the chart of the shown tab is redrawn; the others are when they are opened.
 - **JPL Small-Body Database** — magnitude parameters M1, K1 of the comets; **JPL Horizons** — their positions
 - **E. Bowell et al.** (1989), *Application of photometric models to asteroids*, Asteroids II — H, G magnitudes of
   the minor planets (parameters from the JPL Small-Body Database)
+- **Lichtenknecker Database of the BAV** (Bundesdeutsche Arbeitsgemeinschaft für Veränderliche Sterne) — the minima of
+  Algol the ephemeris is fitted to; **J. M. Kreiner** (2004), *Up-to-date linear elements of close binaries*, Acta
+  Astron. 54, 207, and the BAV's elements of 2017 — its check
 
 ---
 
@@ -492,6 +502,7 @@ launch, SmartScreen shows "Windows protected your PC" (*More info*, then *Run an
 - [x] **Deep sky** — the Messier catalogue
 - [x] **Satellites** — visible passes of the ISS, Tiangong and Hubble
 - [x] **Jupiter and Saturn** — the four Galilean moons, the tilt of the rings
+- [x] **Variable stars** — the minima of Algol
 
 ### Interface and visualisation
 
@@ -501,6 +512,7 @@ launch, SmartScreen shows "Windows protected your PC" (*More info*, then *Run an
 - [x] **Twilight colours** — background of the path chart coloured by the time of day
 - [x] **Interactive sky map** — full card of a star on click
 - [x] **Search on the sky map** — a star, a planet, a Messier object or a constellation by its name
+- [x] **Animated sky map** — the night on a time bar, played with ▶
 - [x] **Astræos design** — Nuit, Jour and Observation themes without restarting, IBM Plex fonts, vector icons
 
 ### Ease of use

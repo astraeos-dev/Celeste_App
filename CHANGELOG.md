@@ -7,6 +7,15 @@ Write for them: short sentences, as dashes, no bold or code (the window of versi
 markup as it is), about 800 characters at most (the window cuts the rest, GitHub does not). See the wiki page
 "Publier une version".
 
+## 4.18
+
+- Sky map: a time bar under the map runs through the night, from sunset to sunrise; press play to watch the sky
+  turn, ten minutes a frame. Only the map moves; a button brings it back to your time.
+- Variable stars: the minima of Algol, the Demon Star, that you can watch from your place, in Tonight and in the
+  calendar (new filter), to within half an hour.
+- On a narrow window or a phone, the sky map's tools fit in three rows.
+- Android: the whole of Céleste now starts on Android, as a test version.
+
 ## 4.17
 
 - New observation log, in Observer: what you saw, when and where, with your instrument, the seeing, the

@@ -464,6 +464,11 @@ class TonightSpace:
             items = [tf("tonight.deep_sky_item", name=_messier_label(catalog[o["m"] - 1]), alt=_num(o["alt"]),
                         time=clock(o["best"])) for o in n["deep_sky"]]
             lines.append((tf("tonight.deep_sky", objects=" · ".join(items)), None))
+        for minimum in n.get("algol", ()):                  # the Demon Star at its faintest (variables.py)
+            lines.append((f"{SYMBOL['star']} " + tf("tonight.algol", time=clock(minimum["date"]),
+                                                     uncertainty=variables.UNCERTAINTY_MIN,
+                                                     alt=_num(minimum["alt"]), dir=self._wind(minimum["az"])),
+                          None))
         if self._upcoming:
             items = []
             for ev in self._upcoming:

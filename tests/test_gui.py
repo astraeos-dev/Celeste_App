@@ -2166,6 +2166,22 @@ def test_astronomical_calendar(window, qapp, tmp_path, monkeypatch):
     text = target.read_text(encoding="utf-8")
     assert text.count("BEGIN:VEVENT") == len(window._ics_items) and "Pleine lune" in text
     widgets["boxes"]["moon"].setChecked(True)
+    # v4.18: the minima of Algol seen from the place, under their own filter
+    assert widgets["boxes"]["variables"].text() == "Étoiles variables"
+    assert any(i["category"] == "variables" for i in cal["items"])
+    window._cal_choose(date(2026, 11, 10))                       # 00:12 UT, Algol near the zenith
+    assert any("Minimum d'Algol" in c.lines.text() for c in window._cal_widgets["cells"])
+
+
+def test_algol_minimum_tonight(window, qapp):
+    """v4.18: Tonight names the minimum of Algol of the night when it can be watched."""
+    window._set_datetime(datetime(2026, 11, 9, 21, 0))
+    window.calculate()
+    algol = [text for text, _tone in window._tonight_lines() if "Algol" in text]
+    assert len(algol) == 1 and "00:1" in algol[0] and "±30 min" in algol[0]
+    window._set_datetime(datetime(2026, 11, 8, 21, 0))                 # no minimum that night
+    window.calculate()
+    assert not any("Algol" in text for text, _tone in window._tonight_lines())
 
 
 # ──────────────────────────────────────────────────────────────────────

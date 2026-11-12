@@ -70,9 +70,10 @@ The interface is translated into French, English, Spanish and German.
   magnitude and type; ranked by the share of the night; your own targets, a to-do list (always shown) and a done
   list (never shown); the Moon and the planets of the night; the comets brighter than magnitude 12, from Céleste's
   table or every comet the Minor Planet Center follows; the altitude of the chosen targets through the night, or
-  their paths across the sky (a map with the hours, a slider through the night, the details under the pointer);
-  export as a text report, JSON, PNG, or an interactive map (a web page that works offline: the paths, the
-  altitude chart, a slider and a legend to show or hide each target)
+  their paths across the sky as uptonight's plots: numbered targets with a marker of their kind, the planets, the
+  comets, the Moon, the header of the night (Sun, Moon, constraints), in the colours of the theme, the east on
+  either side; a large window with the whole table, a slider through the night, the details under the pointer and
+  a legend whose lines show, hide or bring out each target; export as a text report, JSON or PNG
 - **Observing site** — a horizon mask (azimuth and altitude pairs: trees, houses), used by the planner and drawn on
   the sky map; temperature and pressure for the refraction
 - **Search on the sky map** — the name of a star (Vega, "alpha cyg"), a planet, a comet, a Messier object ("m31",
@@ -400,6 +401,10 @@ is needed on that day; after that everything works offline, and the updates (≈
   Two artifacts: `Celeste-Windows-Setup`, the installer `Celeste-<version>-Setup.exe` (Start menu and Desktop
   shortcuts, uninstall from the Windows settings), and `Celeste-Windows`, the application folder to run without
   installing (`Celeste.exe`).
+- **Beta to test, before the pull request**: each push on a work branch (`claude/…`, `beta/…`) runs the "Beta" workflow:
+  the tests, then a *pre-release* `v<version>-beta.<n>` on the Releases page with its installer ("4.12 beta 7" in the
+  side panel). The automatic update never offers a beta; a beta updates itself to the release of its version. See
+  the wiki page "Publier une version".
 - **New version**: change `APP_VERSION` in `config.py` (the only place: window, installer, GitHub requests), write its
   changes in [`CHANGELOG.md`](CHANGELOG.md) and merge: the workflow publishes the `v<version>` Release (installer,
   SHA-256 checksum, and the note of the version, taken from the changelog).

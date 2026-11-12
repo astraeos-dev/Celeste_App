@@ -13,7 +13,8 @@ markup as it is), about 800 characters at most (the window cuts the rest, GitHub
   with calendar and shadow square, alidade) and a nocturnal that tells the time at night from the Great Bear.
 - The Workshop window has its own place, time zone and date: no need to change the side panel.
 - Location: pick your place on a map, when Windows does not let Céleste use its location service.
-- Targets: a sky map of the night with the path of each target, and an interactive map to save as a web page.
+- Targets: a sky map of the night as uptonight draws it, in Céleste's colours, with the numbered targets, the
+  planets, the comets and the header of the night; in a large window, the legend shows or hides each target.
 
 ## 4.11
 

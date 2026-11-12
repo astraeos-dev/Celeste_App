@@ -73,6 +73,7 @@ _DEFAULTS = {
     "planner_done":   [],           # targets never shown
     "planner_custom": [],           # the user's own targets (planner.custom_target keywords)
     "planner_mpc":    True,         # every comet of the Minor Planet Center, not only Céleste's
+    "plan_map_east_right": False,   # the map of the night with the east on the right (as uptonight)
     # Updates (updater.py)
     "update_check":   True,         # look for a new version at startup
     "update_skipped": "",           # version the user chose to skip

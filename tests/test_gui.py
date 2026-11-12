@@ -1571,21 +1571,49 @@ class TestPlanner:
         w._plan_view_buttons["altitude"].setChecked(True)
         assert not w._plan_slider.isVisible()
 
-    def test_interactive_map_export(self, planner_tab, tmp_path, monkeypatch):
-        import json
+    def test_large_map_of_the_night(self, planner_tab, qapp, tmp_path, monkeypatch):
+        """The large map, as uptonight in Céleste's colours: every target numbered as in the
+        table, the planets, the header of the night; the legend shows and hides a target;
+        the east on either side; the image."""
         import gui
+        from config import Config
         w = planner_tab
-        monkeypatch.setattr(gui.QFileDialog, "getSaveFileName",
-                            staticmethod(lambda *a: (str(tmp_path / "nuit"), "Carte interactive (*.html)")))
-        w._export_plan()
-        html = (tmp_path / "nuit.html").read_text(encoding="utf-8")
-        assert html.startswith("<!doctype html>") and "http" not in html.split("<script>")[1].split("const D")[0]
-        data = json.loads(html.split("const D = ")[1].split(";\nconst L")[0])
-        kinds = {t["kind"] for t in data["tracks"]}
-        assert {"deep_sky", "body", "moon"} <= kinds
-        m33 = next(t for t in data["tracks"] if t["name"] == "M33")
-        assert m33["on"] and len(m33["alt"]) == len(data["times"]) == len(m33["az"])
-        assert data["labels"]["north"] == "N"
+        dlg = w.show_night_sky()
+        qapp.processEvents()
+        ns = dlg.night_sky
+        data = ns["data"]
+        deep = [tr for tr in data["tracks"] if tr["kind"] == "deep_sky"]
+        assert [tr["number"] for tr in deep] == list(range(1, len(deep) + 1))
+        assert deep[0]["legend"].startswith("1 : M33 Galaxie du Triangle (Galaxie")
+        assert deep[0]["shape"] == "circle" and deep[0]["color"] == Config.OR        # the theme's colours
+        bodies = [tr for tr in data["tracks"] if tr["kind"] == "body"]
+        assert bodies and all(tr["shape"] == "big" and tr["color"] == Config.ENCRE for tr in bodies)
+        assert data["info"][1].startswith("Coucher / lever du Soleil : ")
+        assert ns["state"]["points"]
+        def on_the_first_row():                    # the legend is drawn again at each change
+            legend, rows, _step = ns["figure"].night_legend
+
+            class Event:
+                inaxes, ydata, xdata = legend, rows[0][0], 0.5
+            return Event()
+        first = ns["figure"].night_legend[1][0][1]
+        ns["clicked"](on_the_first_row())
+        assert data["tracks"][first]["on"] is False
+        assert all(p[0] != data["tracks"][first]["name"] for p in ns["state"]["points"])
+        ns["clicked"](on_the_first_row())
+        assert data["tracks"][first]["on"] is True
+        ns["moved"](on_the_first_row())
+        assert ns["state"]["highlight"] == first
+        ns["show"](False)
+        assert not ns["state"]["points"]
+        ns["show"](True)
+        ns["east"].setChecked(True)
+        assert gui.prefs.get("plan_map_east_right") is True
+        monkeypatch.setattr(gui.QFileDialog, "getSaveFileName", staticmethod(lambda *a: (str(tmp_path / "nuit"), "")))
+        ns["save"]()
+        assert (tmp_path / "nuit.png").read_bytes()[:4] == b"\x89PNG"
+        dlg.close()
+        gui.prefs.set("plan_map_east_right", False)
 
     def test_polar_day(self, planner_tab):
         w = planner_tab

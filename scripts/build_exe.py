@@ -11,6 +11,9 @@ scripts/build_exe.py — Builds Céleste.exe for Windows
 6. with Inno Setup 6, builds the installer dist/Celeste-<version>-Setup.exe
    (installer/celeste.iss), with Céleste's icon.
 
+A beta build: CELESTE_BETA=<n> writes _build_info.py (config.APP_BETA), and the files
+are named Celeste-<version>-beta.<n>-… (the Beta workflow, on the work branches).
+
 Usage, on Windows: python scripts/build_exe.py      (pip install pyinstaller)
 """
 import os
@@ -82,10 +85,25 @@ def self_test():
         sys.exit(f"the built application does not start (code {result.returncode})")
 
 
+def write_build_info():
+    """_build_info.py: the beta number of this build (CELESTE_BETA), 0 for a release."""
+    beta = int(os.environ.get("CELESTE_BETA") or 0)
+    with open(os.path.join(ROOT, "_build_info.py"), "w", encoding="utf-8") as f:
+        f.write(f'"""Written by scripts/build_exe.py."""\nBETA = {beta}\n')
+    return beta
+
+
+def release_name():
+    """4.12, or 4.12-beta.3 for a beta build (read after write_build_info())."""
+    import importlib
+    import config
+    importlib.reload(config)
+    return config.APP_RELEASE
+
+
 def package():
-    from config import APP_VERSION
     system = "Windows" if os.name == "nt" else platform.system()     # Linux: a local try
-    base = os.path.join(ROOT, "dist", f"Celeste-{APP_VERSION}-{system}")
+    base = os.path.join(ROOT, "dist", f"Celeste-{release_name()}-{system}")
     archive = shutil.make_archive(base, "zip", os.path.join(ROOT, "dist"), "Celeste")
     print("archive:", archive)
 
@@ -101,19 +119,20 @@ def iscc():
 
 def make_installer():
     """The Inno Setup installer, when the compiler is there (Windows)."""
-    from config import APP_VERSION
+    version = release_name()
     compiler = iscc()
     if compiler is None:
         print("Inno Setup 6 not found: no installer")
         return None
-    subprocess.check_call([compiler, f"/DAppVersion={APP_VERSION}",
+    subprocess.check_call([compiler, f"/DAppVersion={version}",
                            os.path.join(ROOT, "installer", "celeste.iss")], cwd=ROOT)
-    setup = os.path.join(ROOT, "dist", f"Celeste-{APP_VERSION}-Setup.exe")
+    setup = os.path.join(ROOT, "dist", f"Celeste-{version}-Setup.exe")
     print("installer:", setup)
     return setup
 
 
 def main():
+    print("beta:", write_build_info() or "no (a release)")
     print("ephemeris:", ensure_ephemeris())
     make_icons()
     subprocess.check_call([sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean",

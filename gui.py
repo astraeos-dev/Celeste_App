@@ -71,7 +71,7 @@ import places  # noqa: E402
 import satellites  # noqa: E402
 import settings as prefs  # noqa: E402
 import updater  # noqa: E402
-from config import APP_VERSION, FONT_MONO, FONT_SANS, THEME_NAMES, Config, mix  # noqa: E402
+from config import APP_BETA, APP_VERSION, FONT_MONO, FONT_SANS, THEME_NAMES, Config, mix  # noqa: E402
 from engine import (  # noqa: E402
     COMET_DESIGNATIONS, COMET_SHORT, COMETS, EPHEMERIS_YEARS, GALILEAN_MOONS, MINOR_PLANET_NUMBERS, MINOR_PLANETS, PLANETS,
     AstroEngine,
@@ -275,6 +275,11 @@ def _ip_location(services=_IP_SERVICES, timeout=4):
             lat, lon, city, country, zone = found
             return float(lat), float(lon), city or "", country or "", zone
     return None
+
+
+def _version_text():
+    """4.12, or "4.12 bêta 3" for a beta build."""
+    return tf("app.beta", version=APP_VERSION, n=APP_BETA) if APP_BETA else APP_VERSION
 
 
 def _place_name(lat, lon):
@@ -1550,7 +1555,7 @@ class AstroApp(QMainWindow):
         lay.addStretch()
         self.theme_selector = ThemeSelector(Config.THEME, self._on_theme_selected)
         lay.addWidget(self.theme_selector)
-        lay.addWidget(_label(tf("app.version", version=APP_VERSION), "legende"))
+        lay.addWidget(_label(tf("app.version", version=_version_text()), "legende"))
         return side
 
     @staticmethod
@@ -1983,12 +1988,12 @@ class AstroApp(QMainWindow):
         self._update_busy = False
         interactive = self._update_interactive
         if release is None or not updater.is_newer(release["version"]):
-            self._update_info.setText(tf("update.up_to_date", version=APP_VERSION))
+            self._update_info.setText(tf("update.up_to_date", version=_version_text()))
             if interactive:
-                self.statusBar().showMessage(tf("update.up_to_date", version=APP_VERSION), 8000)
+                self.statusBar().showMessage(tf("update.up_to_date", version=_version_text()), 8000)
             return
         self._update_info.setText(tf("update.available", version=release["version"],
-                                       current=APP_VERSION))
+                                       current=_version_text()))
         if interactive or prefs.get("update_skipped") != release["version"]:
             self._show_update_dialog(release)
 
@@ -2001,7 +2006,7 @@ class AstroApp(QMainWindow):
     def _show_update_dialog(self, release):
         """Window (non-modal): the new version, its notes, and what to do."""
         box = QMessageBox(QMessageBox.Icon.Information, t("update.title"),
-                          tf("update.available", version=release["version"], current=APP_VERSION),
+                          tf("update.available", version=release["version"], current=_version_text()),
                           parent=self)
         box.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)           # once closed, it does not stay in memory
         notes = updater.plain_notes(release.get("notes", ""))
@@ -2493,6 +2498,10 @@ class AstroApp(QMainWindow):
         views.addSpacing(12)
         views.addWidget(self._plan_time)
         views.addWidget(self._plan_slider, stretch=1)
+        self._plan_enlarge = _button(t("planner.sky_enlarge"), None, "discret", compact=True)
+        self._plan_enlarge.setToolTip(t("planner.sky_enlarge_tip"))
+        self._plan_enlarge.clicked.connect(lambda _c=False: self.show_night_sky())
+        views.addWidget(self._plan_enlarge)
         card_l.addLayout(views)
         self.fig_plan = Figure(facecolor=Config.CIEL_100)
         self.canvas_plan = FigureCanvasQTAgg(self.fig_plan)
@@ -2725,45 +2734,249 @@ class AstroApp(QMainWindow):
     def _plan_times(self):
         return [self._local(x).strftime("%H:%M") for x in self._plan["times"]]
 
-    def _draw_plan_tracks(self):
-        """The paths across the sky of the chosen targets (the map of the night)."""
+    _SHAPES = {"galaxy": "circle", "galaxy_group": "circle", "nebula": "diamond", "planetary_nebula": "diamond",
+               "supernova_remnant": "diamond", "dark_nebula": "diamond"}
+
+    def _night_sky_data(self, everything=False):
+        """
+        What the map of the night shows (the Targets tab, its large window and its web
+        page): the deep-sky targets numbered as in the table (*everything*: the first 20,
+        the chosen ones shown; otherwise the chosen ones), the planets, the comets, the
+        Moon, with their colours and markers, the header and the legend, as uptonight.
+        """
         result = self._plan
-        labels = {"title": t("planner.map_title"), "empty": t("planner.chart_empty"), "moon": t("chart.moon"),
-                  **{k: t(f"skymap.cardinal_{k[0]}") for k in ("north", "east", "south", "west")}}
+        key, chosen = self._plan_chosen()
+        chosen_names = {title for title, _item in chosen}
+        times = self._plan_times()
+        tracks = []
+
+        def start(alts):
+            return next((i for i, a in enumerate(alts) if a is not None and a > 0), 0)
+
+        table = self._plan_tables["deep_sky"]
+        order = [table.item(r, 0).data(_NAME_ROLE) for r in range(table.rowCount())]
+        by_label = {o["label"]: o for o in result["deep_sky"]}
+        if everything:
+            names = order[:20] + [n for n in chosen_names if key == "deep_sky" and n in by_label and n not in order[:20]]
+        else:
+            names = [title for title, _item in chosen] if key == "deep_sky" else []
+        for n, name in enumerate(names):
+            o = by_label.get(name)
+            if o is None:
+                continue
+            number = order.index(name) + 1 if name in order else n + 1
+            details = [t(f"messier.type_{o['type']}")]
+            if o.get("major"):
+                details.append(f"{_num(o['major'], 0)}′")
+            details.append(f"{_num(100 * o['fraction'], 0)} %")
+            if o.get("mag") is not None:
+                details.append(f"mag {_num(o['mag'], 1)}")
+            row = order.index(name) if name in order else None
+            title = table.item(row, 0).text() if row is not None else o["label"]     # the name in the language
+            tracks.append({"name": o["label"], "legend": f"{number} : {title} ({', '.join(details)})",
+                           "kind": "deep_sky", "shape": self._SHAPES.get(o["type"], "square"), "number": number,
+                           "alt": [float(v) for v in o["altitudes"]], "az": [float(v) for v in o["azimuths"]],
+                           "on": True,
+                           "start": start(o["altitudes"])})
+        for b in result["bodies"]:
+            if b["name"] == "moon":
+                continue
+            title = _planet_name(b["name"])
+            if not everything and not (key == "bodies" and title in chosen_names):
+                continue
+            mag = "" if b.get("mag") is None else f" (mag {_num(b['mag'], 1)})"
+            tracks.append({"name": title, "legend": title + mag, "kind": "body", "shape": "big", "number": None,
+                           "alt": [float(v) for v in b["altitudes"]], "az": [float(v) for v in b["azimuths"]],
+                           "on": True, "start": start(b["altitudes"])})
+        if everything:
+            for k in result["comets"][:6]:
+                title = _planet_name(k["table"], numbered=True) if k["table"] else k["name"]
+                tracks.append({"name": title, "legend": f"{title} (mag {_num(k['mag'], 1)})", "kind": "comet",
+                               "shape": "x", "number": None,
+                               "alt": [float(v) for v in k["altitudes"]], "az": [float(v) for v in k["azimuths"]],
+                               "on": True, "start": start(k["altitudes"])})
+        moon = next((b for b in result["bodies"] if b["name"] == "moon"), None)
+        if moon is not None:
+            tracks.append({"name": t("chart.moon"), "legend": t("chart.moon"), "kind": "moon", "shape": "circle",
+                           "number": None, "alt": [float(v) for v in moon["altitudes"]],
+                           "az": [float(v) for v in moon["azimuths"]], "on": True, "start": 0})
+        window, ev, c = result["window"], result.get("events", {}), result["constraints"]
+
+        def hm(dt):
+            return "—" if dt is None else self._local(dt).strftime("%H:%M")
+
+        def dhm(dt):
+            return "—" if dt is None else self._local(dt).strftime("%d/%m %H:%M")
+        length = (window["end"] - window["start"]).total_seconds() / 3600
+        title = tf("planner.sky_title", kind=t(f"planner.night_{window['kind']}").split(" (")[0],
+                   start=dhm(window["start"]), end=dhm(window["end"]),
+                   length=f"{int(length)} h {int(round(length % 1 * 60)):02d}")
+        info = [tf("planner.sky_sun", set=hm(ev.get("sunset")), rise=hm(ev.get("sunrise"))),
+                tf("planner.sky_moon", rise=dhm(ev.get("moonrise")), set=dhm(ev.get("moonset"))),
+                tf("planner.sky_illumination", value=_num(result["moon"]["illumination"], 0)),
+                tf("planner.sky_altitude", low=_num(c["altitude_min"], 0), high=_num(c["altitude_max"], 0)),
+                tf("planner.sky_airmass", value=_num(c["airmass_max"], 1)),
+                tf("planner.sky_size", low=_num(c["size_min"], 0), high=_num(c["size_max"], 0)),
+                tf("planner.sky_fraction", value=_num(100 * c["fraction_min"], 0)),
+                tf("planner.sky_separation", value=_num(result["moon"]["separation_min"], 0))]
+        where = self.location_name or f"{_fmt_lat(self._lat)}, {_fmt_lon(self._lon)}"
+        labels = {"north": t("skymap.cardinal_n"), "east": t("skymap.cardinal_e"), "south": t("skymap.cardinal_s"),
+                  "west": t("skymap.cardinal_w"), "empty": t("planner.chart_empty")}
+        info.insert(0, tf("planner.sky_place", place=where, zone=_fmt_offset(self._offset_at(result["times"][0]))))
+        return {"title": title, "info": info, "markers": [t(f"planner.sky_marker_{k}") for k in
+                                          ("big", "diamond", "circle", "square", "x")],
+                "times": times, "tracks": tracks, "horizon": [list(p) for p in result["horizon"]],
+                "limits": [c["altitude_min"], c["altitude_max"]], "labels": labels,
+                "east_right": bool(prefs.get("plan_map_east_right"))}
+
+    def _draw_plan_tracks(self):
+        """The paths across the sky of the chosen targets (the map of the night, compact)."""
+        result = self._plan
         times = self._plan_times() if result is not None else []
         self._plan_slider.blockSignals(True)
         self._plan_slider.setRange(0, max(0, len(times) - 1))
         self._plan_slider.blockSignals(False)
         if result is None or not times:
-            self._plan_points = charts.draw_night_tracks(self.fig_plan, [], [], None, [], (30, 80), labels)
+            self._plan_sky = None
+            self.fig_plan.clear()
             self.canvas_plan.draw_idle()
             return
-        _key, chosen = self._plan_chosen()
-        tracks = [(title, item["altitudes"], item["azimuths"]) for title, item in chosen if item.get("name") != "moon"]
-        moon = next(((b["altitudes"], b["azimuths"]) for b in result["bodies"] if b["name"] == "moon"), None)
+        self._plan_sky = self._night_sky_data()
         now = self._plan_slider.value()
         self._plan_time.setText(times[now])
-        labels["title"] = tf("planner.map_title_date", date=self._local(result["times"][0]).strftime("%d/%m/%Y"))
-        c = result["constraints"]
-        self._plan_points = charts.draw_night_tracks(self.fig_plan, times, tracks, moon, result["horizon"],
-                                                     (c["altitude_min"], c["altitude_max"]), labels, now)
+        self._plan_points = charts.draw_night_sky(self.fig_plan, self._plan_sky, now,
+                                                  self._plan_sky["east_right"], compact=True)
         self.canvas_plan.draw_idle()
 
-    def _on_plan_hover(self, event):
-        """Over the map of the night: the target, the hour, its altitude and azimuth."""
-        if not self._plan_map_mode() or event.xdata is None or self._plan is None:
-            return
-        best = min(self._plan_points, key=lambda p: (p[1] - event.xdata) ** 2 + (p[2] - event.ydata) ** 2,
-                   default=None)
-        if best is None or (best[1] - event.xdata) ** 2 + (best[2] - event.ydata) ** 2 > 0.04 ** 2:
+    def _night_sky_tip(self, event, points, data, canvas):
+        """The tooltip over a map of the night: the target, the hour, its altitude and azimuth."""
+        if event.xdata is None or not points or data is None:
             QToolTip.hideText()
             return
-        label, _x, _y, i = best
-        r = math.hypot(best[1], best[2])
-        alt = 90.0 * (1.0 - r)
-        az = math.degrees(math.atan2(-best[1], best[2])) % 360.0
-        QToolTip.showText(QCursor.pos(), tf("planner.map_tip", name=label, time=self._plan_times()[i],
-                                            alt=_deg(alt, 0), az=_deg(az, 0)), self.canvas_plan)
+        best = min(points, key=lambda p: (p[1] - event.xdata) ** 2 + (p[2] - event.ydata) ** 2)
+        if (best[1] - event.xdata) ** 2 + (best[2] - event.ydata) ** 2 > 0.035 ** 2:
+            QToolTip.hideText()
+            return
+        name, _x, _y, i = best
+        track = next(tr for tr in data["tracks"] if tr["name"] == name)
+        QToolTip.showText(QCursor.pos(), tf("planner.map_tip", name=name, time=data["times"][i],
+                                            alt=_deg(track["alt"][i], 0), az=_deg(track["az"][i], 0)), canvas)
+
+    def _on_plan_hover(self, event):
+        if self._plan_map_mode() and self._plan is not None:
+            self._night_sky_tip(event, self._plan_points, getattr(self, "_plan_sky", None), self.canvas_plan)
+
+    def show_night_sky(self):
+        """The large map of the night, after uptonight's plots, in Céleste's colours: every
+        target of the table, the planets, the comets and the Moon, the header and the
+        numbered legend. A slider through the night, the details under the pointer, a
+        click on a line of the legend shows or hides its target (the pointer over it
+        brings its path out), the east on either side, and the image to save."""
+        if self._plan is None or not self._plan["times"]:
+            return None
+        data = self._night_sky_data(everything=True)
+        dlg = QDialog(self)
+        dlg.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        dlg.setWindowTitle(data["title"])
+        dlg.resize(1280, 860)
+        lay = QVBoxLayout(dlg)
+        lay.setContentsMargins(16, 16, 16, 12)
+        figure = Figure(facecolor=Config.CIEL_100)
+        canvas = FigureCanvasQTAgg(figure)
+        lay.addWidget(canvas, stretch=1)
+        bar = QHBoxLayout()
+        time_label = _label("", "corps", strong=True)
+        slider = QSlider(Qt.Orientation.Horizontal)
+        slider.setRange(0, len(data["times"]) - 1)
+        slider.setValue(len(data["times"]) // 2)
+        slider.setToolTip(t("planner.time_tip"))
+        east = QCheckBox(t("planner.sky_east_right"))
+        east.setChecked(data["east_right"])
+        east.setToolTip(t("planner.sky_east_tip"))
+        show_all = _button(t("planner.sky_show_all"), None, "discret", compact=True)
+        hide_all = _button(t("planner.sky_hide_all"), None, "discret", compact=True)
+        png = _button(t("planner.sky_save_png"), "export", "principal", compact=True)
+        close = _button(t("detail.close"), compact=True)
+        close.clicked.connect(dlg.reject)
+        for widget in (time_label,):
+            bar.addWidget(widget)
+        bar.addWidget(slider, stretch=1)
+        for widget in (east, show_all, hide_all, png, close):
+            bar.addWidget(widget)
+        lay.addLayout(bar)
+        state = {"points": [], "highlight": None}
+
+        def draw():
+            time_label.setText(data["times"][slider.value()])
+            state["points"] = charts.draw_night_sky(figure, data, slider.value(), east.isChecked(),
+                                                    highlight=state["highlight"])
+            canvas.draw_idle()
+
+        def legend_row(event):
+            """The track under the pointer in the legend, or None."""
+            legend = getattr(figure, "night_legend", None)
+            if not legend or event.inaxes is not legend[0] or event.ydata is None:
+                return None
+            _ax, rows, step = legend
+            near = min(rows, key=lambda r: abs(r[0] - event.ydata))
+            return near[1] if abs(near[0] - event.ydata) <= step / 2 else None
+
+        def moved(event):
+            row = legend_row(event)
+            if row != state["highlight"]:
+                state["highlight"] = row if row is None or data["tracks"][row].get("on", True) else None
+                draw()
+            if row is None:
+                self._night_sky_tip(event, state["points"], data, canvas)
+
+        def clicked(event):
+            row = legend_row(event)
+            if row is not None:
+                track = data["tracks"][row]
+                track["on"] = not track.get("on", True)
+                state["highlight"] = row if track["on"] else None
+                draw()
+
+        def show(on):
+            for track in data["tracks"]:
+                track["on"] = on
+            draw()
+
+        def turn_east(on):
+            prefs.set("plan_map_east_right", bool(on))
+            data["east_right"] = bool(on)
+            draw()
+            self._draw_plan_chart()
+
+        def save():
+            day = self._local(self._plan["window"]["start"]).strftime("%Y-%m-%d")
+            path, _f = QFileDialog.getSaveFileName(
+                dlg, t("planner.export"), os.path.join(os.path.expanduser("~"), f"celeste-nuit-{day}.png"),
+                "PNG (*.png)")
+            if not path:
+                return
+            if not path.lower().endswith(".png"):
+                path += ".png"
+            try:
+                figure.savefig(path, dpi=150, facecolor=figure.get_facecolor())
+            except OSError as exc:
+                QMessageBox.critical(dlg, t("errors.error_title"), str(exc))
+                return
+            self.statusBar().showMessage(tf("planner.exported", path=path), 6000)
+
+        slider.valueChanged.connect(lambda _v: draw())
+        east.toggled.connect(turn_east)
+        show_all.clicked.connect(lambda _c=False: show(True))
+        hide_all.clicked.connect(lambda _c=False: show(False))
+        png.clicked.connect(lambda _c=False: save())
+        canvas.mpl_connect("motion_notify_event", moved)
+        canvas.mpl_connect("button_press_event", clicked)
+        dlg.night_sky = {"figure": figure, "canvas": canvas, "slider": slider, "east": east, "data": data,
+                         "state": state, "save": save, "moved": moved, "clicked": clicked, "show": show}
+        self._night_sky_dialog = dlg
+        dlg.show()
+        draw()
+        return dlg
 
     def _draw_plan_chart(self):
         """Altitude through the night of the targets chosen in the table (the first five without a choice),
@@ -2773,6 +2986,7 @@ class AstroApp(QMainWindow):
         map_mode = self._plan_map_mode()
         self._plan_slider.setVisible(map_mode)
         self._plan_time.setVisible(map_mode)
+        self._plan_enlarge.setVisible(map_mode)
         if map_mode:
             self._draw_plan_tracks()
             return
@@ -2960,15 +3174,11 @@ class AstroApp(QMainWindow):
         name = f"celeste-plan-{self._local(self._plan['window']['start']).strftime('%Y-%m-%d')}"
         path, chosen = QFileDialog.getSaveFileName(
             self, t("planner.export"), os.path.join(os.path.expanduser("~"), name + ".txt"),
-            f"{t('planner.export_txt')} (*.txt);;{t('planner.export_html')} (*.html);;JSON (*.json);;PNG (*.png)")
+            f"{t('planner.export_txt')} (*.txt);;JSON (*.json);;PNG (*.png)")
         if not path:
             return
         try:
-            if path.lower().endswith(".html") or "html" in chosen.lower():
-                path = path if path.lower().endswith(".html") else path + ".html"
-                with open(path, "w", encoding="utf-8") as f:
-                    f.write(planner.report_html(self._plan_html_data()))
-            elif path.lower().endswith(".png") or "png" in chosen.lower():
+            if path.lower().endswith(".png") or "png" in chosen.lower():
                 self.fig_plan.savefig(path if path.lower().endswith(".png") else path + ".png", dpi=150,
                                       facecolor=self.fig_plan.get_facecolor())
             elif path.lower().endswith(".json") or "json" in chosen.lower():
@@ -2981,48 +3191,6 @@ class AstroApp(QMainWindow):
             QMessageBox.critical(self, t("errors.error_title"), str(exc))
             return
         self.statusBar().showMessage(tf("planner.exported", path=path), 6000)
-
-    def _plan_html_data(self):
-        """What the interactive map of the night shows: the deep-sky targets of the table (the
-        chosen ones shown), the planets, the comets and the Moon, each one to show or hide."""
-        result = self._plan
-        key, chosen = self._plan_chosen()
-        shown = {title for title, _item in chosen}
-        tracks = []
-        table = self._plan_tables["deep_sky"]
-        names = [table.item(r, 0).data(_NAME_ROLE) for r in range(min(15, table.rowCount()))]
-        by_label = {o["label"]: o for o in result["deep_sky"]}
-        for name in names + [n for n in shown if n in by_label and n not in names]:
-            o = by_label.get(name)
-            if o is not None:
-                tracks.append({"name": name, "kind": "deep_sky", "alt": list(o["altitudes"]),
-                               "az": list(o["azimuths"]), "on": key == "deep_sky" and name in shown})
-        for b in result["bodies"]:
-            if b["name"] == "moon":
-                continue
-            title = _planet_name(b["name"])
-            tracks.append({"name": title, "kind": "body", "alt": list(b["altitudes"]), "az": list(b["azimuths"]),
-                           "on": key == "bodies" and title in shown})
-        for k in result["comets"][:6]:
-            tracks.append({"name": _planet_name(k["table"], numbered=True) if k["table"] else k["name"],
-                           "kind": "comet", "alt": list(k["altitudes"]), "az": list(k["azimuths"]), "on": False})
-        moon = next((b for b in result["bodies"] if b["name"] == "moon"), None)
-        if moon is not None:
-            tracks.append({"name": t("chart.moon"), "kind": "moon", "alt": list(moon["altitudes"]),
-                           "az": list(moon["azimuths"]), "on": True})
-        c = result["constraints"]
-        day = self._local(result["times"][0]).strftime("%d/%m/%Y")
-        where = self.location_name or f"{_fmt_lat(self._lat)}, {_fmt_lon(self._lon)}"
-        labels = {"north": t("skymap.cardinal_n"), "east": t("skymap.cardinal_e"), "south": t("skymap.cardinal_s"),
-                  "west": t("skymap.cardinal_w"), "altitude": t("planner.html_altitude"),
-                  "azimuth": t("planner.html_azimuth"), "show_all": t("planner.html_show_all"),
-                  "hide_all": t("planner.html_hide_all"), "group_deep_sky": t("planner.tab_deep_sky"),
-                  "group_body": t("planner.tab_bodies"), "group_comet": t("planner.tab_comets"),
-                  "group_moon": t("chart.moon"), "made_with": tf("planner.html_made_with", version=APP_VERSION)}
-        return {"title": tf("planner.map_title_date", date=day),
-                "subtitle": tf("planner.html_subtitle", place=where, zone=_fmt_offset(self._offset_at(result["times"][0]))),
-                "times": self._plan_times(), "tracks": tracks, "horizon": [list(p) for p in result["horizon"]],
-                "limits": [c["altitude_min"], c["altitude_max"]], "labels": labels}
 
     def _plan_report_text(self):
         """The plan as text, in the interface language (uptonight's txt report)."""

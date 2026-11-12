@@ -245,3 +245,34 @@ class TestPlainNotes:
 
     def test_empty(self):
         assert updater.plain_notes("") == "" and updater.plain_notes(None) == ""
+
+
+def test_a_beta_is_replaced_by_the_release_of_its_version():
+    """4.12 beta 3 updates itself to 4.12, not to an older release; a release does not
+    go back to the same version."""
+    assert updater.is_newer("4.12", "4.12", beta=3)
+    assert not updater.is_newer("4.11", "4.12", beta=3)
+    assert updater.is_newer("4.13", "4.12", beta=3)
+    assert not updater.is_newer("4.12", "4.12", beta=0)
+
+
+def test_beta_build_info(tmp_path, monkeypatch):
+    """scripts/build_exe.py writes the beta number that config reads (APP_RELEASE)."""
+    import importlib
+    import sys
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"))
+    import build_exe
+    monkeypatch.setattr(build_exe, "ROOT", str(tmp_path))
+    monkeypatch.setenv("CELESTE_BETA", "7")
+    assert build_exe.write_build_info() == 7
+    monkeypatch.syspath_prepend(str(tmp_path))
+    sys.modules.pop("_build_info", None)
+    import config
+    try:
+        importlib.reload(config)
+        assert config.APP_BETA == 7 and config.APP_RELEASE == f"{config.APP_VERSION}-beta.7"
+    finally:
+        sys.modules.pop("_build_info", None)
+        (tmp_path / "_build_info.py").unlink()
+        importlib.reload(config)
+    assert config.APP_BETA == 0 and config.APP_RELEASE == config.APP_VERSION

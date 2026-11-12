@@ -15,7 +15,7 @@ on:
   push:
     branches: [ master ]
     paths: [ "config.py" ]
-    tags: [ "v*" ]
+    tags: [ "v*", "!v*-beta*" ]      # the betas are the Beta workflow's
 
 permissions:
   contents: write

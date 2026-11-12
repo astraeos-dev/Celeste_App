@@ -745,6 +745,8 @@ class ObserveSpace:
         if len(labels) == 1:
             menu.addAction(t("planner.show_on_map")).triggered.connect(
                 lambda: self._show_plan_target_on_map(table.currentRow()))
+            menu.addAction(t("journal.log_target")).triggered.connect(
+                lambda: self._journal_open(target=labels[0]))
         if any(lb not in bucket for lb in labels):
             menu.addAction(t("planner.add_bucket")).triggered.connect(lambda: self._plan_list_add("planner_bucket", labels))
         else:

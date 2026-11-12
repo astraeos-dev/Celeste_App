@@ -41,7 +41,11 @@ The interface is translated into French, English, Spanish and German.
 - **Quality of the night** — in Tonight: a rating from excellent to bad and the best window, from how dark the sky
   gets, the Moon and, when turned on (cloud button), the clouds and the damp air forecast by
   [Open-Meteo](https://open-meteo.com) (CC BY 4.0); the hours of the night in colour; the light pollution of the
-  place on the Bortle scale (Settings › Observing site) with its naked-eye limiting magnitude
+  place on the Bortle scale (Settings › Observing site) with its naked-eye limiting magnitude; the next seven
+  nights side by side (calendar button)
+- **Observation log** — Observer › Log: an entry per observation (date, place, target, instrument, seeing and
+  transparency from 1 to 5, notes, the quality of the night computed by Céleste), added from the Targets list too
+  (right click), kept in `~/.celeste/journal.json`, exported as CSV
 - **Tonight** — at the top of the ephemeris: the dark night, the Moon, the visible planets (and comets) with their best
   moment, the finest deep-sky objects, the satellite passes and the next three events visible from here
 - **Instant positions** — right ascension, declination, altitude, azimuth, distance
@@ -296,6 +300,7 @@ Celeste_App/
 ├── places.py            # Offline place search (GeoNames cities)
 ├── history.py           # The last calculations (~/.celeste/history.json)
 ├── astro_calendar.py    # The astronomical calendar: every event of a period, by category
+├── journal.py           # Observation log: entries in ~/.celeste/journal.json, CSV export
 ├── night_quality.py     # Quality of the night: darkness, Moon, clouds (Open-Meteo), Bortle class
 ├── planner.py           # Night planner: targets of the night under the observer's constraints
 ├── mpc.py               # Comet elements of the Minor Planet Center (~/.celeste/CometEls.txt)
@@ -549,8 +554,8 @@ unsigned).
 
 ## Privacy
 
-Céleste has no account, no analytics and no advertising, and keeps its settings, favourites and history in
-`~/.celeste` on your computer. It connects to the following services, and to no other:
+Céleste has no account, no analytics and no advertising, and keeps its settings, favourites, history and
+observation log in `~/.celeste` on your computer. It connects to the following services, and to no other:
 
 | Service | When | What it receives |
 |---|---|---|

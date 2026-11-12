@@ -47,6 +47,10 @@ v4.3:
   • Sedna among MINOR_PLANETS; MINOR_PLANET_NUMBERS, the Minor Planet
     Center's numbers ("(136199) Eris")
 
+v4.17:
+  • unchanged: the observation log (journal.py) and the engine on Android
+    (android/main.py) build on it
+
 v4.16:
   • tonight() gives the night hour by hour (Sun and Moon altitudes), for the
     quality of the night (night_quality.py)

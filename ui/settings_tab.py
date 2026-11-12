@@ -315,6 +315,7 @@ class SettingsSpace:
             return
         prefs.set("lang", code)
         switch_lang(resolve_lang(code, QLocale.system().name()))
+        install_qt_translation(get_lang())
         QTimer.singleShot(0, self._rebuild)
 
     def _on_timefmt_change(self, index):
@@ -385,6 +386,7 @@ class SettingsSpace:
         prefs.reset()
         Config.apply_theme(prefs.get("theme"))
         switch_lang(resolve_lang(prefs.get("lang"), QLocale.system().name()))
+        install_qt_translation(get_lang())
         self.tz_name = prefs.get("default_tz") or _AUTO_ZONE
         self.location_name = _clean_place(prefs.get("default_place"))
         if self.live_mode:

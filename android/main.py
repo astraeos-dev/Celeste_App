@@ -40,6 +40,34 @@ def self_test_line():
             f"Python {platform.python_version()}, {platform.machine() or 'unknown'}")
 
 
+ANDROID_CA_DIR = "/system/etc/security/cacerts"        # Android's own CA certificates (hashed PEM)
+
+
+def use_android_certificates():
+    """
+    HTTPS for urllib (the ephemeris download): Python on Android does not find
+    any CA certificate by itself (CERTIFICATE_VERIFY_FAILED). Every default
+    context loads certifi's file, and Android's own certificates when there.
+    """
+    import ssl
+    try:
+        import certifi
+        cafile = certifi.where()
+    except ImportError:
+        cafile = None
+    cafile = cafile if cafile and os.path.isfile(cafile) else None
+    capath = ANDROID_CA_DIR if os.path.isdir(ANDROID_CA_DIR) else None
+    print(f"Céleste android: CA certificates {cafile or '-'} · {capath or '-'}", flush=True)
+    if cafile is None and capath is None:
+        return False
+
+    def context(*_args, **_kwargs):
+        return ssl.create_default_context(cafile=cafile, capath=capath)
+
+    ssl._create_default_https_context = context
+    return True
+
+
 class EngineRun(QObject):
     """Céleste's engine in a thread: the ephemeris (downloaded once), then the Sun and the Moon."""
 
@@ -56,8 +84,7 @@ class EngineRun(QObject):
     def _run(self):
         try:
             os.environ.setdefault("CELESTE_DATA", self.data_dir)
-            import certifi                              # the CA certificates: Android's are out of reach
-            os.environ.setdefault("SSL_CERT_FILE", certifi.where())
+            use_android_certificates()
             import engine
             path = engine.ephemeris_path()
             if not os.path.isfile(path):

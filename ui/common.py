@@ -22,8 +22,8 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError, available_timezones
 
 from qt.QtCore import (
-    QDate, QDateTime, QEvent, QLocale, QPoint, QPointF, QRectF, QRegularExpression, QSize,
-    QStringListModel, Qt, QTime, QTimer, QTimeZone, QUrl,
+    QDate, QDateTime, QEvent, QLibraryInfo, QLocale, QPoint, QPointF, QRectF, QRegularExpression, QSize,
+    QStringListModel, Qt, QTime, QTimer, QTimeZone, QTranslator, QUrl,
 )
 from qt.QtGui import (
     QBrush, QColor, QCursor, QDesktopServices, QFont, QFontDatabase, QKeySequence,
@@ -34,7 +34,7 @@ from qt.QtWidgets import (
     QAbstractItemView, QApplication, QBoxLayout, QButtonGroup, QCheckBox, QComboBox, QCompleter,
     QDateEdit, QDateTimeEdit, QDialog, QDialogButtonBox, QFileDialog, QFrame, QGridLayout, QProgressDialog,
     QHBoxLayout, QHeaderView, QInputDialog, QLabel, QLineEdit, QMainWindow, QMenu,
-    QMessageBox, QProgressBar, QPushButton, QScrollArea, QSizePolicy, QSlider, QSplitter, QToolTip,
+    QMessageBox, QPlainTextEdit, QProgressBar, QPushButton, QScrollArea, QSizePolicy, QSlider, QSplitter, QToolTip,
     QStatusBar, QTabBar, QTabWidget, QTableWidget, QTableWidgetItem, QToolButton,
     QVBoxLayout, QWidget,
 )
@@ -1089,6 +1089,30 @@ def _register_fonts():
     mono = next((f for f in _FALLBACK_MONO if f in families),
                 QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont).family())
     _fonts.update(sans=(sans,), mono=(mono,))
+    return False
+
+
+_QT_TRANSLATOR = {}
+
+
+def install_qt_translation(lang):
+    """
+    Qt's own texts in the interface language (the standard buttons Save,
+    Cancel, Close, Yes, No; the menus of the text fields; the file dialogs):
+    qtbase_<lang>.qm of the Qt binding, when it ships one.
+    """
+    app = QApplication.instance()
+    if app is None:
+        return False
+    old = _QT_TRANSLATOR.pop("qtbase", None)
+    if old is not None:
+        app.removeTranslator(old)
+    translator = QTranslator(app)
+    folder = QLibraryInfo.path(QLibraryInfo.LibraryPath.TranslationsPath)
+    if lang and lang != "en" and translator.load(f"qtbase_{lang}", folder):
+        app.installTranslator(translator)
+        _QT_TRANSLATOR["qtbase"] = translator
+        return True
     return False
 
 

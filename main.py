@@ -105,8 +105,10 @@ def main(argv=None):
     Config.apply_theme(args.theme or prefs.get("theme"))
     switch_lang(resolve_lang(args.lang or prefs.get("lang"), QLocale.system().name()))
 
-    from gui import AstroApp, init_style
+    from gui import AstroApp, init_style, install_qt_translation
+    from i18n import get_lang
     init_style(app)
+    install_qt_translation(get_lang())
     if not ensure_ephemeris():
         return 1
     window = AstroApp()

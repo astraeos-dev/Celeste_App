@@ -70,6 +70,7 @@ _DEFAULTS = {
     "horizon_points": [],           # horizon mask: [[azimuth, altitude], ...] degrees
     "bortle":         0,            # light pollution of the place, Bortle class 1–9; 0: not given
     "weather_forecast": False,      # quality of the night: the clouds forecast by Open-Meteo
+    "journal_instrument": "",       # observation log: the instrument of the last entry
     "planner_constraints": {},      # the user's values of planner.DEFAULTS
     "planner_bucket": [],           # targets always shown
     "planner_done":   [],           # targets never shown

@@ -43,6 +43,10 @@ class TonightSpace:
         self._weather_btn.setChecked(bool(prefs.get("weather_forecast")))
         self._weather_btn.toggled.connect(self._on_weather_toggled)
         head.addWidget(self._weather_btn)
+        week_btn = _icon_button("calendar", t("quality.week_tip"), compact=True)
+        week_btn.clicked.connect(lambda _=False: self.show_week_quality())
+        self._week_btn = week_btn
+        head.addWidget(week_btn)
         outer.addLayout(head)
         # the quality of the night: its rating, the hours, the sky of the place
         self._quality_label = _label("", "corps", wrap=True)
@@ -327,6 +331,92 @@ class TonightSpace:
         else:
             self._quality_note.setText(t("quality.bortle_unset"))
         self._weather_credit.setVisible(q["weather"])
+
+    # ── The coming nights ─────────────────────────────────────────────────
+
+    def _week_quality(self, nights=7):
+        """The quality of the *nights* nights from the one of the chosen date (0.1 s each)."""
+        dte, lat, lon, elev = self._dte, self._lat, self._lon, self._elevation()
+        weather = None
+        if prefs.get("weather_forecast"):
+            cached = getattr(self, "_weather", None)
+            if cached is not None and cached[0] == (round(lat, 2), round(lon, 2)):
+                weather = cached[2]
+        out = []
+        for i in range(nights):
+            night = AstroEngine.tonight(dte + timedelta(days=i), lat, lon, elev, self._zone)
+            out.append((night, night_quality.assess(night, weather)))
+        return out
+
+    def show_week_quality(self):
+        """A window: the coming seven nights, their rating, best window, clouds and Moon."""
+        if self._dte is None:
+            return None
+        rows = self._week_quality()
+        dlg = QDialog(self)
+        dlg.setWindowTitle(t("quality.week_title"))
+        dlg.setMinimumWidth(640)
+        lay = QVBoxLayout(dlg)
+        lay.setSpacing(12)
+        lay.addWidget(_label(t("quality.week_hint"), "legende", tone="attenuee", wrap=True))
+        weather = any(q["weather"] for _, q in rows)
+        columns = ["night", "quality", "best", "moon"] + (["clouds"] if weather else [])
+        table = QTableWidget(len(rows), len(columns))
+        table.setHorizontalHeaderLabels([t(f"quality.col_{c}") for c in columns])
+        table.verticalHeader().setVisible(False)
+        table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        locale = _locale()
+        for r, (night, q) in enumerate(rows):
+            day = self._local(night["start"]).date()
+            cells = {"night": locale.toString(QDate(day.year, day.month, day.day), "ddd d MMM"),
+                     "quality": (t("quality.no_night") if q["rating"] == "no_night"
+                                 else f"{t('quality.rating_' + q['rating'])} · {q['score']}/100"),
+                     "best": (f"{self._clock(q['best']['start'])}–{self._clock(q['best']['end'])}"
+                              if q["best"] else "—"),
+                     "moon": tf("quality.week_moon", pct=_num(100.0 * night["moon"]["fraction"]),
+                                up=_num(100.0 * q["moon_up"])),
+                     "clouds": "—" if q["cloud"] is None else f"{_num(q['cloud'])} %"}
+            for c, key in enumerate(columns):
+                table.setItem(r, c, QTableWidgetItem(cells[key]))
+                if key == "quality" and q["rating"] != "no_night":
+                    # the score's colour, as the hours of Tonight (an item's own background
+                    # would be covered by the theme's style sheet)
+                    badge = QLabel(cells[key])
+                    fill = mix(Config.SIGNAL_OK, Config.CIEL_200, q["score"] / 100.0)
+                    ink = Config.CIEL_000 if q["score"] >= 50 else Config.ENCRE
+                    badge.setStyleSheet(f"background: {fill}; color: {ink}; border-radius: 4px; "
+                                        f"padding: 2px 10px; margin: 4px 6px;")
+                    table.setCellWidget(r, c, badge)
+                    table.item(r, c).setText("")               # the label shows it; kept in tooltip
+                    table.item(r, c).setToolTip(cells[key])
+                    table.item(r, c).setData(Qt.ItemDataRole.UserRole, cells[key])
+        table.resizeColumnsToContents()
+        if "quality" in columns:                       # the badges are wider than the (empty) items
+            col = columns.index("quality")
+            badges = [table.cellWidget(r, col) for r in range(len(rows)) if table.cellWidget(r, col)]
+            if badges:
+                table.setColumnWidth(col, max(table.columnWidth(col),
+                                              max(b.sizeHint().width() for b in badges) + 40))
+        table.horizontalHeader().setStretchLastSection(True)
+        header_h = table.horizontalHeader().sizeHint().height()
+        table.setMinimumHeight(header_h + sum(table.rowHeight(r) for r in range(len(rows))) + 6)
+        width = sum(table.columnWidth(c) for c in range(len(columns))) + 40
+        dlg.resize(min(1180, max(640, width)), dlg.sizeHint().height())
+        lay.addWidget(table)
+        if weather:
+            credit = _label(f'<a href="https://open-meteo.com/">{t("quality.credit")}</a>', "legende",
+                            tone="attenuee")
+            credit.setTextFormat(Qt.TextFormat.RichText)
+            credit.setOpenExternalLinks(True)
+            lay.addWidget(credit)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        buttons.rejected.connect(dlg.reject)
+        lay.addWidget(buttons)
+        dlg.table = table
+        self._week_dialog = dlg
+        dlg.open()
+        return dlg
 
     def _tonight_lines(self):
         """[(text, tone)] of the summary: the night, the Moon, a line per visible planet, what comes next."""

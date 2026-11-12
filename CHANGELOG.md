@@ -7,6 +7,14 @@ Write for them: short sentences, as dashes, no bold or code (the window of versi
 markup as it is), about 800 characters at most (the window cuts the rest, GitHub does not). See the wiki page
 "Publier une version".
 
+## 4.17
+
+- New observation log, in Observer: what you saw, when and where, with your instrument, the seeing, the
+  transparency, your notes and the quality of the night computed by Céleste; export as a spreadsheet (CSV).
+- Log a target straight from the Targets list (right click).
+- Tonight: the quality of the next seven nights, to choose your night (calendar button).
+- Qt's own buttons and dialogs (Save, Cancel, Close…) now speak your language.
+
 ## 4.16
 
 - Tonight: the quality of the night, from excellent to bad, with its best window and its hours in colour: how dark

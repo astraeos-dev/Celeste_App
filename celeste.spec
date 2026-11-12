@@ -23,6 +23,13 @@ datas = [
 ]
 for package in ("skyfield", "timezonefinder", "timezonefinder_data", "tzdata"):
     datas += collect_data_files(package)
+# Qt's own texts in the four languages (standard buttons, dialogs): ui.common.install_qt_translation
+import PySide6  # noqa: E402
+_translations = os.path.join(os.path.dirname(PySide6.__file__), "Qt", "translations")
+for _lang in ("fr", "es", "de"):
+    _qm = os.path.join(_translations, f"qtbase_{_lang}.qm")
+    if os.path.isfile(_qm):
+        datas.append((_qm, os.path.join("PySide6", "Qt", "translations")))
 
 a = Analysis(
     ["main.py"],

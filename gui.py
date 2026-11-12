@@ -39,6 +39,7 @@ from ui.sky import SkySpace
 from ui.bodies import BodiesSpace
 from ui.calendar_tab import CalendarSpace
 from ui.observe import ObserveSpace
+from ui.journal_tab import JournalSpace
 from ui.settings_tab import SettingsSpace
 
 
@@ -48,7 +49,8 @@ COMPACT_WIDTH = 900
 _TOUCH_SIZE = 48              # touch targets of the compact layout (Material: 48 dp)
 
 
-class AstroApp(TonightSpace, SkySpace, BodiesSpace, CalendarSpace, ObserveSpace, SettingsSpace, QMainWindow):
+class AstroApp(TonightSpace, SkySpace, BodiesSpace, CalendarSpace, ObserveSpace, JournalSpace, SettingsSpace,
+               QMainWindow):
     """Main window of Céleste."""
 
     def __init__(self):
@@ -158,7 +160,7 @@ class AstroApp(TonightSpace, SkySpace, BodiesSpace, CalendarSpace, ObserveSpace,
                 ("bodies", (self._build_planets_tab, self._build_solar_system_tab,
                             self._build_coordinates_tab)),
                 ("calendar", (self._build_events_tab,)),
-                ("observe", (self._build_planner_tab,))):
+                ("observe", (self._build_planner_tab, self._build_journal_tab))):
             self._space_pages = []
             for build in builders:
                 build()

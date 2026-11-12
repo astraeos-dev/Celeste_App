@@ -32,7 +32,7 @@ pytest.importorskip("matplotlib")
 
 from engine import COMETS  # noqa: E402
 from matplotlib.backend_bases import MouseEvent  # noqa: E402
-from qt.QtCore import QEvent, Qt  # noqa: E402
+from qt.QtCore import QDate, QDateTime, QEvent, Qt, QTime  # noqa: E402
 from qt.QtWidgets import (  # noqa: E402
     QAbstractButton, QApplication, QDialog, QFrame, QLabel, QMessageBox,
 )
@@ -56,6 +56,7 @@ def window(qapp, tmp_path, monkeypatch):
     from i18n import switch_lang
 
     monkeypatch.setattr(prefs, "_SETTINGS_FILE", str(tmp_path / "settings.json"))
+    monkeypatch.setattr(prefs, "USER_DIR", str(tmp_path))      # the journal, the forecast: nothing in ~/.celeste
     prefs.reset()
     prefs.set("default_tz", "UTC")      # times expected in UT; the automatic zone has its own tests
     favorites = tmp_path / "favorites.json"
@@ -1519,7 +1520,8 @@ class TestPlanner:
         table.selectRow(3)                                              # M31
         w._plan_context_menu(table.visualItemRect(table.item(3, 0)).center())
         actions = {a.text(): a for a in w._plan_menu.actions()}
-        assert set(actions) == {"Voir sur la carte du ciel", "Ajouter à « à faire »", "Marquer comme déjà fait"}
+        assert set(actions) == {"Voir sur la carte du ciel", "Noter une observation", "Ajouter à « à faire »",
+                                "Marquer comme déjà fait"}
         actions["Marquer comme déjà fait"].trigger()
         w._plan_menu.close()
         assert prefs.get("planner_done") == ["M31"]
@@ -2354,3 +2356,142 @@ class TestNightQuality:
         tips = window._night_strip._tips
         assert tips and all("/100" in tip for tip in tips)
         assert any("Lune" in tip for tip in tips)
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Observation log, Observer › Journal (v4.17, journal.py)
+# ──────────────────────────────────────────────────────────────────────
+
+class TestJournal:
+    @staticmethod
+    def _add(window, target="M31 Galaxie d'Andromède", notes="Bras de poussière en vision décalée"):
+        dlg = window._journal_dialog(target=target)
+        dlg.fields["instrument"].setText("Lunette 80/480")
+        dlg.fields["seeing"].setCurrentIndex(dlg.fields["seeing"].findData(4))
+        dlg.fields["transparency"].setCurrentIndex(dlg.fields["transparency"].findData(3))
+        dlg.fields["notes"].setPlainText(notes)
+        return dlg, dlg.save()
+
+    def test_a_page_of_observer(self, window, qapp):
+        observe = window.tabs.widget(4)
+        assert [observe.tabText(i) for i in range(observe.count())] == ["Cibles", "Journal"]
+        window.show_page(window._journal_page)
+        _pump(qapp, 3)
+        assert window.current_page() is window._journal_page
+        assert window._journal_empty.isVisibleTo(window) and not window._journal_table.isVisibleTo(window)
+        assert window._journal_count.text() == "0 observation"
+
+    def test_add(self, window, tmp_path):
+        import settings as prefs
+        dlg, kept = self._add(window)
+        assert kept["target"] == "M31 Galaxie d'Andromède" and kept["place"] == "Cherbourg-en-Cotentin"
+        assert kept["seeing"] == 4 and kept["transparency"] == 3 and kept["lat"] == pytest.approx(49.6333)
+        assert kept["quality"] == window._night_quality["score"]
+        assert (tmp_path / "journal.json").is_file()
+        table = window._journal_table
+        assert table.rowCount() == 1 and table.item(0, 1).text() == "M31 Galaxie d'Andromède"
+        assert table.item(0, 4).text() == "4/5 · 3/5"
+        assert window._journal_count.text() == "1 observation"
+        assert prefs.get("journal_instrument") == "Lunette 80/480"
+        assert window._journal_dialog().fields["instrument"].text() == "Lunette 80/480"   # remembered
+
+    def test_the_date_is_kept_in_ut(self, window):
+        import journal
+        from datetime import datetime
+        dlg = window._journal_dialog(target="Jupiter")
+        dlg.fields["date"].setDateTime(QDateTime(QDate(2026, 11, 12), QTime(22, 15)))
+        dlg.save()
+        entry = journal.load()[0]
+        assert entry["date"] == "2026-11-12T22:15:00"                         # the fixture's zone is UTC
+        assert datetime.fromisoformat(entry["date"]).hour == 22
+
+    def test_a_target_is_needed(self, window):
+        import journal
+        dlg = window._journal_dialog()
+        assert dlg.save() is None and journal.load() == []
+
+    def test_edit_and_delete(self, window, monkeypatch):
+        import gui
+        import journal
+        self._add(window)
+        window._journal_table.selectRow(0)
+        assert window._journal_edit_btn.isEnabled()
+        window._journal_edit_selected()
+        dlg = window._journal_dlg
+        assert dlg.fields["target"].text() == "M31 Galaxie d'Andromède"
+        dlg.fields["notes"].setPlainText("Ciel voilé vers minuit")
+        dlg.save()
+        assert len(journal.load()) == 1 and journal.load()[0]["notes"] == "Ciel voilé vers minuit"
+        window._journal_table.selectRow(0)
+        monkeypatch.setattr(gui.common, "QMessageBox", _yes_box(gui))
+        window._journal_delete_selected()
+        assert journal.load() == [] and window._journal_count.text() == "0 observation"
+
+    def test_export(self, window, tmp_path, monkeypatch):
+        import gui
+        self._add(window)
+        out = tmp_path / "journal.csv"
+        monkeypatch.setattr(gui.QFileDialog, "getSaveFileName", lambda *a, **k: (str(out), "CSV (*.csv)"))
+        window._journal_export()
+        text = out.read_text(encoding="utf-8-sig")
+        assert text.splitlines()[0].startswith("Date (TU),Cible,Lieu")
+        assert "M31 Galaxie d'Andromède" in text and "Lunette 80/480" in text
+
+    def test_from_the_targets_list(self, planner_tab, qapp):
+        w = planner_tab
+        table = w._plan_tables["deep_sky"]
+        table.selectRow(0)
+        w._plan_context_menu(table.visualItemRect(table.item(0, 0)).center())
+        actions = [a for a in w._plan_menu.actions() if a.text() == "Noter une observation"]
+        assert actions
+        actions[0].trigger()
+        dlg = w._journal_dlg
+        assert dlg.fields["target"].text() == table.item(0, 0).data(gui_name_role())
+        dlg.reject()
+
+
+def test_qt_standard_buttons_in_the_interface_language(qapp):
+    """Qt's own texts follow the language: Save becomes Enregistrer (qtbase_fr.qm of the binding)."""
+    import gui
+    from qt.QtWidgets import QDialogButtonBox
+    try:
+        assert gui.install_qt_translation("fr")
+        box = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
+        texts = {b.text().replace("&", "") for b in box.buttons()}
+        assert texts == {"Enregistrer", "Annuler"}
+        assert gui.install_qt_translation("de")
+        box = QDialogButtonBox(QDialogButtonBox.StandardButton.Cancel)
+        assert box.buttons()[0].text().replace("&", "") == "Abbrechen"
+    finally:
+        assert not gui.install_qt_translation("en")                 # English: Qt's own texts
+    box = QDialogButtonBox(QDialogButtonBox.StandardButton.Cancel)
+    assert box.buttons()[0].text().replace("&", "") == "Cancel"
+
+
+class TestWeekQuality:
+    def test_seven_nights(self, window):
+        dlg = window.show_week_quality()
+        table = dlg.table
+        assert table.rowCount() == 7 and table.columnCount() == 4               # no clouds column without forecast
+        headers = [table.horizontalHeaderItem(c).text() for c in range(table.columnCount())]
+        assert headers == ["Nuit", "Qualité", "Meilleur moment", "Lune"]
+        quality = table.item(0, 1).data(Qt.ItemDataRole.UserRole)
+        assert "/100" in quality and table.cellWidget(0, 1).text() == quality
+        assert "éclairée à" in table.item(0, 3).text()
+        first = window._week_quality(1)[0][1]
+        assert quality.endswith(f"{first['score']}/100")                        # the night of the chosen date
+        dlg.reject()
+
+    def test_with_the_forecast(self, window, monkeypatch):
+        import gui
+        import night_quality
+        night = window._tonight
+        data = {night_quality._forecast_key(h["time"]): {"cloud": 80.0, "humidity": 70.0} for h in night["hours"]}
+        monkeypatch.setattr(gui.common, "_run_in_background", lambda func, ok, ko: ok(data))
+        window._weather_btn.setChecked(True)
+        dlg = window.show_week_quality()
+        table = dlg.table
+        assert table.columnCount() == 5 and table.horizontalHeaderItem(4).text() == "Nuages"
+        assert table.item(0, 4).text() == "80 %"
+        assert table.item(6, 4).text() == "—"                                  # beyond the sample forecast
+        dlg.reject()

@@ -31,21 +31,28 @@ Chaque étoile ajoute environ treize rapprochements par an : restez sobre.
 
 ## Une étoile nommée sur la carte du ciel
 
-La carte dessine les 513 étoiles de magnitude inférieure à 4 de
-[`star_catalog.py`](https://github.com/astraeos-dev/Celeste_App/blob/master/star_catalog.py) et écrit le nom des
-plus brillantes (magnitude inférieure à 2) qui en ont un, sans chevaucher les autres étiquettes.
+La carte dessine les étoiles de
+[`star_catalog.py`](https://github.com/astraeos-dev/Celeste_App/blob/master/star_catalog.py) (8 404 étoiles jusqu'à
+la magnitude 6,5, depuis la version 4.9) plus brillantes que la magnitude limite choisie, et écrit le nom des plus
+brillantes (magnitude inférieure à 2) qui en ont un, sans chevaucher les autres étiquettes.
 
 - Le fichier est **généré** par `scripts/make_star_catalog.py` depuis le Yale Bright Star Catalogue : les noms
-  viennent des notes du catalogue et de `constellations.STARS` (les étoiles des figures).
+  viennent de `constellations.STARS` et de ceux déjà présents dans `star_catalog.py`.
 - Pour nommer une étoile, ajoutez-la à `STARS` dans
   [`constellations.py`](https://github.com/astraeos-dev/Celeste_App/blob/master/constellations.py) (nom, ascension
   droite, déclinaison, magnitude), puis régénérez le catalogue :
 
   ```bash
-  python scripts/make_star_catalog.py bsc5.json . star_catalog.py
+  python scripts/make_star_catalog.py catalog.gz
   ```
 
-  (`bsc5.json` : le catalogue complet au format JSON, par exemple celui du dépôt `brettonw/YaleBrightStarCatalog`.)
+  (`catalog.gz` : le catalogue tel que le CDS le distribue, <https://cdsarc.cds.unistra.fr/ftp/V/50/catalog.gz>, ou
+  un miroir VizieR.)
 
-- Pour une étoile plus faible que la magnitude 4, il faut d'abord relever la limite du générateur, puis vérifier
-  que la carte reste lisible et rapide.
+- La limite de magnitude est `MAG_LIMIT` dans le script : le catalogue s'arrête à 6,5, l'œil nu aussi.
+
+## Les tracés des constellations
+
+Les figures des 88 constellations sont dans `assets/constellations.json`, tirées de d3-celestial (licence BSD) par
+`scripts/make_constellations.py` ; leurs noms sont dans la section `constellations` des fichiers de `locales/`,
+par abréviation de l'UAI (`"Ori"`, `"UMa"`).

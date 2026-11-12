@@ -22,7 +22,7 @@ v3.3 — Interface following the Astræos design system:
 Layout:
   - Side panel     : date, place, time zone, favourites, actions, theme
   - Main area      : tabs Ephemeris / Trajectories / Sky map / Planets /
-                     Coordinates / Events / Settings
+                     Solar System / Coordinates / Events / Settings
   - Status bar     : place, visible bodies, UT and local time
 
 The calculations come from engine.py, the charts from charts.py, the colours
@@ -1044,8 +1044,8 @@ QComboBox:disabled {{ color: {C.ENCRE_ATTENUEE}; }}
 
 QTabWidget::pane {{ border: none; border-top: 1px solid {C.CIEL_200}; top: -1px; background: {C.CIEL_000}; }}
 QTabBar::tab {{
-    background: transparent; color: {C.ENCRE_ATTENUEE}; font-size: 15px; font-weight: 600;
-    padding: 9px 12px; margin-right: 4px; border: none; border-bottom: 2px solid transparent;
+    background: transparent; color: {C.ENCRE_ATTENUEE}; font-size: 14px; font-weight: 600;
+    padding: 9px 8px; margin-right: 2px; border: none; border-bottom: 2px solid transparent;
 }}
 QTabBar::tab:hover {{ color: {C.ENCRE}; border-bottom-color: {C.ENCRE_ATTENUEE}; }}
 QTabBar::tab:selected {{ color: {C.ENCRE}; border-bottom-color: {C.ENCRE}; }}
@@ -1150,7 +1150,7 @@ class AstroApp(QMainWindow):
     def __init__(self):
         super().__init__()
         self.resize(1400, 880)
-        self.setMinimumSize(1120, 720)
+        self.setMinimumSize(1150, 720)
         self.setWindowIcon(icons.app_icon())
 
         # State
@@ -1237,6 +1237,7 @@ class AstroApp(QMainWindow):
         self._build_trajectories_tab()
         self._build_skymap_tab()
         self._build_planets_tab()
+        self._build_solar_system_tab()
         self._build_coordinates_tab()
         self._build_events_tab()
         self._build_settings_tab()
@@ -1733,9 +1734,20 @@ class AstroApp(QMainWindow):
         table.sortItems(0, Qt.SortOrder.AscendingOrder)
         header.sortIndicatorChanged.connect(self._on_planet_sort)
         self._show_planet_group()
-        lay.addWidget(table)
+        lay.addWidget(table, stretch=100)                 # scrolls when the window is too low
         lay.addWidget(self._planet_empty)
+        lay.addStretch(1)
+        self.tabs.addTab(page, t("tabs.planets"))
 
+    # ── Tab 5: Solar System ───────────────────────────────────────────────────
+
+    def _build_solar_system_tab(self):
+        """The Solar System seen from above, in its own tab since v4.9 (issue #35)."""
+        page = QWidget()
+        page.setObjectName("page")
+        lay = QVBoxLayout(page)
+        lay.setContentsMargins(0, 16, 0, 16)
+        lay.setSpacing(16)
         card = _card()
         card_l = QVBoxLayout(card)
         card_l.setContentsMargins(8, 8, 8, 8)
@@ -1776,7 +1788,7 @@ class AstroApp(QMainWindow):
         card_l.addWidget(self.canvas_orrery)
         lay.addWidget(card, stretch=1)
         self._chart_tabs[page] = "orrery"
-        self.tabs.addTab(page, t("tabs.planets"))
+        self.tabs.addTab(page, t("tabs.solar_system"))
 
     # ── Updates ───────────────────────────────────────────────────────────────
 
@@ -1919,7 +1931,6 @@ class AstroApp(QMainWindow):
                                                     else "descending")) if sorted_here else "")
         self._show_planet_group()
 
-    _PLANET_ROWS_MAX = 8            # beyond, the table scrolls
 
     def _show_planet_group(self):
         """Shows only the bodies of the chosen group, and only those above the
@@ -1944,8 +1955,9 @@ class AstroApp(QMainWindow):
         else:
             self._planet_empty.setText(t("planets.none_visible"))
         header = table.horizontalHeader()
-        rows = max(1, min(shown, self._PLANET_ROWS_MAX))
-        table.setFixedHeight(40 * rows + header.sizeHint().height() + 4)
+        # as tall as its rows, less when the window is low: it then scrolls
+        table.setMaximumHeight(40 * max(1, shown) + header.sizeHint().height() + 4)
+        table.setMinimumHeight(min(table.maximumHeight(), 40 * 4 + header.sizeHint().height() + 4))
 
     # ── Coordinates tab ───────────────────────────────────────────────────────
     #    x, y, z and distance from the "cartesian" origin; two angles in the
@@ -2096,7 +2108,7 @@ class AstroApp(QMainWindow):
             t(f"coordinates.note_angular_{angular if angular != 'ecliptic' else 'ecliptic_' + from_body}"),
             t("coordinates.note_observation"))))
 
-    # ── Tab 5: events ─────────────────────────────────────────────────────────
+    # ── Tab 7: events ─────────────────────────────────────────────────────────
 
     def _build_events_tab(self):
         page = QWidget()
@@ -2154,7 +2166,7 @@ class AstroApp(QMainWindow):
         self._show_events_placeholder()
         self.tabs.addTab(page, t("tabs.events"))
 
-    # ── Tab 6: settings ───────────────────────────────────────────────────────
+    # ── Tab 8: settings ───────────────────────────────────────────────────────
 
     def _build_settings_tab(self):
         scroll, _page, lay = _scroll_page()

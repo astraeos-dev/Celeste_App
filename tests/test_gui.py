@@ -1291,6 +1291,52 @@ class TestFirstLaunch:
 
 
 # ──────────────────────────────────────────────────────────────────────
+# Solar System tab and tab bar (v4.9, issue #35)
+# ──────────────────────────────────────────────────────────────────────
+
+class TestSolarSystemTab:
+    def test_its_own_tab_after_the_planets(self, window, qapp):
+        names = [window.tabs.tabText(i) for i in range(window.tabs.count())]
+        assert names == ["Éphémérides", "Trajectoires", "Carte du ciel", "Planètes", "Système solaire",
+                         "Coordonnées", "Événements", "Paramètres"]
+        page = window.tabs.widget(4)
+        assert window.canvas_orrery.isAncestorOf(window.canvas_orrery) and page.isAncestorOf(window.canvas_orrery)
+        assert not window.tabs.widget(3).isAncestorOf(window.canvas_orrery)
+        assert window.tabs.widget(3).isAncestorOf(window.planet_table)
+        window.tabs.setCurrentIndex(4)
+        _pump(qapp, 3)
+        assert "orrery" not in window._dirty                     # drawn when its tab shows
+        assert window.fig_orrery.axes
+
+    def test_animation_stops_when_the_tab_is_left(self, window, qapp):
+        window.tabs.setCurrentIndex(4)
+        window._toggle_orrery()
+        assert window._orrery_timer.isActive()
+        window.tabs.setCurrentIndex(3)
+        _pump(qapp, 3)
+        assert not window._orrery_timer.isActive()
+
+    def test_every_body_fits_in_the_planets_tab(self, window, qapp):
+        """With the map gone, the table shows the 7 planets, 9 minor planets and the comets at once."""
+        window.tabs.setCurrentIndex(3)
+        window._planet_selector.buttons["all"].click()
+        _pump(qapp, 3)
+        table = window.planet_table
+        assert table.maximumHeight() >= 40 * (16 + len(COMETS))
+        assert table.height() >= 40 * 12                         # 820 px window: most of them, the rest scrolls
+        window._planet_selector.buttons["planets"].click()
+
+    @pytest.mark.parametrize("lang", ["fr", "en", "es", "de"])
+    def test_the_eight_tabs_fit_at_the_minimum_width(self, window, qapp, lang):
+        window._lang_combo.setCurrentIndex(window._lang_combo.findData(lang))
+        _pump(qapp)
+        window.resize(window.minimumWidth(), window.minimumHeight())
+        _pump(qapp, 3)
+        assert window.tabs.count() == 8
+        assert window.tabs.tabBar().sizeHint().width() <= window.tabs.width()
+
+
+# ──────────────────────────────────────────────────────────────────────
 # Search by name on the sky map (v4.8)
 # ──────────────────────────────────────────────────────────────────────
 

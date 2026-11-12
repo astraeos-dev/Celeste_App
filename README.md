@@ -51,12 +51,13 @@ The interface is translated into French, English, Spanish and German.
   location settings
 - **24-hour paths** — altitude curves over a background coloured by the time of day (day, twilights, night), over the
   local day (local time below, UT above), tooltip on hover
-- **Polar sky map** — zenith at the centre, 513 stars down to magnitude 4 (Yale Bright Star Catalogue, brought to the
-  date: proper motion, precession, nutation, aberration) sized by magnitude, constellations, planets; tooltip on hover
+- **Polar sky map** — zenith at the centre, north up and east on the left as in the sky, 8,404 stars down to magnitude 6.5
+  (Yale Bright Star Catalogue, brought to the
+  date: proper motion, precession, nutation, aberration) sized by magnitude, the figures of the 88 constellations, planets; tooltip on hover
   and detailed card on click (constellation, magnitude, coordinates)
 - **Planets** — Mercury, Venus, Mars, Jupiter, Saturn, Uranus and Neptune: coordinates, altitude and azimuth,
   distance, elongation, magnitude, times of rise, culmination and set (name dimmed below the horizon); all the bodies
-  or one group, "Visible only", sort by clicking a header; the Solar System seen from above, inner and outer
+  or one group, "Visible only", sort by clicking a header
 - **Data window** — a click on a body (sky map, Planets and Coordinates tabs) opens its card: magnitude,
   constellation, apparent diameter, illuminated fraction and phase angle, light time, distance from the Sun,
   coordinates, rise, culmination and set
@@ -95,7 +96,8 @@ The interface is translated into French, English, Spanish and German.
 - **Comets** — C/2026 O1 (PANSTARRS), 45P/Honda-Mrkos-Pajdušáková, C/2026 C1 (Tsuchinshan) and 19P/Borrelly during
   their apparition (2025–2031, JPL Horizons tables): position, predicted magnitude, sky map, perihelion, closest
   approach and greatest brightness among the events
-- **Animated orrery** — Planets tab: the Solar System seen from above, moving forward by a day to a year per step
+- **Solar System** — its own tab: the planets seen from above, inner and outer, moving forward by a day to a year
+  per step
 - **Deep sky** — the 110 Messier objects on the sky map (atlas symbols, card on click) and the finest of the night in
   "Tonight"
 - **Satellite passes** — International Space Station, Tiangong and Hubble over 10 days: time of appearance, highest
@@ -201,8 +203,9 @@ A satellite pass is counted when the satellite rises at least 10° above the hor
 **Charts:**
 
 - Hover over the 24-hour curves to read the altitude at any time; the background follows the altitude of the Sun
-- The sky map puts the zenith at the centre and the horizon on the circle, north up; the slider sets the limiting
-  magnitude of the stars
+- The sky map puts the zenith at the centre and the horizon on the circle, north up and east on the left, as you
+  see the sky lying on your back with your head to the north; the slider sets the limiting magnitude of the stars
+  (up to 6.5)
 - Hover over a body of the map to identify it, click to show its card
 - Type a name in "Find an object…" to circle it on the map; emptying the field removes the circle
 
@@ -251,8 +254,8 @@ Celeste_App/
 ├── places.py            # Offline place search (GeoNames cities)
 ├── history.py           # The last calculations (~/.celeste/history.json)
 ├── satellites.py        # Orbital elements (TLE) of the satellites: download, checks, cache
-├── constellations.py    # Constellation figures and the names of their stars
-├── star_catalog.py      # 513 bright stars (Yale Bright Star Catalogue, magnitude < 4), generated
+├── constellations.py    # Usual names of the bright stars
+├── star_catalog.py      # 8,404 stars (Yale Bright Star Catalogue, magnitude ≤ 6.5), generated
 ├── favorites_default.json # Preloaded places (36 cities, their names in each language), until a favourite is saved
 ├── locales/             # Translations (fr.json is the reference)
 ├── fonts/               # IBM Plex Sans, IBM Plex Mono and Astraeos Symboles fonts (OFL licence)
@@ -354,6 +357,7 @@ only the chart of the shown tab is redrawn; the others are when they are opened.
   activity, solar longitude at the peak, radiant, velocity, ZHR
 - **GeoNames** (www.geonames.org), cities of more than 15,000 inhabitants, CC BY 4.0 licence — place search
 - **OpenNGC** (M. Verga, CC BY-SA 4.0 licence) and the **SEDS** Messier database — Messier objects
+- **d3-celestial** (O. Frohn, BSD 3-Clause licence) — figures of the 88 constellations and their names
 - **CelesTrak** and **AMSAT** — orbital elements (TLE) of the space stations and of Hubble
 - **JPL Small-Body Database** — magnitude parameters M1, K1 of the comets; **JPL Horizons** — their positions
 - **E. Bowell et al.** (1989), *Application of photometric models to asteroids*, Asteroids II — H, G magnitudes of
@@ -434,7 +438,7 @@ launch, SmartScreen shows "Windows protected your PC" (*More info*, then *Run an
 ### Interface and visualisation
 
 - [x] Main stars on the map (32+, sized by magnitude)
-- [x] Constellation figures on the polar map
+- [x] Constellation figures on the polar map: the 88 constellations
 - [x] Planets on the sky map (tooltip and card on click)
 - [x] **Twilight colours** — background of the path chart coloured by the time of day
 - [x] **Interactive sky map** — full card of a star on click
@@ -455,7 +459,7 @@ launch, SmartScreen shows "Windows protected your PC" (*More info*, then *Run an
 ### Engineering and quality
 
 - [x] **Unit tests** — pytest on the engine, the charts, the interface (off screen), the themes, the updates,
-  `utils.py` and `i18n.py` (13 files, ~640 cases)
+  `utils.py` and `i18n.py` (13 files, ~650 cases)
 - [x] **Windows executable** — standalone `Celeste.exe` (PyInstaller), ephemeris downloaded at the first launch
 
 ---

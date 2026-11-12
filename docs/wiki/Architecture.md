@@ -15,8 +15,8 @@ Le projet suit le modèle **modèle-vue-contrôleur** : le moteur calcule, l'int
 | [`satellites.py`](https://github.com/astraeos-dev/Celeste_App/blob/master/satellites.py) | Orbites des satellites (TLE) : téléchargement CelesTrak ou AMSAT, sommes de contrôle, copie dans `~/.celeste` |
 | [`settings.py`](https://github.com/astraeos-dev/Celeste_App/blob/master/settings.py) | Préférences enregistrées (`~/.celeste/settings.json`) et leurs valeurs par défaut |
 | [`config.py`](https://github.com/astraeos-dev/Celeste_App/blob/master/config.py) | Couleurs des thèmes Astræos, polices, **`APP_VERSION`** |
-| [`star_catalog.py`](https://github.com/astraeos-dev/Celeste_App/blob/master/star_catalog.py) | 513 étoiles brillantes (généré par `scripts/make_star_catalog.py`) |
-| [`constellations.py`](https://github.com/astraeos-dev/Celeste_App/blob/master/constellations.py) | Tracés des constellations |
+| [`star_catalog.py`](https://github.com/astraeos-dev/Celeste_App/blob/master/star_catalog.py) | 8 404 étoiles jusqu'à la magnitude 6,5 (généré par `scripts/make_star_catalog.py`) |
+| [`constellations.py`](https://github.com/astraeos-dev/Celeste_App/blob/master/constellations.py) | Noms usuels des étoiles brillantes ; les tracés des 88 constellations sont dans `assets/constellations.json` (`scripts/make_constellations.py`, d'après d3-celestial) |
 | [`assets/minor_planets.npz`](https://github.com/astraeos-dev/Celeste_App/tree/master/assets) | Positions des planètes mineures (JPL Horizons, généré par `scripts/make_minor_planets.py`) |
 | [`fonts/`](https://github.com/astraeos-dev/Celeste_App/tree/master/fonts) | IBM Plex et *Astraeos Symboles* (symboles des astres) |
 | [`scripts/`](https://github.com/astraeos-dev/Celeste_App/tree/master/scripts) | Générateurs de données, construction de l'exécutable |

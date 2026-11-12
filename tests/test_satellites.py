@@ -160,3 +160,28 @@ def test_from_the_tropics():
     found = AstroEngine.satellite_passes({"Hubble": ELEMENTS["Hubble"]}, datetime(2026, 11, 8), 25.76, -80.19,
                                          0.0, 10)
     assert found and max(p["max_alt"] for p in found) > 20
+
+
+def test_visual_group_parsed_with_names(tmp_path, monkeypatch):
+    """CelesTrak's "visual" group: the names kept, kept on disk, the three followed satellites
+    not repeated."""
+    text = "".join(f"{name.upper()} DEB\n{a}\n{b}\n" for name, (a, b) in ELEMENTS.items())
+    found = satellites.parse_named(text)
+    assert set(found) == {f"{name.upper()} DEB" for name in ELEMENTS}
+    monkeypatch.setattr(satellites, "_get", lambda url, timeout: text)
+    path = tmp_path / "visual.tle"
+    visual, error = satellites.refresh_visual(max_age_days=-1, path=str(path))
+    assert error is None and visual == found and path.exists()
+    merged = satellites.with_visual({"ISS": ELEMENTS["ISS"]}, visual)
+    assert "ISS" in merged and "ISS DEB" not in merged and len(merged) == len(ELEMENTS)
+
+
+def test_visual_group_offline_keeps_the_old_list(tmp_path, monkeypatch):
+    path = tmp_path / "visual.tle"
+    path.write_text("".join(f"{n}\n{a}\n{b}\n" for n, (a, b) in ELEMENTS.items()), encoding="ascii")
+
+    def offline(url, timeout):
+        raise OSError("no network")
+    monkeypatch.setattr(satellites, "_get", offline)
+    visual, error = satellites.refresh_visual(max_age_days=-1, path=str(path))
+    assert error is not None and set(visual) == set(ELEMENTS)

@@ -24,6 +24,10 @@ SATELLITES = {"ISS": 25544, "Tiangong": 48274, "Hubble": 20580}
 CELESTRAK = "https://celestrak.org/NORAD/elements/gp.php?CATNR={number}&FORMAT=tle"
 AMSAT = "https://www.amsat.org/tle/current/nasabare.txt"
 CACHE = os.path.join(settings.USER_DIR, "satellites.tle")
+# The satellites bright enough to be seen with the naked eye (about 150, CelesTrak's
+# "visual" group: rocket bodies, old satellites, stations), on request
+VISUAL = "https://celestrak.org/NORAD/elements/gp.php?GROUP=visual&FORMAT=tle"
+VISUAL_CACHE = os.path.join(settings.USER_DIR, "visual.tle")
 MAX_AGE_DAYS = 2.0          # refreshed after two days
 STALE_DAYS = 14.0           # too old to trust beyond
 
@@ -50,6 +54,61 @@ def parse(text):
                 and _checksum_ok(first) and _checksum_ok(second)):
             found[int(first[2:7])] = (first, second)
     return found
+
+
+def parse_named(text):
+    """{name: (line1, line2)} of a TLE text with a name line before each element set
+    (CelesTrak's groups); names made unique with their catalogue number when repeated."""
+    lines = [line.rstrip() for line in text.splitlines()]
+    found = {}
+    for name, first, second in zip(lines, lines[1:], lines[2:]):
+        if (first.startswith("1 ") and second.startswith("2 ") and first[2:7] == second[2:7]
+                and not name.startswith(("1 ", "2 ")) and _checksum_ok(first) and _checksum_ok(second)):
+            label = " ".join(name.split()) or first[2:7].strip()
+            if label in found:
+                label = f"{label} ({int(first[2:7])})"
+            found[label] = (first, second)
+    return found
+
+
+def refresh_visual(max_age_days=MAX_AGE_DAYS, timeout=20, path=None):
+    """
+    The naked-eye satellites (CelesTrak "visual" group), from disk when recent enough,
+    else downloaded and kept; those on disk, however old, when the download fails.
+
+    Returns:
+        tuple: ({name: (line1, line2)}, error or None).
+    """
+    path = path or VISUAL_CACHE
+    try:
+        with open(path, encoding="ascii") as f:
+            kept = parse_named(f.read())
+    except OSError:
+        kept = {}
+    if kept and epoch_age_days(kept) <= max_age_days:
+        return kept, None
+    try:
+        text = _get(VISUAL, timeout)
+        found = parse_named(text)
+        if not found:
+            raise SatelliteError("empty group")
+    except Exception as exc:                                # network, refusal, rate limit
+        return kept, exc
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="ascii", newline="\n") as f:
+        for name, (line1, line2) in found.items():
+            f.write(f"{name}\n{line1}\n{line2}\n")
+    return found, None
+
+
+def with_visual(elements, visual):
+    """The three followed satellites plus the naked-eye ones that are not already among them."""
+    numbers = {line1[2:7] for line1, _line2 in elements.values()}
+    out = dict(elements)
+    for name, (line1, line2) in visual.items():
+        if line1[2:7] not in numbers:
+            out[name] = (line1, line2)
+    return out
 
 
 def _get(url, timeout):

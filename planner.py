@@ -252,7 +252,7 @@ def plan(dte, lat, lon, elevation_m=0.0, tz=0, constraints=None, horizon=(), env
     env = {"temperature": 10.0, "pressure": 1010.0, **(environment or {})}
     window = night_window(dte, lat, lon, elevation_m, tz)
     out = {"window": window, "constraints": c, "environment": env, "horizon": list(horizon),
-           "times": [], "moon": None, "deep_sky": [], "bodies": [], "comets": [], "deep_sky_considered": 0}
+           "events": {}, "times": [], "moon": None, "deep_sky": [], "bodies": [], "comets": [], "deep_sky_considered": 0}
     if window["kind"] is None:
         return out
     jds = _grid(window, step_minutes)
@@ -270,9 +270,33 @@ def plan(dte, lat, lon, elevation_m=0.0, tz=0, constraints=None, horizon=(), env
     context = {"lat": lat, "lon": lon, "jds": jds, "times": out["times"], "here": here, "observer": observer,
                "last": (np.asarray(times.gast) * 15.0 + lon) % 360.0, "moon": (moon_ra._degrees, moon_dec.degrees),
                "env": env, "horizon": horizon, "c": c, "separation": separation, "middle": middle}
+    out["events"] = _rise_set(here, window)
     out["deep_sky"], out["deep_sky_considered"] = _deep_sky(context, custom, bucket, done)
     out["bodies"] = _bodies(context)
     out["comets"] = _comets(context, dte, lat, lon, elevation_m, tz, mpc_comets)
+    return out
+
+
+def _rise_set(here, window):
+    """Sunset before the night, sunrise after it, and the moonrise and moonset nearest the
+    middle of the night (UT datetimes or None): the header of uptonight's plots."""
+    from skyfield import almanac
+    ts = _sky()["ts"]
+    start, end = window["start"], window["end"]
+    middle = start + (end - start) / 2
+    t0 = ts.ut1_jd(AstroEngine.julian_day(start - timedelta(hours=14)))
+    t1 = ts.ut1_jd(AstroEngine.julian_day(end + timedelta(hours=14)))
+    out = {}
+    for body in ("sun", "moon"):
+        target = AstroEngine._target(body)
+        for kind, finder in (("rise", almanac.find_risings), ("set", almanac.find_settings)):
+            times, real = finder(here, target, t0, t1)
+            found = [AstroEngine._jd_to_datetime(float(x.ut1), start) for x, r in zip(times, real) if r]
+            if body == "sun":
+                pick = [d for d in found if (d <= start if kind == "set" else d >= end)]
+                out[f"sun{kind}"] = (max(pick) if kind == "set" else min(pick)) if pick else None
+            else:
+                out[f"moon{kind}"] = min(found, key=lambda d: abs((d - middle).total_seconds()), default=None)
     return out
 
 
@@ -308,7 +332,7 @@ def _summary(alt, az, ok, ctx, i):
         best = (times[int(run[0])], times[int(run[-1])])
     return {"alt_start": float(alt[i, 0]), "az_start": float(az[i, 0]), "alt_max": float(alt[i, k]),
             "az_max": float(az[i, k]), "time_max": times[k], "fraction": float(flags.mean()),
-            "best": best, "altitudes": alt[i].copy()}
+            "best": best, "altitudes": alt[i].copy(), "azimuths": az[i].copy()}
 
 
 def _transit(ra_deg, ctx):
@@ -437,7 +461,7 @@ def _comets(ctx, dte, lat, lon, elevation_m, tz, mpc_comets):
                        "earth_au": float(dist.au[len(jds) // 2]), "sun_au": float(helio),
                        "alt_start": float(alt[0]), "az_start": float(az[0]), "alt_max": float(alt[k]),
                        "az_max": float(az[k]), "time_max": times_dt[k], "rise": rise, "set": setting,
-                       "fraction": float(up.mean())})
+                       "fraction": float(up.mean()), "altitudes": alt.copy(), "azimuths": az.copy()})
     result.sort(key=lambda r: r["mag"])
     return result
 

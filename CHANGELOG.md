@@ -7,6 +7,14 @@ Write for them: short sentences, as dashes, no bold or code (the window of versi
 markup as it is), about 800 characters at most (the window cuts the rest, GitHub does not). See the wiki page
 "Publier une version".
 
+## 4.12
+
+- Workshop: a complete astrolabe and a nocturnal, with their own place, time zone and date.
+- New astronomical calendar (Events): every event of a period, filtered by kind, exported as .ics.
+- The moons of Mars, Saturn, Uranus, Neptune and Pluto; the passes of the naked-eye satellites.
+- Targets: the night's sky map as uptonight draws it, in Céleste's colours; larger charts; "select all" types.
+- Location: pick your place on an OpenStreetMap map. Eclipse maps drawn without steps.
+
 ## 4.11
 
 - New Workshop, from the side panel: instruments to print at true scale, cut out and assemble, computed for your

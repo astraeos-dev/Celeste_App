@@ -26,7 +26,7 @@ import time
 import urllib.parse
 import urllib.request
 
-from config import APP_VERSION
+from config import APP_BETA, APP_VERSION
 
 REPOSITORY = "astraeos-dev/Celeste_App"
 LATEST_RELEASE_API = f"https://api.github.com/repos/{REPOSITORY}/releases/latest"
@@ -58,7 +58,12 @@ def parse_version(text):
     return tuple(numbers + [0] * (3 - len(numbers)))
 
 
-def is_newer(remote, local=APP_VERSION):
+def is_newer(remote, local=APP_VERSION, beta=None):
+    """Whether *remote* is a newer release; a beta build is replaced by the release of its
+    own version (4.12 beta 3 → 4.12)."""
+    beta = APP_BETA if beta is None else beta
+    if beta and parse_version(remote) == parse_version(local):
+        return True
     return parse_version(remote) > parse_version(local)
 
 

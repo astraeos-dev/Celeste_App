@@ -47,6 +47,11 @@ v4.3:
   • Sedna among MINOR_PLANETS; MINOR_PLANET_NUMBERS, the Minor Planet
     Center's numbers ("(136199) Eris")
 
+v4.12:
+  • the astrolabe and the nocturnal of the Workshop check their scales against
+    this engine (sun_position(), stars_horizontal(), equation_of_time()); the
+    planner keeps the azimuths of the night for its map of the tracks
+
 v4.11:
   • the Workshop (instruments.py, workshop.py) builds on this engine:
     equation_of_time(), horizontal(), stars_horizontal() and the sidereal
@@ -144,6 +149,16 @@ MINOR_PLANETS = ("Ceres", "Pallas", "Juno", "Vesta", "Pluto", "Eris", "Haumea", 
 MINOR_PLANET_NUMBERS = {"Ceres": 1, "Pallas": 2, "Juno": 3, "Vesta": 4, "Pluto": 134340,
                         "Eris": 136199, "Haumea": 136108, "Makemake": 136472, "Sedna": 90377}
 _MINOR_TABLE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "minor_planets.npz")
+
+# Moons of Mars, Saturn, Uranus, Neptune and Pluto: daily states of JPL Horizons, 2020 to 2040
+# (assets/moons.npz, scripts/make_moons.py), propagated by a two-body orbit between them.
+_MOON_TABLE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "moons.npz")
+_PLANET_GM = {"Mars": 42828.37, "Saturn": 37931206.2, "Uranus": 5793951.3, "Neptune": 6835099.5,
+              "Pluto": 975.5}                     # km³/s² (Pluto: Pluto + Charon)
+_PLANET_RADIUS_KM = {"Mars": 3389.5, "Jupiter": 71492.0, "Saturn": 60268.0, "Uranus": 25559.0,
+                     "Neptune": 24764.0, "Pluto": 1188.3}
+_CHARON_MASS_RATIO = 106.1 / 975.5               # Charon / (Pluto + Charon): Pluto is off the barycentre
+MOON_PLANETS = ("Mars", "Jupiter", "Saturn", "Uranus", "Neptune", "Pluto")
 
 # Comets followed by Céleste, those that become easy to see from 2027 to 2029:
 # JPL Horizons tables over the years of their apparition only, 2025 to 2031
@@ -396,6 +411,39 @@ class _TabulatedOrbit(VectorFunction):
         velocity = ((6*u2 - 6*u) * p0 + (3*u2 - 4*u + 1) * v0 + (6*u - 6*u2) * p1
                     + (3*u2 - 2*u) * v1) / self._step
         return np.moveaxis(position, -1, 0), np.moveaxis(velocity, -1, 0), None, None
+
+
+@functools.lru_cache(maxsize=1)
+def _moon_table():
+    """The moons' table: names, planets, magnitudes, first JD (TDB) and daily states."""
+    with np.load(_MOON_TABLE) as data:
+        return {"names": [str(n) for n in data["names"]], "planets": [str(p) for p in data["planets"]],
+                "mags": [float(m) for m in data["mags"]], "jd0": float(data["jd0"]),
+                "states": data["states"].astype(np.float64)}
+
+
+def _two_body(r, v, mu, dt):
+    """Position (km) after *dt* seconds on the Keplerian ellipse of the state (r km, v km/s)
+    around a body of gravitational parameter *mu*."""
+    rn, v2 = np.linalg.norm(r), float(v @ v)
+    a = 1.0 / (2.0 / rn - v2 / mu)
+    h = np.cross(r, v)
+    e_vec = np.cross(v, h) / mu - r / rn
+    e = float(np.linalg.norm(e_vec))
+    n = math.sqrt(mu / a ** 3)
+    p_hat = e_vec / e if e > 1e-9 else r / rn
+    q_hat = np.cross(h / np.linalg.norm(h), p_hat)
+    cos_nu, sin_nu = float(r @ p_hat) / rn, float(r @ q_hat) / rn
+    big_e = math.atan2(math.sqrt(1 - e * e) * sin_nu, e + cos_nu)
+    m = big_e - e * math.sin(big_e) + n * dt
+    big_e = m
+    for _ in range(30):
+        step = (big_e - e * math.sin(big_e) - m) / (1 - e * math.cos(big_e))
+        big_e -= step
+        if abs(step) < 1e-12:
+            break
+    x, y = a * (math.cos(big_e) - e), a * math.sqrt(1 - e * e) * math.sin(big_e)
+    return x * p_hat + y * q_hat
 
 
 @functools.lru_cache(maxsize=None)
@@ -1342,6 +1390,81 @@ class AstroEngine:
                           "shadow": on_disc(xs, ys) and sunward})
         return moons
 
+    @staticmethod
+    def moon_years():
+        """(first, last) years covered by the moons' table of Mars to Pluto."""
+        table = _moon_table()
+        first = 2000 + (table["jd0"] - 2451545.0) / 365.25
+        return int(round(first)), int(first + (len(table["states"][0]) - 1) / 365.25)
+
+    @classmethod
+    def planet_moons(cls, t, planet):
+        """
+        The main moons of a planet seen from the Earth: Jupiter's four Galilean moons
+        (galilean_moons()), or those of Mars, Saturn, Uranus, Neptune and Pluto (JPL
+        Horizons table, 2020 to 2040; none outside).
+
+        Args:
+            t (float): Julian centuries of UT since J2000.0.
+            planet (str): one of MOON_PLANETS.
+
+        Returns:
+            list[dict]: name, mag (approximate), east and north (arcseconds from the
+            planet's centre), x and y (in equatorial radii of the planet, x towards the
+            west as galilean_moons(), y north), separation (″), state ("free",
+            "transit" in front of the disc, "occulted" behind it).
+        """
+        if planet == "Jupiter":
+            scale = (cls.body_details(t, "Jupiter").get("diameter_arcsec") or 40.0) / 2.0   # ″ per radius
+            out = []
+            for m in cls.galilean_moons(t):
+                east, north = -m["x"] * scale, m["y"] * scale
+                out.append({"name": m["name"], "mag": {"Io": 5.0, "Europa": 5.3, "Ganymede": 4.6,
+                                                        "Callisto": 5.7}[m["name"]],
+                            "east": east, "north": north, "x": m["x"], "y": m["y"],
+                            "separation": math.hypot(east, north),
+                            "state": {"eclipsed": "free"}.get(m["state"], m["state"])})
+            return out
+        table = _moon_table()
+        rows = [i for i, p in enumerate(table["planets"]) if p == planet]
+        if not rows:
+            return []
+        sky = _sky()
+        time = cls._time_ut(t)
+        target = cls._target(planet)
+        astrometric = sky["earth"].at(time).observe(target)
+        jd = float(time.tdb) - float(astrometric.light_time)           # the moons as the light left them
+        k = int(round(jd - table["jd0"]))
+        if not 0 <= k < table["states"].shape[1]:
+            return []
+        dt = (jd - (table["jd0"] + k)) * 86400.0
+        offsets = {}
+        for i in rows:
+            state = table["states"][i, k]
+            offsets[table["names"][i]] = _two_body(state[:3], state[3:], _PLANET_GM[planet], dt)
+        p = astrometric.position.km.copy()
+        if planet == "Pluto" and "Charon" in offsets:                     # Pluto itself, off the barycentre
+            p -= _CHARON_MASS_RATIO * offsets["Charon"]
+        distance = float(np.linalg.norm(p))
+        ra = math.atan2(p[1], p[0])
+        dec = math.asin(p[2] / distance)
+        east_hat = np.array([-math.sin(ra), math.cos(ra), 0.0])
+        north_hat = np.array([-math.sin(dec) * math.cos(ra), -math.sin(dec) * math.sin(ra), math.cos(dec)])
+        radius = _PLANET_RADIUS_KM[planet]
+        arcsec = math.degrees(1.0) * 3600.0 / distance
+        out = []
+        for i in rows:
+            name = table["names"][i]
+            m = offsets[name] + (_CHARON_MASS_RATIO * offsets["Charon"] if planet == "Pluto" else 0.0)
+            east, north = float(m @ east_hat) * arcsec, float(m @ north_hat) * arcsec
+            on_disc = math.hypot(east, north) < radius * arcsec
+            behind = float(m @ p) > 0
+            out.append({"name": name, "mag": table["mags"][i], "east": east, "north": north,
+                        "x": -east / (radius * arcsec), "y": north / (radius * arcsec),
+                        "separation": math.hypot(east, north),
+                        "state": ("occulted" if behind else "transit") if on_disc else "free"})
+        return out
+
     @classmethod
     def saturn_rings(cls, t):
         """
@@ -1488,25 +1611,53 @@ class AstroEngine:
         u /= np.linalg.norm(u, axis=0)
         w = np.cross(axis.T, u.T).T
         path = []
+        valid = []
         for i in np.flatnonzero(~np.isnan(c_lat)):
-            angles = np.linspace(0.0, 2.0 * np.pi, 33)
+            angles = np.linspace(0.0, 2.0 * np.pi, 49)
             limb = moon[:, i:i + 1] + _MOON_RADIUS_KM * (np.cos(angles) * u[:, i:i + 1]
                                                           + np.sin(angles) * w[:, i:i + 1])
             towards = apex[:, i:i + 1] - limb
             ground = cls._ellipsoid_hit(limb, towards / np.linalg.norm(towards, axis=0))
             if not np.isnan(ground).any():
                 path.append(cls._geodetic(ground))
+                valid.append(int(i))
+        limits = cls._shadow_limits(path, valid, c_lat, c_lon)
 
-        # partiality: maximum magnitude while the Sun is up, every 4 minutes
-        best = np.zeros(points.shape[1])
-        for i in range(0, len(minutes), 4):
-            vs, vm = sun[:, i:i + 1] - points, moon[:, i:i + 1] - points
-            ds, dm = np.linalg.norm(vs, axis=0), np.linalg.norm(vm, axis=0)
-            rs, rm = np.arcsin(_SUN_RADIUS_KM / ds), np.arcsin(_MOON_RADIUS_KM / dm)
-            sep = np.arccos(np.clip((vs * vm).sum(0) / (ds * dm), -1.0, 1.0))
-            mag = np.clip((rs + rm - sep) / (2.0 * rs), 0.0, None)
-            mag[(vs * up).sum(0) <= 0.0] = 0.0                   # Sun below the horizon
-            best = np.maximum(best, mag)
+        def partiality(pts, ups, every):
+            """Maximum magnitude reached at each point while the Sun is up, every *every* minutes."""
+            best = np.zeros(pts.shape[1])
+            prev_mag = prev_h = None
+            for i in range(0, len(minutes), every):
+                vs, vm = sun[:, i:i + 1] - pts, moon[:, i:i + 1] - pts
+                ds, dm = np.linalg.norm(vs, axis=0), np.linalg.norm(vm, axis=0)
+                rs, rm = np.arcsin(_SUN_RADIUS_KM / ds), np.arcsin(_MOON_RADIUS_KM / dm)
+                sep = np.arccos(np.clip((vs * vm).sum(0) / (ds * dm), -1.0, 1.0))
+                raw = (rs + rm - sep) / (2.0 * rs)
+                h = (vs * ups).sum(0) / ds                          # sine of the Sun's altitude
+                best = np.maximum(best, np.where(h > 0.0, np.clip(raw, 0.0, None), 0.0))
+                if prev_h is not None:                              # the Sun crossed the horizon in between:
+                    cross = (prev_h > 0.0) != (h > 0.0)             # the magnitude at that instant
+                    f = np.where(cross, prev_h / np.where(cross, prev_h - h, 1.0), 0.0)
+                    at = np.clip(prev_mag + f * (raw - prev_mag), 0.0, None)
+                    best = np.maximum(best, np.where(cross, at, 0.0))
+                prev_mag, prev_h = raw, h
+            return best
+
+        # partiality: a coarse grid finds where the eclipse is seen, a fine one (a third of
+        # the step, every 2 minutes) draws its curves there without steps
+        best = partiality(points, up, 4)
+        coarse = best.reshape(glat.shape)
+        seen = coarse > 0
+        fine_lats, fine_lons, fine = lats, lons, coarse
+        if seen.any():
+            rows, cols = np.flatnonzero(seen.any(1)), np.flatnonzero(seen.any(0))
+            step = grid_step / 3.0
+            lat0, lat1 = max(-90.0, lats[rows[0]] - 2 * grid_step), min(90.0, lats[rows[-1]] + 2 * grid_step)
+            lon0, lon1 = max(-180.0, lons[cols[0]] - 2 * grid_step), min(180.0, lons[cols[-1]] + 2 * grid_step)
+            fine_lats, fine_lons = np.arange(lat0, lat1 + step / 2, step), np.arange(lon0, lon1 + step / 2, step)
+            flat, flon = np.meshgrid(fine_lats, fine_lons, indexing="ij")
+            fpoints, fup = cls._ellipsoid_points(flat.ravel(), flon.ravel())
+            fine = partiality(fpoints, fup, 2).reshape(flat.shape)
 
         middle = len(minutes) // 2
         if np.isnan(c_lat[middle]):                              # partial: nearest point to the axis
@@ -1514,9 +1665,40 @@ class AstroEngine:
             greatest_point = (float(glat.ravel()[k]), float(glon.ravel()[k]))
         else:
             greatest_point = (float(c_lat[middle]), float(c_lon[middle]))
-        return {"kind": "solar", "central": (c_lat, c_lon), "path": path,
-                "lats": lats, "lons": lons, "grid": best.reshape(glat.shape),
+        return {"kind": "solar", "central": (c_lat, c_lon), "path": path, "limits": limits,
+                "lats": fine_lats, "lons": fine_lons, "grid": fine,
                 "greatest": greatest_point, "minutes": minutes}
+
+    @staticmethod
+    def _shadow_limits(path, valid, c_lat, c_lon):
+        """
+        The northern and southern limits of the umbra (antumbra) on the ground: for each
+        minute, the points of its footprint farthest on each side of the central line's
+        direction. Joined, they draw the band without the scallops of the footprints.
+
+        Returns:
+            list of (lats, lons) polygons (one per stretch of the band), or [].
+        """
+        if len(path) < 2:
+            return []
+        side_a, side_b = [], []
+        for k, (lat, lon) in enumerate(path):
+            i = valid[k]
+            j = valid[min(k + 1, len(valid) - 1)] if k + 1 < len(valid) else valid[k - 1]
+            c = math.cos(math.radians(c_lat[i]))
+            d_lat, d_lon = c_lat[j] - c_lat[i], ((c_lon[j] - c_lon[i] + 180.0) % 360.0 - 180.0) * c
+            if j < i:
+                d_lat, d_lon = -d_lat, -d_lon
+            norm = math.hypot(d_lat, d_lon) or 1.0
+            p_lat, p_lon = np.asarray(lat) - c_lat[i], ((np.asarray(lon) - c_lon[i] + 180.0) % 360.0 - 180.0) * c
+            cross = (d_lon * p_lat - d_lat * p_lon) / norm
+            a, b = int(np.argmax(cross)), int(np.argmin(cross))
+            side_a.append((float(lat[a]), float(lon[a])))
+            side_b.append((float(lat[b]), float(lon[b])))
+        ring = side_a + side_b[::-1]
+        lats = np.array([p[0] for p in ring])
+        lons = np.array([p[1] for p in ring])
+        return [(lats, lons)]
 
     @classmethod
     def moon_phase(cls, t):

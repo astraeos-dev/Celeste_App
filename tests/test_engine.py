@@ -1573,3 +1573,31 @@ class TestNextRise:
 
     def test_no_rise_in_the_polar_night(self):
         assert AstroEngine.next_rise(datetime(2026, 12, 21, 12, 0), 78.22, 15.65, "sun") is None
+
+
+class TestPlanetMoons:
+    """The moons of Mars to Pluto against JPL Horizons' satellite offsets (quantity 6,
+    X east and Y north of the planet's centre), 2026-11-12 21:00 UT."""
+    WHEN = datetime(2026, 11, 12, 21, 0)
+    HORIZONS = {("Saturn", "Titan"): (-189.538, 14.218), ("Mars", "Phobos"): (-9.379, 1.529),
+                ("Saturn", "Mimas"): (2.669, 2.696), ("Uranus", "Ariel"): (-0.254, -14.191),
+                ("Pluto", "Charon"): (-0.693, 0.284)}
+
+    @pytest.mark.parametrize("planet, moon", list(HORIZONS), ids=lambda v: v if isinstance(v, str) else None)
+    def test_offsets_match_horizons(self, planet, moon):
+        moons = {m["name"]: m for m in AstroEngine.planet_moons(AstroEngine.julian_century_j2000(self.WHEN), planet)}
+        east, north = self.HORIZONS[(planet, moon)]
+        assert moons[moon]["east"] == pytest.approx(east, abs=0.15)
+        assert moons[moon]["north"] == pytest.approx(north, abs=0.15)
+
+    def test_every_planet_has_its_moons(self):
+        tc = AstroEngine.julian_century_j2000(self.WHEN)
+        counts = {p: len(AstroEngine.planet_moons(tc, p)) for p in ("Mars", "Jupiter", "Saturn", "Uranus",
+                                                                   "Neptune", "Pluto")}
+        assert counts == {"Mars": 2, "Jupiter": 4, "Saturn": 8, "Uranus": 5, "Neptune": 1, "Pluto": 1}
+        states = {m["name"]: m["state"] for m in AstroEngine.planet_moons(tc, "Saturn")}
+        assert states["Mimas"] == "transit" and states["Enceladus"] == "occulted"
+
+    def test_outside_the_table(self):
+        assert AstroEngine.planet_moons(AstroEngine.julian_century_j2000(datetime(1990, 1, 1)), "Saturn") == []
+        assert AstroEngine.moon_years() == (2020, 2040)

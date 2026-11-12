@@ -86,6 +86,31 @@ Les artefacts sont gardés 90 jours, les Releases pour toujours. L'application n
 demande une confirmation au premier lancement d'un installateur téléchargé à la main (*Informations
 complémentaires*, puis *Exécuter quand même*).
 
+## 6. Les versions bêta : tester avant la pull request
+
+Chaque push sur une branche de travail (`claude/…` ou `beta/…`) lance le workflow **Beta — test build for Windows**
+([`.github/workflows/beta.yml`](https://github.com/astraeos-dev/Celeste_App/blob/master/.github/workflows/beta.yml)) :
+
+1. les tests (Python 3.12) ;
+2. la construction de Céleste en bêta : le panneau latéral affiche « 4.12 bêta 7 » (7 = le numéro du run) ;
+3. une **pré-version** GitHub `v4.12-beta.7` avec son programme d'installation, dans la page
+   [Releases](https://github.com/astraeos-dev/Celeste_App/releases), marquée *Pre-release*.
+
+Pour tester : ouvrez la page Releases, prenez la pré-version la plus récente, téléchargez
+`Celeste-4.12-beta.7-Setup.exe` et installez-le par-dessus la version en place (les réglages et les favoris sont
+gardés). On peut aussi lancer le workflow à la main sur n'importe quelle branche : onglet *Actions*, *Beta*,
+*Run workflow*.
+
+- Les pré-versions ne sont **jamais proposées** par la mise à jour automatique : elle demande à GitHub la dernière
+  version publiée, qui les exclut. Seul qui télécharge une bêta l'installe.
+- Une bêta se met à jour d'elle-même vers la version définitive de son numéro (4.12 bêta 7 → 4.12) dès sa
+  publication.
+- Seules les trois bêtas les plus récentes sont gardées ; les plus anciennes et leurs tags sont supprimés.
+- Un push qui ne touche que la documentation (`*.md`, `docs/`) ne construit pas de bêta.
+
+Le cycle : on travaille sur la branche, chaque push donne une bêta à essayer ; quand elle convient, on ouvre la pull
+request ; sa fusion publie la version (étape 3).
+
 ## Construire sur son PC
 
 ```bash
@@ -95,5 +120,6 @@ pip install pyinstaller
 python scripts/build_exe.py
 ```
 
+Avec `CELESTE_BETA=7` dans l'environnement, il construit une bêta (fichiers `Celeste-4.12-beta.7-…`).
 Le script construit `dist/Celeste/`, vérifie qu'il démarre, crée l'archive et, si
 [Inno Setup 6](https://jrsoftware.org/isinfo.php) est installé, le programme d'installation dans `dist/`.

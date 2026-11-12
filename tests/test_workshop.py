@@ -245,3 +245,88 @@ def test_preview_png():
     place = workshop.Place("", 49.63, -1.62, ZoneInfo("Europe/Paris"), datetime(2026, 11, 12))
     png, count = workshop.preview_png("equatorial_dial", place, page=1, dpi=30)
     assert png[:8] == b"\x89PNG\r\n\x1a\n" and count >= 3
+
+
+# ── Astrolabe ─────────────────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("site", [CHERBOURG, SYDNEY], ids=["north", "south"])
+def test_astrolabe_puts_vega_on_its_almucantar(site):
+    """The rete turned to the local sidereal time puts Vega, brought to the date, on the
+    point of the plate of its altitude and azimuth (engine), within 0.1 mm on a 150 mm plate."""
+    lat, lon, off = site
+    south = lat < 0
+    ut = datetime(2026, 11, 12, 18, 30)
+    (name, ra, dec, _mag), = workshop.stars_of_date([("Vega", 18.615639, 38.78361, 0.03)], 2026)
+    lst = (float(_sky()["ts"].ut1_jd(AstroEngine.julian_day(ut)).gmst) + lon / 15) % 24
+    x, y = instruments.project(dec, 15.0 * (lst - ra), south)
+    rx, ry = instruments.turn(*instruments.project(dec, -15.0 * ra, south), lst, south)  # the rete, turned
+    assert (float(rx), float(ry)) == pytest.approx((float(x), float(y)), abs=1e-9)
+    alt, az = AstroEngine.stars_horizontal(AstroEngine.julian_century_j2000(ut), lat, lon, [18.615639], [38.78361])
+    d, h = instruments.equatorial(np.asarray(alt, float), np.asarray(az, float), lat)
+    px, py = instruments.project(d, h, south)
+    scale = 75.0 / instruments.plate(lat)["limit"]
+    assert math.hypot(float(px[0]) - float(x), float(py[0]) - float(y)) * scale < 0.1
+
+
+@pytest.mark.parametrize("site, ut", CASES, ids=CASE_IDS)
+def test_astrolabe_reads_the_apparent_solar_time(site, ut):
+    """The Sun set on its almucantar (altitude from the engine, on the side of its
+    azimuth) and the rule laid over it: the limb reads the apparent solar time, UT +
+    longitude + equation of time, within a minute."""
+    lat, lon, _off = site
+    south = lat < 0
+    tc = AstroEngine.julian_century_j2000(ut)
+    alt, az = AstroEngine.horizontal(tc, lat, lon, "sun")
+    if float(alt) < 3:
+        pytest.skip("the Sun is down or too low")
+    lam, _dist = AstroEngine.sun_position(tc)
+    _x, _y, _ra, dec = instruments.ecliptic_point(float(lam))
+    h = float(instruments.hour_angle_at_altitude(float(alt), float(dec), lat))
+    h = h if float(az) > 180 else -h                          # west in the afternoon
+    x, y = instruments.project(float(dec), h, south)
+    reading = instruments.limb_reading(float(x), float(y), south)
+    expected = (ut.hour + ut.minute / 60 + lon / 15 + AstroEngine.equation_of_time(tc) / 60) % 24
+    assert abs((reading - expected + 12) % 24 - 12) * 60 < 1.0
+
+
+def test_back_calendar_follows_the_sun():
+    """The calendar ring: about 0° on 20 March (the equinox of 2026), 90° on 21 June."""
+    lons = {(m, d): lon for m, d, lon in instruments.solar_longitudes(2026)}
+    assert len(lons) == 365
+    assert lons[(3, 20)] == pytest.approx(359.5, abs=1.0) or lons[(3, 20)] < 1.0
+    assert lons[(6, 21)] == pytest.approx(90.0, abs=1.0)
+    assert float(instruments.back_angle(90.0)) == pytest.approx(90.0)        # June at the top
+    assert float(instruments.back_angle(0.0)) == pytest.approx(180.0)        # the equinox on the left
+
+
+# ── Nocturnal ─────────────────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("key, star", [("great_bear", ("Dubhe", 11.062130, 61.75103)),
+                                        ("little_bear", ("Kochab", 14.845092, 74.15550))])
+@pytest.mark.parametrize("ut", [datetime(2026, 1, 15, 21, 0), datetime(2026, 11, 12, 3, 40),
+                                datetime(2026, 7, 2, 23, 10)], ids=lambda d: d.strftime("%m-%d"))
+def test_nocturnal_reads_the_standard_time(key, star, ut):
+    """The arm laid along the pointer (its hour angle at that moment, Skyfield, star of the
+    date), the tooth on the date: the hour disc shows the standard time within 2 minutes."""
+    lat, lon, off = CHERBOURG
+    stars = workshop.stars_of_date([(star[0], star[1], star[2], 2.0), ("Dubhe", 11.062130, 61.75103, 1.8)], 2026)
+    pointers = {"great_bear": stars[1][1], key: stars[0][1]}
+    geo = instruments.nocturnal(lat, lon, off, 2026, pointers)
+    lst = (float(_sky()["ts"].ut1_jd(AstroEngine.julian_day(ut)).gmst) + lon / 15) % 24
+    arm = ((lst - pointers[key]) * 15.0) % 360.0
+    std = ut + timedelta(hours=off)
+    reading = instruments.nocturnal_reading(arm, std.month, std.day, geo, key)
+    expected = std.hour + std.minute / 60
+    assert abs((reading - expected + 12) % 24 - 12) * 60 < 2.0
+
+
+@pytest.mark.parametrize("kind", ["astrolabe", "nocturnal"])
+@pytest.mark.parametrize("site", [CHERBOURG, SYDNEY], ids=["north", "south"])
+def test_workshop_2_pdfs(tmp_path, kind, site):
+    zone = ZoneInfo("Europe/Paris" if site[0] > 0 else "Australia/Sydney")
+    place = workshop.Place("", site[0], site[1], zone, datetime(2026, 11, 12, 20))
+    pages = workshop.instrument_pages(kind, place, options={"size": 120})
+    texts = [txt.get_text() for fig in pages.figures for ax in fig.axes for txt in ax.texts]
+    assert not [txt for txt in texts if txt.startswith("[")]
+    assert len(pages.figures) >= (6 if kind == "astrolabe" else 3)
+    assert workshop.print_instrument(kind, str(tmp_path / "x.pdf"), place, options={"size": 120}) == len(pages.figures)

@@ -68,6 +68,8 @@ def window(qapp, tmp_path, monkeypatch):
     monkeypatch.setattr(satellites, "CACHE", str(tmp_path / "satellites.tle"))    # none on disk
     import history
     monkeypatch.setattr(history, "FILE", str(tmp_path / "history.json"))          # empty
+    monkeypatch.setattr(gui.OsmMap, "fetch", False)                              # no map tiles from the network
+    monkeypatch.setattr(gui.OsmMap, "CACHE", str(tmp_path / "tiles"))
     import mpc
     monkeypatch.setattr(mpc, "CACHE", str(tmp_path / "CometEls.txt"))             # none, and no download:
     prefs.set("planner_mpc", False)                                                # Céleste's comets only
@@ -956,6 +958,82 @@ class TestGeolocation:
         button.click()
         assert opened and opened[0].toString() == "ms-settings:privacy-location"
 
+    def test_access_denied_offers_the_map(self, window, monkeypatch):
+        """Access that cannot be allowed (setting greyed out): the window offers the map,
+        and the place picked there is used."""
+        import gui
+        monkeypatch.setattr(gui, "QGeoPositionInfoSource", _FakeSource(None, error=0))
+        self._ip_answer(monkeypatch)
+        picked = []
+        monkeypatch.setattr(window, "choose_on_map", lambda: picked.append(True))
+        window.geolocate()
+        box = window._geo_dialog
+        button = next(b for b in box.buttons() if b.text() == "Choisir sur la carte")
+        button.click()
+        QApplication.processEvents()
+        assert picked
+
+    def test_no_answer_at_all_offers_the_map(self, window, monkeypatch):
+        import gui
+        monkeypatch.setattr(gui, "QGeoPositionInfoSource", _FakeSource(None, error=0))
+
+        def offline(*a, **k):
+            raise OSError("offline")
+        monkeypatch.setattr(gui.urllib.request, "urlopen", offline)
+        window.geolocate()
+        box = window._geo_dialog
+        assert box.isVisible() and box.text() == gui.t("errors.geoloc_no_answer")
+        assert any(b.text() == "Choisir sur la carte" for b in box.buttons())
+
+    def test_ip_services_in_turn(self, monkeypatch):
+        """The first HTTPS service fails, the second answers in its own format."""
+        import gui
+        asked = []
+
+        def urlopen(req, timeout=0):
+            asked.append(req.full_url)
+            if "ipwho.is" in req.full_url:
+                raise OSError("blocked")
+            return _FakeResponse(json.dumps({"latitude": 45.76, "longitude": 4.84, "city": "Lyon",
+                                             "country_name": "France", "timezone": "Europe/Paris"}).encode())
+        monkeypatch.setattr(gui.urllib.request, "urlopen", urlopen)
+        assert gui._ip_location() == (45.76, 4.84, "Lyon", "France", "Europe/Paris")
+        assert len(asked) == 2 and asked[0].startswith("https://")
+
+    def test_place_picked_on_the_map(self, window, monkeypatch):
+        """The map: a city found by its name, then a click elsewhere; the place is used with
+        its time zone and the elevation of the nearest city."""
+        import gui
+        picker = gui.PlacePicker(window, 49.63, -1.62)
+        picker.resize(800, 600)
+        picker.show()
+        picker.search.setText("Brest, FR")
+        picker._find()
+        assert picker.chosen == pytest.approx((48.39, -4.49), abs=0.05) and picker.name == "Brest"
+        assert picker.use.isEnabled() and picker.map.zoom == 13
+        m = picker.map                                           # a click on the map: the point under it
+        lat, lon = m.to_latlon(m.width() / 2 + 40, m.height() / 2 - 25)
+        x, y = m.to_screen(lat, lon)
+        assert (x, y) == pytest.approx((m.width() / 2 + 40, m.height() / 2 - 25), abs=1e-6)
+        m.on_pick(lat, lon)
+        assert picker.chosen == (lat, lon)
+        before = m.to_latlon(100, 100)                           # the wheel keeps the point under the pointer
+        m.zoom_by(1, (100, 100))
+        assert m.to_latlon(100, 100) == pytest.approx(before, abs=1e-6)
+        picker.grab()                                            # offline: Céleste's coastlines and cities
+        picker.close()
+
+        class Fake:
+            def __init__(self, parent, lat, lon):
+                self.chosen, self.name = (43.2965, 5.3698), "Marseille"
+
+            def exec(self):
+                return gui.QDialog.DialogCode.Accepted
+        monkeypatch.setattr(gui, "PlacePicker", Fake)
+        window.choose_on_map()
+        assert window.location_name == "Marseille"
+        assert window.entry_lat.text().startswith("43,2965")
+
     def test_last_known_position_before_the_ip_address(self, window, monkeypatch):
         """Timeout: the device's last known position rather than the IP address."""
         import gui
@@ -1481,6 +1559,74 @@ class TestPlanner:
         assert data["deep_sky"][0]["label"] == "M33" and data["place"] == "Cherbourg-en-Cotentin"
         assert (tmp_path / "plan.png").read_bytes()[:4] == b"\x89PNG"
 
+    def test_map_of_the_night(self, planner_tab, qapp, monkeypatch):
+        """The Sky map view: the paths of the chosen targets, the slider through the night,
+        and the tooltip of a point (after uptonight's sky plots)."""
+        import gui
+        w = planner_tab
+        w._plan_view_buttons["map"].setChecked(True)
+        qapp.processEvents()
+        assert w._plan_slider.isVisible() and w._plan_slider.maximum() == len(w._plan["times"]) - 1
+        assert w._plan_points
+        names = {p[0] for p in w._plan_points}
+        assert "M33" in names
+        w._plan_slider.setValue(w._plan_slider.maximum() // 2)
+        assert w._plan_time.text() == w._plan_times()[w._plan_slider.maximum() // 2]
+        shown = []
+        monkeypatch.setattr(gui.QToolTip, "showText", lambda pos, text, *a: shown.append(text))
+        label, x, y, i = next(p for p in w._plan_points if p[0] == "M33")
+
+        class Event:
+            xdata, ydata = x, y
+        w._on_plan_hover(Event())
+        assert shown and shown[0].startswith(f"M33 — {w._plan_times()[i]} · hauteur")
+        w._plan_view_buttons["altitude"].setChecked(True)
+        assert not w._plan_slider.isVisible()
+
+    def test_large_map_of_the_night(self, planner_tab, qapp, tmp_path, monkeypatch):
+        """The large map, as uptonight in Céleste's colours: every target numbered as in the
+        table, the planets, the header of the night; the legend shows and hides a target;
+        the east on either side; the image."""
+        import gui
+        from config import Config
+        w = planner_tab
+        dlg = w.show_night_sky()
+        qapp.processEvents()
+        ns = dlg.night_sky
+        data = ns["data"]
+        deep = [tr for tr in data["tracks"] if tr["kind"] == "deep_sky"]
+        assert [tr["number"] for tr in deep] == list(range(1, len(deep) + 1))
+        assert deep[0]["legend"].startswith("1 : M33 Galaxie du Triangle (Galaxie")
+        assert deep[0]["shape"] == "circle" and deep[0]["color"] == Config.OR        # the theme's colours
+        bodies = [tr for tr in data["tracks"] if tr["kind"] == "body"]
+        assert bodies and all(tr["shape"] == "big" and tr["color"] == Config.ENCRE for tr in bodies)
+        assert data["info"][1].startswith("Coucher / lever du Soleil : ")
+        assert ns["state"]["points"]
+        def on_the_first_row():                    # the legend is drawn again at each change
+            legend, rows, _step = ns["figure"].night_legend
+
+            class Event:
+                inaxes, ydata, xdata = legend, rows[0][0], 0.5
+            return Event()
+        first = ns["figure"].night_legend[1][0][1]
+        ns["clicked"](on_the_first_row())
+        assert data["tracks"][first]["on"] is False
+        assert all(p[0] != data["tracks"][first]["name"] for p in ns["state"]["points"])
+        ns["clicked"](on_the_first_row())
+        assert data["tracks"][first]["on"] is True
+        ns["moved"](on_the_first_row())
+        assert ns["state"]["highlight"] == first
+        ns["show"](False)
+        assert not ns["state"]["points"]
+        ns["show"](True)
+        ns["east"].setChecked(True)
+        assert gui.prefs.get("plan_map_east_right") is True
+        monkeypatch.setattr(gui.QFileDialog, "getSaveFileName", staticmethod(lambda *a: (str(tmp_path / "nuit"), "")))
+        ns["save"]()
+        assert (tmp_path / "nuit.png").read_bytes()[:4] == b"\x89PNG"
+        dlg.close()
+        gui.prefs.set("plan_map_east_right", False)
+
     def test_polar_day(self, planner_tab):
         w = planner_tab
         w.entry_lat.setText("78,22")
@@ -1685,8 +1831,21 @@ class TestMoonsAndRings:
         texts = self._texts(window._companions_card(window._body_object("Saturn")))
         assert texts[2] == "0,1° · face sud, non éclairée"
 
-    def test_in_the_data_window_of_these_two_planets_only(self, window, qapp):
-        assert window._companions_card(window._body_object("Mars")) is None
+    def test_moons_of_the_other_planets(self, window, qapp):
+        """Mars, Saturn (after its rings), Uranus, Neptune and Pluto show their moons too (4.12)."""
+        import gui
+        window._set_datetime(datetime(2026, 11, 12, 21, 0))
+        window.calculate()
+        texts = self._texts(window._companions_card(window._body_object("Mars")))
+        assert texts[0] == "Lunes" and "Phobos" in texts and "Déimos" in texts
+        card = window._companions_card(window._body_object("Saturn"))
+        texts = self._texts(card)
+        assert texts.index("Lunes") > texts.index("Taille apparente") and "Titan" in texts and "Japet" in texts
+        assert "devant Saturne" in " ".join(texts)                     # Mimas in front of the globe
+        card.findChild(gui.PlanetMoons).grab()                         # it draws
+
+    def test_in_the_data_window_of_planets_only(self, window, qapp):
+        assert window._companions_card(window._body_object("Venus")) is None
         assert window._companions_card(window._body_object("sun")) is None
         assert window._companions_card(None) is None
         dlg = window._build_detail_dialog(window._body_object("Jupiter"))
@@ -1903,31 +2062,84 @@ class TestUpdates:
 
 
 def test_workshop_window(window, qapp, tmp_path, monkeypatch):
-    """The Workshop opens for the place, previews each instrument and saves its PDF."""
+    """The Workshop opens for the side panel's place, previews each instrument, takes its
+    own place and date, and saves the PDF."""
     import gui
     dlg = window.show_workshop()
     qapp.processEvents()
-    combos = dlg.findChildren(gui.QComboBox)
-    kinds = next(c for c in combos if c.count() == 3)
-    preview = dlg.findChild(gui.QLabel, "workshopPreview")
-    assert not preview.pixmap().isNull()
-    kinds.setCurrentIndex(2)                         # horizontal sundial
+    f = dlg.workshop_fields
+    assert f["kinds"].count() == 5
+    assert not f["preview"].pixmap().isNull()
+    f["kinds"].setCurrentIndex(f["kinds"].findData("horizontal_dial"))
     qapp.processEvents()
-    assert not preview.pixmap().isNull()
+    assert not f["preview"].pixmap().isNull()
+    # another place, typed in the window: the side panel does not change
+    f["place"].setText("Sydney")
+    f["place"].textEdited.emit("Sydney")
+    f["place"].returnPressed.emit()
+    qapp.processEvents()
+    assert gui._parse_coord(f["lat"].text(), 90.0) < -30
+    assert window.entry_lat.text().startswith("49")
     target = tmp_path / "dial.pdf"
     monkeypatch.setattr(gui.QFileDialog, "getSaveFileName", lambda *a, **k: (str(target)[:-4], ""))
-    save = next(b for b in dlg.findChildren(gui.QPushButton) if b.text() == gui.t("workshop.save"))
-    save.click()
+    f["save"].click()
     assert target.read_bytes()[:5] == b"%PDF-"
     assert "dial.pdf" in window.statusBar().currentMessage()
     dlg.close()
     qapp.processEvents()
 
 
-def test_workshop_refuses_the_tropics(window, qapp, monkeypatch):
+def test_workshop_astrolabe_options(window, qapp):
+    dlg = window.show_workshop()
+    f = dlg.workshop_fields
+    f["kinds"].setCurrentIndex(f["kinds"].findData("astrolabe"))
+    qapp.processEvents()
+    assert f["size"].isVisibleTo(dlg)
+    f["size"].setCurrentIndex(0)
+    qapp.processEvents()
+    assert not f["preview"].pixmap().isNull()
+    f["kinds"].setCurrentIndex(f["kinds"].findData("nocturnal"))
+    qapp.processEvents()
+    assert not f["size"].isVisibleTo(dlg)
+    dlg.close()
+    qapp.processEvents()
+
+
+def test_workshop_refuses_the_tropics(window, qapp):
+    """Below 10° of latitude the window says why and cannot save."""
+    dlg = window.show_workshop()
+    f = dlg.workshop_fields
+    f["lat"].setText("5")
+    f["lat"].textEdited.emit("5")
+    f["timer"].timeout.emit()
+    qapp.processEvents()
+    assert not f["save"].isEnabled()
     import gui
-    shown = []
-    monkeypatch.setattr(gui.QMessageBox, "information", lambda *a: shown.append(a[2]))
-    window.entry_lat.setText("5")
-    assert window.show_workshop() is None
-    assert shown == [gui.t("workshop.latitude_range")]
+    assert f["problem"].text() == gui.t("workshop.latitude_range")
+    dlg.close()
+    qapp.processEvents()
+
+
+def test_astronomical_calendar(window, qapp, tmp_path, monkeypatch):
+    """The calendar of the Events tab: a year of events in a month grid, a day's details,
+    the filters, and the .ics export of what they let through."""
+    import gui
+    from datetime import date
+    monkeypatch.setattr(gui, "_run_in_background", lambda func, done, err: done(func()))
+    window.show_calendar()
+    qapp.processEvents()
+    cal = window._cal_state
+    assert cal["items"] and len(cal["items"]) > 150
+    window._cal_choose(date(2026, 11, 24))
+    widgets = window._cal_widgets
+    assert widgets["day_title"].text().startswith("24/11/2026")
+    assert any("Pleine lune" in c.lines.text() for c in widgets["cells"])
+    n_all = len(window._ics_items)
+    widgets["boxes"]["moon"].setChecked(False)
+    assert 0 < len(window._ics_items) < n_all
+    target = tmp_path / "ciel.ics"
+    monkeypatch.setattr(gui.QFileDialog, "getSaveFileName", lambda *a, **k: (str(target), ""))
+    window._export_ics()
+    text = target.read_text(encoding="utf-8")
+    assert text.count("BEGIN:VEVENT") == len(window._ics_items) and "Pleine lune" in text
+    widgets["boxes"]["moon"].setChecked(True)

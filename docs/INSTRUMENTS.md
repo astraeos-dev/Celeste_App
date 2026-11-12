@@ -3,7 +3,8 @@
 A section of Céleste where the user prints, cuts and assembles real instruments, **computed for their own place**:
 an astrolabe engraved for their latitude, a sundial that reads their legal time, a planisphere of their sky. This
 document is the design: the instruments, what Céleste computes for each, how they are printed and checked, and the
-steps. Workshop 1 is done (4.11): the planisphere and the two sundials, in a Workshop window (see the end).
+steps. Workshop 1 (4.11: the planisphere and the two sundials) and Workshop 2 (4.12: the complete astrolabe and the
+nocturnal) are done (see the end).
 
 ## Why in Céleste
 
@@ -55,8 +56,8 @@ Every instrument gets tests of two kinds, as the engine has:
 ## In the application
 
 - **Desktop:** a *Workshop* window, opened from the side panel (the window already has nine tabs): the list of
-  instruments with a description, the paper, a preview page by page, and *Save PDF* (4.11); later, more options
-  (size, stars, line density) and *Save SVG*.
+  instruments with a description, its own place, time zone and date (from the side panel at first), the size of the
+  astrolabe, the paper, a preview page by page, and *Save PDF*; later, *Save SVG*.
 - **Android (version 5):** an entry of the *More* page; the PDF shared to a printer or another app.
 - **Code:** `instruments.py` holds the geometry (no Qt, tested); the drawing goes through matplotlib's PDF and SVG
   backends (already used by Céleste), at true scale; the interface only collects the options.
@@ -67,25 +68,10 @@ Every instrument gets tests of two kinds, as the engine has:
 |---|---|
 | Prototype (done) | `instruments.py`: astrolabe plate and rete for any latitude, PDF at true scale, tests against the classic formulas |
 | Workshop 1 (done, 4.11) | The Workshop window; the **planisphere**, the **equatorial** and **horizontal sundials**; assembly and use sheets in four languages |
-| Workshop 2 | The complete **astrolabe** (mater, back, unequal hours, rule, alidade, rete as a cut-out frame); the **nocturnal** |
+| Workshop 2 (done, 4.12) | The complete **astrolabe** (mater, back, unequal hours, rule, alidade, rete on a transparent sheet); the **nocturnal** |
 | Workshop 3 | **Horary quadrant**, **vertical declining sundial** (wall orientation measured with the Sun), **noon mark** |
 
-Workshop 2 and 3 come after the first steps of the Android port (4.12 and 4.13).
-
-## The prototype
-
-`instruments.py`:
-
-- `plate(lat)` — tropics and equator, horizon, almucantars every 10°, azimuths every 15°, astronomical twilight,
-  zenith; the mirror image for the southern hemisphere.
-- `rete(stars)` — the ecliptic with a mark every 30° (the signs) and the stars that fall on the plate.
-- `print_astrolabe(path, lat, place, plate_mm)` — two A4 pages at true scale: the plate, then the rete (to print on
-  a transparent sheet).
-
-It follows the astrolabes of old: the north celestial pole at the centre, the south (noon) at the top under the
-ring, the east on the left; the projection is stereographic from the south pole onto the plane of the equator. Still
-missing for a usable instrument: the mater and its scales, the unequal hours, the rule, a cut-out rete, labels and
-the assembly sheet.
+Workshop 3 comes after the first steps of the Android port (4.13 and 4.14).
 
 ## Workshop 1
 
@@ -112,3 +98,25 @@ Checked by `tests/test_workshop.py`: `tan θ = sin φ tan H`, the nodus and the 
 engine's Sun at eight moments, north and south, on the line of the reading (within 2 × 10⁻⁴ rad) and the equatorial
 dial's angle against the Sun's hour angle (0.02°); the date ring against Skyfield's sidereal time (20 s); Vega in the
 planisphere's window where the engine puts it (1 mm); the PDF in the four languages.
+
+## Workshop 2
+
+- **Astrolabe** — `plate(lat)` (almucantars every 5°, azimuths every 15°, astronomical twilight, the unequal hours
+  of the night, the east and west points), `rete(stars)` (the ecliptic, a circle, graduated degree by degree, and
+  the stars brought to the year by `workshop.stars_of_date`), `turn()` (the rete at a sidereal time), `limb_angle()`
+  and `limb_reading()` (the hour scale of the limb: apparent solar time), `solar_longitudes(year)` and
+  `back_angle()` (the calendar and zodiac rings of the back, the Sun's longitude of each day from DE440),
+  `shadow_square(alt)`. Six pages: the front (mater, limb and plate), the rete and the rule on a transparent sheet,
+  the back, the alidade with its vanes, then the sheets. The prototype drew the astrolabe as a mirror image (east on
+  the right); the east is now on the left and the rete turns clockwise, as on the astrolabes of old, and the southern
+  plate is the mirror image.
+- **Nocturnal** — `nocturnal(lat, lon, std_offset, year, pointers)`: the date ring gives the pointer's hour angle at
+  0:00 standard time of each day; the hour disc turns at the sidereal rate; one tooth per pointer star (Dubhe for
+  the Great Bear, Kochab for the Little Bear; Acrux in the south, the disc turning the other way). Three pages and
+  the sheets.
+
+Checked by `tests/test_instruments.py` and `tests/test_workshop.py`: east on the left and the sky turning
+clockwise; the unequal hours equal at the equinox; the ecliptic a circle; Vega, turned with the rete to the sidereal
+time, on the point of its engine altitude and azimuth (0.1 mm); the limb reading of the Sun set on its almucantar
+against UT + longitude + equation of time (a minute, north and south); the calendar against the equinox and the
+solstice; the nocturnal's reading against the standard time from the pointers' hour angles (two minutes).

@@ -32,6 +32,7 @@ from config.py (Astræos tokens), the icons and the logo from icons.py.
 import json
 import math
 import os
+import time
 import re
 import sys
 import urllib.request
@@ -44,15 +45,15 @@ from PyQt6.QtCore import (
     QStringListModel, Qt, QTime, QTimer, QTimeZone, QUrl,
 )
 from PyQt6.QtGui import (
-    QBrush, QColor, QDesktopServices, QFont, QFontDatabase, QKeySequence,
+    QBrush, QColor, QCursor, QDesktopServices, QFont, QFontDatabase, QKeySequence,
     QPainter, QPainterPath, QPalette, QPen, QPixmap, QRegularExpressionValidator, QShortcut,
 )
 from PyQt6.QtPositioning import QGeoPositionInfo, QGeoPositionInfoSource
 from PyQt6.QtWidgets import (
     QAbstractItemView, QApplication, QButtonGroup, QCheckBox, QComboBox, QCompleter,
-    QDateTimeEdit, QDialog, QDialogButtonBox, QFileDialog, QFrame, QGridLayout, QProgressDialog,
+    QDateEdit, QDateTimeEdit, QDialog, QDialogButtonBox, QFileDialog, QFrame, QGridLayout, QProgressDialog,
     QHBoxLayout, QHeaderView, QInputDialog, QLabel, QLineEdit, QMainWindow, QMenu,
-    QMessageBox, QProgressBar, QPushButton, QScrollArea, QSizePolicy, QSlider,
+    QMessageBox, QProgressBar, QPushButton, QScrollArea, QSizePolicy, QSlider, QSplitter, QToolTip,
     QStatusBar, QTabWidget, QTableWidget, QTableWidgetItem, QToolButton,
     QVBoxLayout, QWidget,
 )
@@ -62,6 +63,7 @@ matplotlib.use("QtAgg")
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg  # noqa: E402
 from matplotlib.figure import Figure  # noqa: E402
 
+import astro_calendar  # noqa: E402
 import charts  # noqa: E402
 import history  # noqa: E402
 import icons  # noqa: E402
@@ -71,9 +73,10 @@ import places  # noqa: E402
 import satellites  # noqa: E402
 import settings as prefs  # noqa: E402
 import updater  # noqa: E402
-from config import APP_VERSION, FONT_MONO, FONT_SANS, THEME_NAMES, Config, mix  # noqa: E402
+from config import APP_BETA, APP_VERSION, FONT_MONO, FONT_SANS, THEME_NAMES, Config, mix  # noqa: E402
 from engine import (  # noqa: E402
-    COMET_DESIGNATIONS, COMET_SHORT, COMETS, EPHEMERIS_YEARS, GALILEAN_MOONS, MINOR_PLANET_NUMBERS, MINOR_PLANETS, PLANETS,
+    COMET_DESIGNATIONS, COMET_SHORT, COMETS, EPHEMERIS_YEARS, GALILEAN_MOONS, MINOR_PLANET_NUMBERS, MINOR_PLANETS, MOON_PLANETS,
+    PLANETS,
     AstroEngine,
     constellation_names, messier_catalog,
 )
@@ -247,6 +250,47 @@ def _zone(name, lat=None, lon=None):
 
 def _elev_text(metres):
     return str(int(round(metres)))
+
+
+# Services giving the approximate position of the IP address, over HTTPS first
+_IP_SERVICES = (
+    ("https://ipwho.is/", lambda d: d.get("success") and (
+        d["latitude"], d["longitude"], d.get("city"), d.get("country"), (d.get("timezone") or {}).get("id"))),
+    ("https://ipapi.co/json/", lambda d: "latitude" in d and not d.get("error") and (
+        d["latitude"], d["longitude"], d.get("city"), d.get("country_name"), d.get("timezone"))),
+    ("http://ip-api.com/json/?fields=status,country,city,lat,lon,timezone", lambda d: d.get("status") == "success"
+     and (d["lat"], d["lon"], d.get("city"), d.get("country"), d.get("timezone"))),
+)
+
+
+def _ip_location(services=_IP_SERVICES, timeout=4):
+    """(lat, lon, city, country, IANA zone) of the IP address from the first service that
+    answers; None when none does (offline, blocked)."""
+    for url, parse in services:
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": f"Celeste/{APP_VERSION}"})
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+            found = parse(data)
+        except Exception:  # network, delay, JSON, missing field: the next service
+            continue
+        if found:
+            lat, lon, city, country, zone = found
+            return float(lat), float(lon), city or "", country or "", zone
+    return None
+
+
+def _satellite_name(name, short=False):
+    """The name of a satellite: translated for the ISS, Tiangong and Hubble, as CelesTrak
+    gives it for the others ("SL-16 R/B" stays "SL-16 R/B")."""
+    if name in satellites.SATELLITES:
+        return t(f"satellites.{'short' if short else 'name'}_{name}")
+    return name
+
+
+def _version_text():
+    """4.12, or "4.12 bêta 3" for a beta build."""
+    return tf("app.beta", version=APP_VERSION, n=APP_BETA) if APP_BETA else APP_VERSION
 
 
 def _place_name(lat, lon):
@@ -803,6 +847,109 @@ class JupiterMoons(QWidget):
         p.end()
 
 
+class _DayCell(QFrame):
+    """A day of the astronomical calendar: its number and its first events, clickable."""
+
+    def __init__(self, on_click):
+        super().__init__()
+        self.setObjectName("calendarDay")
+        self.on_click = on_click
+        self.day = None
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setMinimumSize(40, 92)
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(6, 4, 6, 4)
+        lay.setSpacing(1)
+        self.number = _label("", "legende", strong=True)
+        lay.addWidget(self.number)
+        self.lines = _label("", "legende")
+        self.lines.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
+        self.lines.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        lay.addWidget(self.lines, stretch=1)
+
+    def show_day(self, day, number, lines, tip, in_month, chosen):
+        self.day = day
+        self.number.setText(number)
+        self.lines.setText("\n".join(lines))
+        self.setToolTip(tip)
+        border = Config.OR if chosen else Config.CIEL_200
+        self.setStyleSheet(f"QFrame#calendarDay {{ border: {2 if chosen else 1}px solid {border}; border-radius: 6px;"
+                           f" background: {Config.CIEL_100 if in_month else Config.CIEL_000}; }}")
+        self.number.setEnabled(in_month)
+        self.lines.setEnabled(in_month)
+
+    def mousePressEvent(self, event):
+        if self.day is not None:
+            self.on_click(self.day)
+        super().mousePressEvent(event)
+
+
+class PlanetMoons(QWidget):
+    """
+    A planet and its moons as seen in a telescope: north up and east to the left (the
+    reverse with *southern*); the distances from the planet are compressed (square
+    root) so that Mimas and Iapetus fit in the same drawing. A moon behind the disc
+    is not drawn.
+    """
+
+    def __init__(self, moons, radius_arcsec, southern=False):
+        super().__init__()
+        self.moons = moons
+        self.radius = max(radius_arcsec, 0.05)
+        self.southern = southern
+        self.setMinimumSize(336, 150)
+        self.setFixedHeight(150)
+
+    def positions(self):
+        """{name: (x, y) pixels} of the moons drawn, and the planet's radius in pixels."""
+        far = max([m["separation"] for m in self.moons] + [self.radius * 2])
+        room = self.width() / 2.0 - 44
+        planet = max(4.0, room * math.sqrt(self.radius / far))
+        turn = -1.0 if self.southern else 1.0
+        cx, cy = self.width() / 2.0, self.height() / 2.0
+        out = {}
+        for m in self.moons:
+            if m["state"] == "occulted":
+                continue
+            sep = m["separation"]
+            k = room * math.sqrt(sep / far) / sep if sep > 0 else 0.0
+            y = cy - turn * m["north"] * k
+            out[m["name"]] = (cx - turn * m["east"] * k, max(18.0, min(self.height() - 18.0, y)))
+        return out, planet
+
+    def paintEvent(self, _event):
+        points, planet = self.positions()
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        cx, cy = self.width() / 2.0, self.height() / 2.0
+        p.setPen(QPen(QColor(Config.ENCRE), 1.2))
+        p.setBrush(QColor(Config.CIEL_100))
+        p.drawEllipse(QPointF(cx, cy), planet, planet)
+        font = QFont(self.font())
+        font.setPixelSize(11)
+        p.setFont(font)
+        drawn = sorted((m for m in self.moons if m["name"] in points), key=lambda m: points[m["name"]][0])
+        for n, moon in enumerate(drawn):                 # names above and below in turn: no overlap
+            x, y = points[moon["name"]]
+            p.setPen(QPen(QColor(Config.LUNE), 1.2))
+            p.setBrush(QColor(Config.LUNE))
+            size = max(1.6, 3.6 - 0.25 * (moon["mag"] - 8))
+            p.drawEllipse(QPointF(x, y), size, size)
+            p.setPen(QColor(Config.ENCRE_ATTENUEE))
+            label_y = y - 17 if n % 2 == 0 else y + 5
+            p.drawText(QRectF(x - 45, label_y, 90, 12), int(Qt.AlignmentFlag.AlignCenter), t(f"moons.{moon['name']}"))
+        p.setPen(QColor(Config.ENCRE_ATTENUEE))
+        west, east = t("skymap.cardinal_w"), t("skymap.cardinal_e")
+        north, south = t("skymap.cardinal_n"), t("skymap.cardinal_s")
+        left, right = (west, east) if self.southern else (east, west)
+        top = south if self.southern else north
+        p.drawText(QRectF(0, cy - 6, 24, 12), int(Qt.AlignmentFlag.AlignLeft), left)
+        p.drawText(QRectF(self.width() - 24, cy - 6, 24, 12), int(Qt.AlignmentFlag.AlignRight), right)
+        p.drawText(QRectF(cx - 12, 0, 24, 12), int(Qt.AlignmentFlag.AlignCenter), top)
+        p.end()
+
+
 class SaturnRings(QWidget):
     """
     Saturn and its rings at their tilt of the moment (*tilt* in degrees,
@@ -1155,6 +1302,313 @@ class _TooltipLayer:
 
 # ── Main class ────────────────────────────────────────────────────────────────
 
+class OsmMap(QWidget):
+    """
+    A slippy map of OpenStreetMap tiles (Web Mercator): the wheel zooms around the
+    pointer, a drag moves the map, a click puts the point (*on_pick(lat, lon)*). The
+    tiles are kept in ~/.celeste/tiles for a week, as the tile usage policy of the
+    OpenStreetMap Foundation asks; the attribution is drawn in a corner. Offline, the
+    coastlines and the cities of Céleste's own lists stand in for the tiles.
+    """
+    URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+    CACHE = os.path.join(prefs.USER_DIR, "tiles")
+    MAX_AGE_S = 7 * 86400
+    TILE = 256
+    fetch = True                           # False in the tests: no network
+
+    def __init__(self, lat, lon, zoom, on_pick):
+        super().__init__()
+        self.lat, self.lon, self.zoom = lat, lon, zoom
+        self.on_pick = on_pick
+        self.marker = None
+        self.tiles = {}                    # (z, x, y): QPixmap
+        self.pending = set()
+        self.failed = 0
+        self._press = None
+        self._net = None
+        self.setMinimumHeight(380)
+        self.setMouseTracking(True)
+        self.setCursor(Qt.CursorShape.OpenHandCursor)
+
+    # ── Web Mercator ──
+    def _world(self, lat, lon, zoom=None):
+        n = self.TILE * 2 ** (self.zoom if zoom is None else zoom)
+        lat = max(-85.05, min(85.05, lat))
+        x = (lon + 180.0) / 360.0 * n
+        y = (1.0 - math.log(math.tan(math.radians(lat)) + 1.0 / math.cos(math.radians(lat))) / math.pi) / 2.0 * n
+        return x, y
+
+    def _latlon(self, x, y):
+        n = self.TILE * 2 ** self.zoom
+        lon = x / n * 360.0 - 180.0
+        lat = math.degrees(math.atan(math.sinh(math.pi * (1.0 - 2.0 * y / n))))
+        return lat, ((lon + 180.0) % 360.0) - 180.0
+
+    def _origin(self):
+        cx, cy = self._world(self.lat, self.lon)
+        return cx - self.width() / 2.0, cy - self.height() / 2.0
+
+    def to_screen(self, lat, lon):
+        x, y = self._world(lat, lon)
+        ox, oy = self._origin()
+        return x - ox, y - oy
+
+    def to_latlon(self, px, py):
+        ox, oy = self._origin()
+        return self._latlon(ox + px, oy + py)
+
+    # ── tiles ──
+    def _path(self, z, x, y):
+        return os.path.join(self.CACHE, str(z), str(x), f"{y}.png")
+
+    def _tile(self, z, x, y):
+        key = (z, x, y)
+        if key in self.tiles:
+            return self.tiles[key]
+        path = self._path(z, x, y)
+        try:
+            fresh = time.time() - os.path.getmtime(path) < self.MAX_AGE_S
+        except OSError:
+            fresh = None
+        if fresh is not None:
+            pixmap = QPixmap(path)
+            if not pixmap.isNull():
+                self.tiles[key] = pixmap
+                if fresh:
+                    return pixmap
+        if self.fetch and key not in self.pending and self.failed < 8:
+            self._request(key)
+        return self.tiles.get(key)
+
+    def _request(self, key):
+        from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkRequest
+        if self._net is None:
+            self._net = QNetworkAccessManager(self)
+        z, x, y = key
+        request = QNetworkRequest(QUrl(self.URL.format(z=z, x=x, y=y)))
+        request.setRawHeader(b"User-Agent", f"Celeste/{APP_VERSION} (+{_URL_REPO})".encode())
+        self.pending.add(key)
+        reply = self._net.get(request)
+        reply.finished.connect(lambda r=reply, k=key: self._received(r, k))
+
+    def _received(self, reply, key):
+        self.pending.discard(key)
+        data = bytes(reply.readAll())
+        ok = reply.error() == reply.NetworkError.NoError and data[:8] == b"\x89PNG\r\n\x1a\n"
+        reply.deleteLater()
+        if not ok:
+            self.failed += 1
+            self.update()
+            return
+        self.failed = 0
+        path = self._path(*key)
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "wb") as f:
+                f.write(data)
+        except OSError:
+            pass
+        pixmap = QPixmap()
+        pixmap.loadFromData(data, "PNG")
+        self.tiles[key] = pixmap
+        self.update()
+
+    # ── drawing ──
+    def paintEvent(self, _event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.fillRect(self.rect(), QColor(Config.CIEL_000))
+        ox, oy = self._origin()
+        n = 2 ** self.zoom
+        missing = False
+        tx0, ty0 = int(ox // self.TILE), int(oy // self.TILE)
+        tx1, ty1 = int((ox + self.width()) // self.TILE), int((oy + self.height()) // self.TILE)
+        tiles = []
+        for ty in range(max(ty0, 0), min(ty1, n - 1) + 1):
+            for tx in range(tx0, tx1 + 1):
+                pixmap = self._tile(self.zoom, tx % n, ty)
+                tiles.append((tx, ty, pixmap))
+                missing |= pixmap is None
+        if missing:                                     # offline (or loading): Céleste's own map
+            self._draw_offline(p)
+        for tx, ty, pixmap in tiles:
+            if pixmap is not None:
+                p.drawPixmap(QPointF(tx * self.TILE - ox, ty * self.TILE - oy), pixmap)
+        if self.marker:
+            x, y = self.to_screen(*self.marker)
+            p.setPen(QPen(QColor(Config.CIEL_000), 2))
+            p.setBrush(QColor(Config.OR))
+            p.drawEllipse(QPointF(x, y - 14), 8, 8)
+            path = QPainterPath()
+            path.moveTo(x, y)
+            path.lineTo(x - 7, y - 10)
+            path.lineTo(x + 7, y - 10)
+            path.closeSubpath()
+            p.drawPath(path)
+        text = t("picker.osm_credit")
+        font = QFont(self.font())
+        font.setPixelSize(11)
+        p.setFont(font)
+        width = p.fontMetrics().horizontalAdvance(text) + 12
+        box = QRectF(self.width() - width, self.height() - 18, width, 18)
+        p.fillRect(box, QColor(255, 255, 255, 200))
+        p.setPen(QColor("#333333"))
+        p.drawText(box, int(Qt.AlignmentFlag.AlignCenter), text)
+        if missing and self.failed >= 8:
+            p.setPen(QColor(Config.ENCRE_ATTENUEE))
+            p.drawText(QRectF(8, 8, self.width() - 16, 18), int(Qt.AlignmentFlag.AlignLeft), t("picker.offline"))
+        p.end()
+
+    def _draw_offline(self, p):
+        ox, oy = self._origin()
+        p.setPen(QPen(QColor(Config.ENCRE_ATTENUEE), 0.8))
+        p.setBrush(QColor(Config.CIEL_200))
+        n = self.TILE * 2 ** self.zoom
+        for lons, lats in charts.world_rings():
+            for shift in (-n, 0.0, n):
+                pts = [QPointF(*(lambda xy: (xy[0] - ox + shift, xy[1] - oy))(self._world(la, lo)))
+                       for lo, la in zip(lons, lats)]
+                if not any(-50 < q.x() < self.width() + 50 and -50 < q.y() < self.height() + 50 for q in pts):
+                    continue
+                path = QPainterPath()
+                path.moveTo(pts[0])
+                for q in pts[1:]:
+                    path.lineTo(q)
+                p.drawPath(path)
+        lat0, lon0 = self.to_latlon(0, self.height())
+        lat1, lon1 = self.to_latlon(self.width(), 0)
+        font = QFont(self.font())
+        font.setPixelSize(11)
+        p.setFont(font)
+        for n_city, city in enumerate(places.in_box(lat0, lat1, lon0, lon1, limit=400)):
+            x, y = self.to_screen(city["lat"], city["lon"])
+            p.setPen(Qt.PenStyle.NoPen)
+            p.setBrush(QColor(Config.ENCRE_ATTENUEE))
+            p.drawEllipse(QPointF(x, y), 2, 2)
+            if n_city < 25:
+                p.setPen(QColor(Config.ENCRE))
+                p.drawText(QPointF(x + 4, y + 4), city["name"])
+
+    # ── interaction ──
+    def set_view(self, lat, lon, zoom=None):
+        self.lat, self.lon = lat, lon
+        if zoom is not None:
+            self.zoom = max(2, min(18, int(zoom)))
+        self.update()
+
+    def zoom_by(self, step, at=None):
+        zoom = max(2, min(18, self.zoom + step))
+        if zoom == self.zoom:
+            return
+        if at is not None:                               # keep the point under the pointer in place
+            lat, lon = self.to_latlon(*at)
+            self.zoom = zoom
+            x, y = self._world(lat, lon)
+            cx, cy = x - at[0] + self.width() / 2.0, y - at[1] + self.height() / 2.0
+            self.lat, self.lon = self._latlon(cx, cy)
+        else:
+            self.zoom = zoom
+        self.update()
+
+    def wheelEvent(self, event):
+        pos = event.position()
+        self.zoom_by(1 if event.angleDelta().y() > 0 else -1, (pos.x(), pos.y()))
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            pos = event.position()
+            self._press = (pos.x(), pos.y(), False)
+            self.setCursor(Qt.CursorShape.ClosedHandCursor)
+
+    def mouseMoveEvent(self, event):
+        if self._press is None:
+            return
+        x0, y0, dragged = self._press
+        pos = event.position()
+        if not dragged and abs(pos.x() - x0) + abs(pos.y() - y0) < 5:
+            return
+        cx, cy = self._world(self.lat, self.lon)
+        self.lat, self.lon = self._latlon(cx - (pos.x() - x0), cy - (pos.y() - y0))
+        self._press = (pos.x(), pos.y(), True)
+        self.update()
+
+    def mouseReleaseEvent(self, event):
+        press, self._press = self._press, None
+        self.setCursor(Qt.CursorShape.OpenHandCursor)
+        if press is None or press[2]:
+            return
+        pos = event.position()
+        self.on_pick(*self.to_latlon(pos.x(), pos.y()))
+
+
+class PlacePicker(QDialog):
+    """
+    The place chosen on an OpenStreetMap map: the wheel zooms, a drag moves the
+    map, a click puts the point; a city's name takes the map there. For a computer
+    whose location service cannot be allowed (or gives nothing), and more precise
+    than the position of the IP.
+    """
+
+    def __init__(self, parent, lat, lon):
+        super().__init__(parent)
+        self.setWindowTitle(t("picker.title"))
+        self.setMinimumSize(760, 600)
+        self.chosen = None                    # (lat, lon)
+        self.name = ""
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(24, 24, 24, 16)
+        lay.setSpacing(12)
+        lay.addWidget(_label(t("picker.hint"), "legende", wrap=True))
+        self.search = QLineEdit()
+        self.search.setPlaceholderText(t("picker.search_placeholder"))
+        self.search.setClearButtonEnabled(True)
+        self.search.returnPressed.connect(self._find)
+        lay.addWidget(InputField(t("side.place"), self.search))
+        self.map = OsmMap(lat, lon, 10, self.choose)
+        lay.addWidget(self.map, stretch=1)
+        self.status = _label(t("picker.none"), "corps", wrap=True)
+        lay.addWidget(self.status)
+        row = QHBoxLayout()
+        zoom_in = _icon_button("zoom_in", t("picker.zoom_in"), compact=True)
+        zoom_out = _icon_button("zoom_out", t("picker.zoom_out"), compact=True)
+        zoom_in.clicked.connect(lambda _c=False: self.map.zoom_by(1))
+        zoom_out.clicked.connect(lambda _c=False: self.map.zoom_by(-1))
+        row.addWidget(zoom_in)
+        row.addWidget(zoom_out)
+        row.addStretch()
+        cancel = _button(t("picker.cancel"))
+        cancel.clicked.connect(self.reject)
+        self.use = _button(t("picker.use"), "place", "principal")
+        self.use.setEnabled(False)
+        self.use.clicked.connect(self.accept)
+        row.addWidget(cancel)
+        row.addWidget(self.use)
+        lay.addLayout(row)
+
+    def choose(self, lat, lon, name=None):
+        self.chosen = (lat, lon)
+        self.map.marker = (lat, lon)
+        near = places.nearest(lat, lon, max_km=30.0)
+        self.name = name if name is not None else (near["name"] if near else "")
+        where = f"{_fmt_lat(lat)}, {_fmt_lon(lon)}"
+        if near:
+            km = places.distance_km(lat, lon, near["lat"], near["lon"])
+            self.status.setText(tf("picker.near", point=where, city=places.label(near), km=_num(km, 1)))
+        else:
+            self.status.setText(tf("picker.point", point=where))
+        self.use.setEnabled(True)
+        self.map.update()
+
+    def _find(self):
+        found = places.search(self.search.text(), limit=1)
+        if not found:
+            self.status.setText(tf("side.place_unknown", name=self.search.text().strip()))
+            return
+        city = found[0]
+        self.map.set_view(city["lat"], city["lon"], 13)
+        self.choose(city["lat"], city["lon"], city["name"])
+
+
 class AstroApp(QMainWindow):
     """Main window of Céleste."""
 
@@ -1334,7 +1788,9 @@ class AstroApp(QMainWindow):
             edit.setToolTip(t(f"side.{key}_tip"))
             edit.returnPressed.connect(self.calculate)
             edit.textEdited.connect(self._on_coords_edited)
-        lay.addWidget(self.field_lat)
+        btn_map = _icon_button("map", t("side.map_tip"))
+        btn_map.clicked.connect(lambda _checked=False: self.choose_on_map())
+        lay.addLayout(self._with_button(self.field_lat, btn_map))
         btn_geo = _icon_button("geolocate", t("side.geoloc_tip"))
         btn_geo.clicked.connect(lambda _checked=False: self.geolocate())
         lay.addLayout(self._with_button(self.field_lon, btn_geo))
@@ -1396,7 +1852,7 @@ class AstroApp(QMainWindow):
         lay.addStretch()
         self.theme_selector = ThemeSelector(Config.THEME, self._on_theme_selected)
         lay.addWidget(self.theme_selector)
-        lay.addWidget(_label(tf("app.version", version=APP_VERSION), "legende"))
+        lay.addWidget(_label(tf("app.version", version=_version_text()), "legende"))
         return side
 
     @staticmethod
@@ -1829,12 +2285,12 @@ class AstroApp(QMainWindow):
         self._update_busy = False
         interactive = self._update_interactive
         if release is None or not updater.is_newer(release["version"]):
-            self._update_info.setText(tf("update.up_to_date", version=APP_VERSION))
+            self._update_info.setText(tf("update.up_to_date", version=_version_text()))
             if interactive:
-                self.statusBar().showMessage(tf("update.up_to_date", version=APP_VERSION), 8000)
+                self.statusBar().showMessage(tf("update.up_to_date", version=_version_text()), 8000)
             return
         self._update_info.setText(tf("update.available", version=release["version"],
-                                       current=APP_VERSION))
+                                       current=_version_text()))
         if interactive or prefs.get("update_skipped") != release["version"]:
             self._show_update_dialog(release)
 
@@ -1847,7 +2303,7 @@ class AstroApp(QMainWindow):
     def _show_update_dialog(self, release):
         """Window (non-modal): the new version, its notes, and what to do."""
         box = QMessageBox(QMessageBox.Icon.Information, t("update.title"),
-                          tf("update.available", version=release["version"], current=APP_VERSION),
+                          tf("update.available", version=release["version"], current=_version_text()),
                           parent=self)
         box.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)           # once closed, it does not stay in memory
         notes = updater.plain_notes(release.get("notes", ""))
@@ -2139,6 +2595,10 @@ class AstroApp(QMainWindow):
 
         bar = QHBoxLayout()
         bar.setSpacing(8)
+        btn_cal = _button(t("astro_calendar.button"), "calendar", "secondaire")
+        btn_cal.setToolTip(t("astro_calendar.button_tip"))
+        btn_cal.clicked.connect(lambda _c=False: self.show_calendar())
+        bar.addWidget(btn_cal)
         btn_ecl = _button(t("events.search_eclipses"), "search")
         btn_ecl.clicked.connect(self._search_eclipses_gui)
         btn_conj = _button(t("events.search_conjunctions"), "search")
@@ -2156,6 +2616,14 @@ class AstroApp(QMainWindow):
         self._btn_ics.clicked.connect(self._export_ics)
         bar.addWidget(self._btn_ics)
         lay.addLayout(bar)
+        options = QHBoxLayout()
+        self._sat_visual = QCheckBox(t("satellites.visual"))
+        self._sat_visual.setToolTip(t("satellites.visual_tip"))
+        self._sat_visual.setChecked(bool(prefs.get("satellites_visual")))
+        self._sat_visual.toggled.connect(lambda v: prefs.set("satellites_visual", bool(v)))
+        options.addStretch()
+        options.addWidget(self._sat_visual)
+        lay.addLayout(options)
 
         # filters of the year's events
         self._evt_filter_bar = QWidget()
@@ -2247,7 +2715,15 @@ class AstroApp(QMainWindow):
         self._plan_mpc.setToolTip(t("planner.mpc_tip"))
         self._plan_mpc.setChecked(bool(prefs.get("planner_mpc")))
         form.addWidget(self._plan_mpc)
-        form.addWidget(_label(t("planner.types"), "label"))
+        types_head = QHBoxLayout()
+        types_head.setSpacing(4)
+        types_head.addWidget(_label(t("planner.types"), "label"), stretch=1)
+        for key, on in (("types_all", True), ("types_none", False)):
+            btn = _button(t(f"planner.{key}"), None, "discret", compact=True)
+            btn.setToolTip(t(f"planner.{key}_tip"))
+            btn.clicked.connect(lambda _c=False, v=on: [b.setChecked(v) for b in self._plan_types.values()])
+            types_head.addWidget(btn)
+        form.addLayout(types_head)
         self._plan_types = {}
         grid = QGridLayout()
         grid.setHorizontalSpacing(8)
@@ -2314,16 +2790,52 @@ class AstroApp(QMainWindow):
         table.customContextMenuRequested.connect(self._plan_context_menu)
         table.cellDoubleClicked.connect(lambda row, _col: self._show_plan_target_on_map(row))
         table.setToolTip(t("planner.table_tip"))
-        right.addWidget(self._plan_tabs, stretch=3)
 
         card = _card()
         card_l = QVBoxLayout(card)
         card_l.setContentsMargins(8, 8, 8, 8)
+        views = QHBoxLayout()
+        views.setSpacing(6)
+        self._plan_view_buttons = {}
+        group = QButtonGroup(card)
+        group.setExclusive(True)
+        for key in ("altitude", "map"):
+            btn = _button(t(f"planner.view_{key}"), None, "secondaire", compact=True, checkable=True)
+            btn.setToolTip(t(f"planner.view_{key}_tip"))
+            group.addButton(btn)
+            views.addWidget(btn)
+            self._plan_view_buttons[key] = btn
+            btn.toggled.connect(lambda on, _k=key: on and self._draw_plan_chart())
+        self._plan_view_buttons["altitude"].setChecked(True)
+        self._plan_slider = QSlider(Qt.Orientation.Horizontal)
+        self._plan_slider.setToolTip(t("planner.time_tip"))
+        self._plan_slider.valueChanged.connect(lambda _v: self._draw_plan_chart())
+        self._plan_time = _label("", "legende")
+        views.addSpacing(12)
+        views.addWidget(self._plan_time)
+        views.addWidget(self._plan_slider, stretch=1)
+        self._plan_enlarge = _button(t("planner.sky_enlarge"), None, "discret", compact=True)
+        self._plan_enlarge.setToolTip(t("planner.sky_enlarge_tip"))
+        self._plan_enlarge.clicked.connect(lambda _c=False: self.show_night_sky())
+        views.addWidget(self._plan_enlarge)
+        card_l.addLayout(views)
         self.fig_plan = Figure(facecolor=Config.CIEL_100)
         self.canvas_plan = FigureCanvasQTAgg(self.fig_plan)
-        self.canvas_plan.setMinimumHeight(220)
+        self.canvas_plan.setMinimumHeight(260)
+        self.canvas_plan.mpl_connect("motion_notify_event", self._on_plan_hover)
+        self._plan_points = []
         card_l.addWidget(self.canvas_plan)
-        right.addWidget(card, stretch=2)
+        # the tables and the chart share the height; the user moves the line between them
+        split = QSplitter(Qt.Orientation.Vertical)
+        split.setChildrenCollapsible(False)
+        split.addWidget(self._plan_tabs)
+        split.addWidget(card)
+        sizes = prefs.get("plan_split") or [40, 60]
+        split.setSizes([int(v * 10) for v in sizes])
+        split.splitterMoved.connect(lambda _p, _i: prefs.set("plan_split", [int(v / 10) or 1 for v in split.sizes()]))
+        split.setToolTip(t("planner.split_tip"))
+        self._plan_split = split
+        right.addWidget(split, stretch=1)
         outer.addLayout(right, stretch=1)
         self.tabs.addTab(page, t("tabs.planner"))
         self._planner_page = page
@@ -2525,9 +3037,284 @@ class AstroApp(QMainWindow):
             table.sortItems(0, Qt.SortOrder.AscendingOrder)
         self._draw_plan_chart()
 
+    def _plan_chosen(self):
+        """(tab key, items of the targets chosen in the table: the first five without a choice)."""
+        result = self._plan
+        key = "bodies" if self._plan_tabs.currentIndex() == 1 else "deep_sky"
+        table = self._plan_tables[key]
+        rows = sorted({i.row() for i in table.selectedItems()}) or list(range(min(5, table.rowCount())))
+        names = [table.item(r, 0).data(_NAME_ROLE) for r in rows[:8]]
+        items = {o["label"]: o for o in result["deep_sky"]} if key == "deep_sky" else \
+            {b["name"]: b for b in result["bodies"]}
+        chosen = []
+        for name in names:
+            item = items.get(name)
+            if item is not None:
+                title = (t("chart.moon") if name == "moon" else _planet_name(name)) if key == "bodies" else name
+                chosen.append((title, item))
+        return key, chosen
+
+    def _plan_map_mode(self):
+        return hasattr(self, "_plan_view_buttons") and self._plan_view_buttons["map"].isChecked()
+
+    def _plan_times(self):
+        return [self._local(x).strftime("%H:%M") for x in self._plan["times"]]
+
+    _SHAPES = {"galaxy": "circle", "galaxy_group": "circle", "nebula": "diamond", "planetary_nebula": "diamond",
+               "supernova_remnant": "diamond", "dark_nebula": "diamond"}
+
+    def _night_sky_data(self, everything=False):
+        """
+        What the map of the night shows (the Targets tab, its large window and its web
+        page): the deep-sky targets numbered as in the table (*everything*: the first 20,
+        the chosen ones shown; otherwise the chosen ones), the planets, the comets, the
+        Moon, with their colours and markers, the header and the legend, as uptonight.
+        """
+        result = self._plan
+        key, chosen = self._plan_chosen()
+        chosen_names = {title for title, _item in chosen}
+        times = self._plan_times()
+        tracks = []
+
+        def start(alts):
+            return next((i for i, a in enumerate(alts) if a is not None and a > 0), 0)
+
+        table = self._plan_tables["deep_sky"]
+        order = [table.item(r, 0).data(_NAME_ROLE) for r in range(table.rowCount())]
+        by_label = {o["label"]: o for o in result["deep_sky"]}
+        if everything:
+            names = order[:20] + [n for n in chosen_names if key == "deep_sky" and n in by_label and n not in order[:20]]
+        else:
+            names = [title for title, _item in chosen] if key == "deep_sky" else []
+        for n, name in enumerate(names):
+            o = by_label.get(name)
+            if o is None:
+                continue
+            number = order.index(name) + 1 if name in order else n + 1
+            details = [t(f"messier.type_{o['type']}")]
+            if o.get("major"):
+                details.append(f"{_num(o['major'], 0)}′")
+            details.append(f"{_num(100 * o['fraction'], 0)} %")
+            if o.get("mag") is not None:
+                details.append(f"mag {_num(o['mag'], 1)}")
+            row = order.index(name) if name in order else None
+            title = table.item(row, 0).text() if row is not None else o["label"]     # the name in the language
+            tracks.append({"name": o["label"], "legend": f"{number} : {title} ({', '.join(details)})",
+                           "kind": "deep_sky", "shape": self._SHAPES.get(o["type"], "square"), "number": number,
+                           "alt": [float(v) for v in o["altitudes"]], "az": [float(v) for v in o["azimuths"]],
+                           "on": True,
+                           "start": start(o["altitudes"])})
+        for b in result["bodies"]:
+            if b["name"] == "moon":
+                continue
+            title = _planet_name(b["name"])
+            if not everything and not (key == "bodies" and title in chosen_names):
+                continue
+            mag = "" if b.get("mag") is None else f" (mag {_num(b['mag'], 1)})"
+            tracks.append({"name": title, "legend": title + mag, "kind": "body", "shape": "big", "number": None,
+                           "alt": [float(v) for v in b["altitudes"]], "az": [float(v) for v in b["azimuths"]],
+                           "on": True, "start": start(b["altitudes"])})
+        if everything:
+            for k in result["comets"][:6]:
+                title = _planet_name(k["table"], numbered=True) if k["table"] else k["name"]
+                tracks.append({"name": title, "legend": f"{title} (mag {_num(k['mag'], 1)})", "kind": "comet",
+                               "shape": "x", "number": None,
+                               "alt": [float(v) for v in k["altitudes"]], "az": [float(v) for v in k["azimuths"]],
+                               "on": True, "start": start(k["altitudes"])})
+        moon = next((b for b in result["bodies"] if b["name"] == "moon"), None)
+        if moon is not None:
+            tracks.append({"name": t("chart.moon"), "legend": t("chart.moon"), "kind": "moon", "shape": "circle",
+                           "number": None, "alt": [float(v) for v in moon["altitudes"]],
+                           "az": [float(v) for v in moon["azimuths"]], "on": True, "start": 0})
+        window, ev, c = result["window"], result.get("events", {}), result["constraints"]
+
+        def hm(dt):
+            return "—" if dt is None else self._local(dt).strftime("%H:%M")
+
+        def dhm(dt):
+            return "—" if dt is None else self._local(dt).strftime("%d/%m %H:%M")
+        length = (window["end"] - window["start"]).total_seconds() / 3600
+        title = tf("planner.sky_title", kind=t(f"planner.night_{window['kind']}").split(" (")[0],
+                   start=dhm(window["start"]), end=dhm(window["end"]),
+                   length=f"{int(length)} h {int(round(length % 1 * 60)):02d}")
+        info = [tf("planner.sky_sun", set=hm(ev.get("sunset")), rise=hm(ev.get("sunrise"))),
+                tf("planner.sky_moon", rise=dhm(ev.get("moonrise")), set=dhm(ev.get("moonset"))),
+                tf("planner.sky_illumination", value=_num(result["moon"]["illumination"], 0)),
+                tf("planner.sky_altitude", low=_num(c["altitude_min"], 0), high=_num(c["altitude_max"], 0)),
+                tf("planner.sky_airmass", value=_num(c["airmass_max"], 1)),
+                tf("planner.sky_size", low=_num(c["size_min"], 0), high=_num(c["size_max"], 0)),
+                tf("planner.sky_fraction", value=_num(100 * c["fraction_min"], 0)),
+                tf("planner.sky_separation", value=_num(result["moon"]["separation_min"], 0))]
+        where = self.location_name or f"{_fmt_lat(self._lat)}, {_fmt_lon(self._lon)}"
+        labels = {"north": t("skymap.cardinal_n"), "east": t("skymap.cardinal_e"), "south": t("skymap.cardinal_s"),
+                  "west": t("skymap.cardinal_w"), "empty": t("planner.chart_empty")}
+        info.insert(0, tf("planner.sky_place", place=where, zone=_fmt_offset(self._offset_at(result["times"][0]))))
+        return {"title": title, "info": info, "markers": [t(f"planner.sky_marker_{k}") for k in
+                                          ("big", "diamond", "circle", "square", "x")],
+                "times": times, "tracks": tracks, "horizon": [list(p) for p in result["horizon"]],
+                "limits": [c["altitude_min"], c["altitude_max"]], "labels": labels,
+                "east_right": bool(prefs.get("plan_map_east_right"))}
+
+    def _draw_plan_tracks(self):
+        """The paths across the sky of the chosen targets (the map of the night, compact)."""
+        result = self._plan
+        times = self._plan_times() if result is not None else []
+        self._plan_slider.blockSignals(True)
+        self._plan_slider.setRange(0, max(0, len(times) - 1))
+        self._plan_slider.blockSignals(False)
+        if result is None or not times:
+            self._plan_sky = None
+            self.fig_plan.clear()
+            self.canvas_plan.draw_idle()
+            return
+        self._plan_sky = self._night_sky_data()
+        now = self._plan_slider.value()
+        self._plan_time.setText(times[now])
+        self._plan_points = charts.draw_night_sky(self.fig_plan, self._plan_sky, now,
+                                                  self._plan_sky["east_right"], compact=True)
+        self.canvas_plan.draw_idle()
+
+    def _night_sky_tip(self, event, points, data, canvas):
+        """The tooltip over a map of the night: the target, the hour, its altitude and azimuth."""
+        if event.xdata is None or not points or data is None:
+            QToolTip.hideText()
+            return
+        best = min(points, key=lambda p: (p[1] - event.xdata) ** 2 + (p[2] - event.ydata) ** 2)
+        if (best[1] - event.xdata) ** 2 + (best[2] - event.ydata) ** 2 > 0.035 ** 2:
+            QToolTip.hideText()
+            return
+        name, _x, _y, i = best
+        track = next(tr for tr in data["tracks"] if tr["name"] == name)
+        QToolTip.showText(QCursor.pos(), tf("planner.map_tip", name=name, time=data["times"][i],
+                                            alt=_deg(track["alt"][i], 0), az=_deg(track["az"][i], 0)), canvas)
+
+    def _on_plan_hover(self, event):
+        if self._plan_map_mode() and self._plan is not None:
+            self._night_sky_tip(event, self._plan_points, getattr(self, "_plan_sky", None), self.canvas_plan)
+
+    def show_night_sky(self):
+        """The large map of the night, after uptonight's plots, in Céleste's colours: every
+        target of the table, the planets, the comets and the Moon, the header and the
+        numbered legend. A slider through the night, the details under the pointer, a
+        click on a line of the legend shows or hides its target (the pointer over it
+        brings its path out), the east on either side, and the image to save."""
+        if self._plan is None or not self._plan["times"]:
+            return None
+        data = self._night_sky_data(everything=True)
+        dlg = QDialog(self)
+        dlg.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        dlg.setWindowTitle(data["title"])
+        dlg.resize(1280, 860)
+        lay = QVBoxLayout(dlg)
+        lay.setContentsMargins(16, 16, 16, 12)
+        figure = Figure(facecolor=Config.CIEL_100)
+        canvas = FigureCanvasQTAgg(figure)
+        lay.addWidget(canvas, stretch=1)
+        bar = QHBoxLayout()
+        time_label = _label("", "corps", strong=True)
+        slider = QSlider(Qt.Orientation.Horizontal)
+        slider.setRange(0, len(data["times"]) - 1)
+        slider.setValue(len(data["times"]) // 2)
+        slider.setToolTip(t("planner.time_tip"))
+        east = QCheckBox(t("planner.sky_east_right"))
+        east.setChecked(data["east_right"])
+        east.setToolTip(t("planner.sky_east_tip"))
+        show_all = _button(t("planner.sky_show_all"), None, "discret", compact=True)
+        hide_all = _button(t("planner.sky_hide_all"), None, "discret", compact=True)
+        png = _button(t("planner.sky_save_png"), "export", "principal", compact=True)
+        close = _button(t("detail.close"), compact=True)
+        close.clicked.connect(dlg.reject)
+        for widget in (time_label,):
+            bar.addWidget(widget)
+        bar.addWidget(slider, stretch=1)
+        for widget in (east, show_all, hide_all, png, close):
+            bar.addWidget(widget)
+        lay.addLayout(bar)
+        state = {"points": [], "highlight": None}
+
+        def draw():
+            time_label.setText(data["times"][slider.value()])
+            state["points"] = charts.draw_night_sky(figure, data, slider.value(), east.isChecked(),
+                                                    highlight=state["highlight"])
+            canvas.draw_idle()
+
+        def legend_row(event):
+            """The track under the pointer in the legend, or None."""
+            legend = getattr(figure, "night_legend", None)
+            if not legend or event.inaxes is not legend[0] or event.ydata is None:
+                return None
+            _ax, rows, step = legend
+            near = min(rows, key=lambda r: abs(r[0] - event.ydata))
+            return near[1] if abs(near[0] - event.ydata) <= step / 2 else None
+
+        def moved(event):
+            row = legend_row(event)
+            if row != state["highlight"]:
+                state["highlight"] = row if row is None or data["tracks"][row].get("on", True) else None
+                draw()
+            if row is None:
+                self._night_sky_tip(event, state["points"], data, canvas)
+
+        def clicked(event):
+            row = legend_row(event)
+            if row is not None:
+                track = data["tracks"][row]
+                track["on"] = not track.get("on", True)
+                state["highlight"] = row if track["on"] else None
+                draw()
+
+        def show(on):
+            for track in data["tracks"]:
+                track["on"] = on
+            draw()
+
+        def turn_east(on):
+            prefs.set("plan_map_east_right", bool(on))
+            data["east_right"] = bool(on)
+            draw()
+            self._draw_plan_chart()
+
+        def save():
+            day = self._local(self._plan["window"]["start"]).strftime("%Y-%m-%d")
+            path, _f = QFileDialog.getSaveFileName(
+                dlg, t("planner.export"), os.path.join(os.path.expanduser("~"), f"celeste-nuit-{day}.png"),
+                "PNG (*.png)")
+            if not path:
+                return
+            if not path.lower().endswith(".png"):
+                path += ".png"
+            try:
+                figure.savefig(path, dpi=150, facecolor=figure.get_facecolor())
+            except OSError as exc:
+                QMessageBox.critical(dlg, t("errors.error_title"), str(exc))
+                return
+            self.statusBar().showMessage(tf("planner.exported", path=path), 6000)
+
+        slider.valueChanged.connect(lambda _v: draw())
+        east.toggled.connect(turn_east)
+        show_all.clicked.connect(lambda _c=False: show(True))
+        hide_all.clicked.connect(lambda _c=False: show(False))
+        png.clicked.connect(lambda _c=False: save())
+        canvas.mpl_connect("motion_notify_event", moved)
+        canvas.mpl_connect("button_press_event", clicked)
+        dlg.night_sky = {"figure": figure, "canvas": canvas, "slider": slider, "east": east, "data": data,
+                         "state": state, "save": save, "moved": moved, "clicked": clicked, "show": show}
+        self._night_sky_dialog = dlg
+        dlg.show()
+        draw()
+        return dlg
+
     def _draw_plan_chart(self):
-        """Altitude through the night of the targets chosen in the table (the first five without a choice)."""
+        """Altitude through the night of the targets chosen in the table (the first five without a choice),
+        or their paths across the sky."""
         if not hasattr(self, "fig_plan"):
+            return
+        map_mode = self._plan_map_mode()
+        self._plan_slider.setVisible(map_mode)
+        self._plan_time.setVisible(map_mode)
+        self._plan_enlarge.setVisible(map_mode)
+        if map_mode:
+            self._draw_plan_tracks()
             return
         result = self._plan
         labels = {"title": t("planner.chart_title"), "xlabel": t("planner.chart_x"),
@@ -2536,18 +3323,8 @@ class AstroApp(QMainWindow):
             charts.draw_night_plan(self.fig_plan, [], [], None, (30, 80), labels)
             self.canvas_plan.draw_idle()
             return
-        key = "bodies" if self._plan_tabs.currentIndex() == 1 else "deep_sky"
-        table = self._plan_tables[key]
-        rows = sorted({i.row() for i in table.selectedItems()}) or list(range(min(5, table.rowCount())))
-        names = [table.item(r, 0).data(_NAME_ROLE) for r in rows[:8]]
-        items = {o["label"]: o for o in result["deep_sky"]} if key == "deep_sky" else \
-            {b["name"]: b for b in result["bodies"]}
-        series = []
-        for name in names:
-            item = items.get(name)
-            if item is not None:
-                title = (t("chart.moon") if name == "moon" else _planet_name(name)) if key == "bodies" else name
-                series.append((title, item["altitudes"]))
+        _key, chosen = self._plan_chosen()
+        series = [(title, item["altitudes"]) for title, item in chosen]
         start = self._local(result["times"][0])
         hours = [start.hour + start.minute / 60 + (self._local(x) - start).total_seconds() / 3600
                  for x in result["times"]]
@@ -3384,6 +4161,24 @@ class AstroApp(QMainWindow):
         reason = {0: "access", 1: "closed", 4: "timeout"}.get(code, "unknown")
         self._geolocate_by_ip(reason)
 
+    def choose_on_map(self):
+        """The place picked on a map (PlacePicker): coordinates, name, time zone, elevation of
+        the nearest city, then calculation."""
+        try:
+            _dte, lat, lon = self.current_inputs()
+        except ValueError:
+            lat, lon = 48.0, 2.0
+        picker = PlacePicker(self, lat, lon)
+        self._place_picker = picker
+        if picker.exec() != QDialog.DialogCode.Accepted or picker.chosen is None:
+            return None
+        lat, lon = picker.chosen
+        near = places.nearest(lat, lon, max_km=10.0)
+        if near:
+            self.entry_elev.setText(_elev_text(near["elevation"]))
+        self._set_place(lat, lon, picker.name, _zone_at(round(lat, 3), round(lon, 3)))
+        return lat, lon
+
     def _set_place(self, lat, lon, name, zone=None):
         """Place found by geolocation: coordinates, name, time zone, then calculation."""
         self.entry_lat.setText(_coord_text(lat))
@@ -3397,46 +4192,41 @@ class AstroApp(QMainWindow):
 
     def _geolocate_by_ip(self, reason=None):
         """Fallback: position of the IP address, often the internet provider's;
-        *reason*: why the device's service did not answer."""
-        url = ("http://ip-api.com/json/"
-               "?fields=status,message,country,city,lat,lon,timezone")
+        *reason*: why the device's service did not answer. Without an answer, the map."""
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
-            req = urllib.request.Request(
-                url, headers={"User-Agent": f"Celeste/{APP_VERSION}"})
-            with urllib.request.urlopen(req, timeout=5) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-        except Exception as exc:  # network, delay, JSON
+            found = _ip_location()
+        finally:
             QApplication.restoreOverrideCursor()
-            QMessageBox.critical(self, t("errors.network_title"),
-                                 tf("errors.geoloc_network", detail=exc))
+        if found is None:
+            self._explain_geolocation(reason or "unknown", None, None)
             return
-        QApplication.restoreOverrideCursor()
-        if data.get("status") != "success":
-            QMessageBox.warning(self, t("errors.geoloc_title"), t("errors.geoloc_fail"))
-            return
-        self._set_place(float(data["lat"]), float(data["lon"]), data.get("city") or "",
-                        data.get("timezone"))
-        self.statusBar().showMessage(
-            tf("errors.geoloc_ip", city=data.get("city", "?"),
-               country=data.get("country", "?")), 12000)
+        lat, lon, city, country, zone = found
+        self._set_place(lat, lon, city, zone)
+        self.statusBar().showMessage(tf("errors.geoloc_ip", city=city or "?", country=country or "?"), 12000)
         if reason and getattr(self, "_geo_interactive", False):
-            self._explain_geolocation(reason, data.get("city", "?"), data.get("country", "?"))
+            self._explain_geolocation(reason, city or "?", country or "?")
 
     def _explain_geolocation(self, reason, city, country):
-        """Window (non-modal): position of the IP, why, and the settings to open."""
-        box = QMessageBox(QMessageBox.Icon.Information, t("errors.geoloc_title"),
-                          tf("errors.geoloc_ip_short", city=city, country=country), parent=self)
+        """Window (non-modal): position of the IP (or none), why, the map to pick the place
+        on, and the system settings to open."""
+        text = (tf("errors.geoloc_ip_short", city=city, country=country) if city is not None
+                else t("errors.geoloc_no_answer"))
+        box = QMessageBox(QMessageBox.Icon.Information, t("errors.geoloc_title"), text, parent=self)
         box.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         box.setInformativeText(t(f"errors.geoloc_reason_{reason}"))
+        on_map = box.addButton(t("errors.geoloc_choose_map"), QMessageBox.ButtonRole.AcceptRole)
         url = _LOCATION_SETTINGS.get(sys.platform)
         settings = None
         if url and reason in ("access", "closed", "no_source", "timeout"):
             settings = box.addButton(t("errors.geoloc_open_settings"), QMessageBox.ButtonRole.ActionRole)
         box.addButton(QMessageBox.StandardButton.Close)
+        box.setDefaultButton(on_map)
 
         def done(_result):
-            if settings is not None and box.clickedButton() is settings:
+            if box.clickedButton() is on_map:
+                QTimer.singleShot(0, self.choose_on_map)
+            elif settings is not None and box.clickedButton() is settings:
                 QDesktopServices.openUrl(QUrl(url))
         box.finished.connect(done)
         self._geo_dialog = box
@@ -3607,63 +4397,113 @@ class AstroApp(QMainWindow):
 
     # ── Workshop ──────────────────────────────────────────────────────────
 
-    def _workshop_place(self):
-        """The place and date of the Workshop's instruments, from the side panel; None
-        when the coordinates are invalid or out of the Workshop's latitudes."""
-        import workshop
-        try:
-            dte, lat, lon = self.current_inputs()
-        except ValueError:
-            return None
-        if not 10.0 <= abs(lat) <= 80.0:
-            return None
-        name = self.entry_place.text().strip()
-        return workshop.Place(name, lat, lon, _zone(self.tz_name, lat, lon), dte)
-
     def show_workshop(self):
-        """Window of the Workshop: an instrument, its preview, and the PDF to save."""
+        """Window of the Workshop: an instrument, its place, date and options, a preview
+        page by page, and the PDF to save. The place starts as the side panel's."""
         import workshop
-        place = self._workshop_place()
-        if place is None:
-            QMessageBox.information(self, t("workshop.title"), t("workshop.latitude_range"))
-            return
         dlg = QDialog(self)
         dlg.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         dlg.setWindowTitle(t("workshop.title"))
-        dlg.setMinimumSize(860, 640)
+        dlg.setMinimumSize(980, 700)
         outer = QHBoxLayout(dlg)
         outer.setContentsMargins(24, 24, 24, 16)
         outer.setSpacing(24)
 
-        left = QVBoxLayout()
+        # left: the choices, in a column that scrolls when the window is low
+        form = QWidget()
+        left = QVBoxLayout(form)
+        left.setContentsMargins(0, 0, 8, 0)
         left.setSpacing(12)
         left.addWidget(_label(t("workshop.title"), "sous-titre"))
-        left.addWidget(_label(tf("workshop.intro", place=place.describe()), "legende", wrap=True))
+        intro = _label("", "legende", wrap=True)
+        left.addWidget(intro)
         kinds = QComboBox()
         for kind in workshop.INSTRUMENTS:
             kinds.addItem(t(f"workshop.{kind}"), kind)
         left.addWidget(InputField(t("workshop.instrument"), kinds))
         description = _label("", "corps", wrap=True)
-        description.setMinimumWidth(280)
         left.addWidget(description)
+
+        left.addWidget(_label(t("workshop.where_title"), "label", strong=True))
+        place_edit = QLineEdit()
+        place_edit.setPlaceholderText(t("side.place_placeholder"))
+        place_edit.setClearButtonEnabled(True)
+        model = QStringListModel(dlg)
+        completer = QCompleter(model, dlg)
+        completer.setCompletionMode(QCompleter.CompletionMode.UnfilteredPopupCompletion)
+        completer.setMaxVisibleItems(10)
+        place_edit.setCompleter(completer)
+        left.addWidget(InputField(t("side.place"), place_edit))
+        validator = QRegularExpressionValidator(QRegularExpression(_COORD_REGEX))
+        lat_edit, lon_edit = QLineEdit(self.entry_lat.text()), QLineEdit(self.entry_lon.text())
+        lat_field = InputField(t("side.latitude"), lat_edit, unit="°", numeric=True)
+        lon_field = InputField(t("side.longitude"), lon_edit, unit="°", numeric=True)
+        for edit in (lat_edit, lon_edit):
+            edit.setValidator(validator)
+        coords = QHBoxLayout()
+        coords.setSpacing(12)
+        coords.addWidget(lat_field)
+        coords.addWidget(lon_field)
+        left.addLayout(coords)
+        zone_menu = QComboBox()
+        zone_menu.setEditable(True)
+        zone_menu.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        zone_menu.setMaxVisibleItems(14)
+        zone_menu.addItem(t("side.timezone_auto"), _AUTO_ZONE)
+        for name in _zone_names():
+            zone_menu.addItem(name, name)
+        zc = zone_menu.completer()
+        zc.setFilterMode(Qt.MatchFlag.MatchContains)
+        zc.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        zone_menu.setCurrentIndex(max(0, zone_menu.findData(self.tz_name)))
+        left.addWidget(InputField(t("side.timezone"), zone_menu))
+        date_edit = QDateEdit()
+        date_edit.setCalendarPopup(True)
+        date_edit.setDisplayFormat("dd/MM/yyyy")
+        date_edit.setMinimumDate(QDate(EPHEMERIS_YEARS[0], 1, 1))
+        date_edit.setMaximumDate(QDate(EPHEMERIS_YEARS[1], 12, 31))
+        local = self._local(self._edit_datetime())
+        date_edit.setDate(QDate(local.year, local.month, local.day))
+        left.addWidget(InputField(t("workshop.date"), date_edit, hint=t("workshop.date_hint")))
+        from_panel = _button(t("workshop.from_panel"), "place", "discret", compact=True)
+        left.addWidget(from_panel)
+
+        left.addWidget(_label(t("workshop.options_title"), "label", strong=True))
+        size = QComboBox()
+        for mm in workshop.ASTROLABE_SIZES:
+            size.addItem(tf("workshop.size_mm", size=mm), mm)
+        size.setCurrentIndex(len(workshop.ASTROLABE_SIZES) - 1)
+        size_field = InputField(t("workshop.size"), size)
+        left.addWidget(size_field)
         paper = QComboBox()
         for key in workshop.PAPERS:
             paper.addItem(t(f"workshop.paper_{key}"), key)
         left.addWidget(InputField(t("workshop.paper"), paper))
+        problem = _label("", "legende", tone="alerte", strong=True, wrap=True)
+        problem.hide()
+        left.addWidget(problem)
         left.addStretch()
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setWidget(form)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        column = QVBoxLayout()
+        column.setSpacing(8)
+        column.addWidget(scroll, stretch=1)
         save = _button(t("workshop.save"), "export", "principal")
-        left.addWidget(save)
+        column.addWidget(save)
         close = _button(t("detail.close"))
         close.clicked.connect(dlg.reject)
-        left.addWidget(close)
-        outer.addLayout(left, stretch=2)
+        column.addWidget(close)
+        outer.addLayout(column, stretch=2)
 
         right = QVBoxLayout()
         right.setSpacing(8)
         preview = QLabel()
         preview.setObjectName("workshopPreview")
         preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        preview.setMinimumSize(420, 560)
+        preview.setMinimumSize(440, 600)
         preview.setStyleSheet("background: white; border-radius: 4px;")
         right.addWidget(preview, stretch=1)
         nav = QHBoxLayout()
@@ -3678,14 +4518,48 @@ class AstroApp(QMainWindow):
         right.addLayout(nav)
         outer.addLayout(right, stretch=3)
 
-        state = {"page": 0, "pages": 1}
+        state = {"page": 0, "pages": 1, "place": None, "name": self.entry_place.text().strip()
+                 or getattr(self, "location_name", "") or "", "found": {}}
+        timer = QTimer(dlg)
+        timer.setSingleShot(True)
+
+        def current_place():
+            """The place of the fields; an error text instead when they are not usable."""
+            try:
+                lat = _parse_coord(lat_edit.text(), 90.0)
+                lon = _parse_coord(lon_edit.text(), 180.0)
+            except ValueError:
+                return t("status.invalid_coords")
+            if not 10.0 <= abs(lat) <= 80.0:
+                return t("workshop.latitude_range")
+            zone = _zone(zone_menu.currentData() or _AUTO_ZONE, lat, lon)
+            day = date_edit.date()
+            noon = datetime(day.year(), day.month(), day.day(), 20, 0, tzinfo=zone)
+            when = noon.astimezone(timezone.utc).replace(tzinfo=None)
+            return workshop.Place(state["name"], lat, lon, zone, when)
+
+        def options():
+            return {"size": size.currentData()} if kinds.currentData() == "astrolabe" else {}
 
         def refresh():
-            kind, size = kinds.currentData(), paper.currentData()
+            kind = kinds.currentData()
             description.setText(t(f"workshop.desc_{kind}"))
+            size_field.setVisible(kind == "astrolabe")
+            place = current_place()
+            if isinstance(place, str):
+                problem.setText(place)
+                problem.show()
+                save.setEnabled(False)
+                state["place"] = None
+                return
+            problem.hide()
+            save.setEnabled(True)
+            state["place"] = place
+            intro.setText(tf("workshop.intro", place=place.describe()))
             QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
             try:
-                png, count = workshop.preview_png(kind, place, size, state["page"], dpi=72)
+                png, count = workshop.preview_png(kind, place, paper.currentData(), state["page"], dpi=72,
+                                                  options=options())
             finally:
                 QApplication.restoreOverrideCursor()
             state["pages"] = count
@@ -3698,6 +4572,9 @@ class AstroApp(QMainWindow):
             previous.setEnabled(state["page"] > 0)
             following.setEnabled(state["page"] < count - 1)
 
+        def later():
+            timer.start(450)
+
         def turn(step):
             state["page"] = max(0, min(state["pages"] - 1, state["page"] + step))
             refresh()
@@ -3706,7 +4583,53 @@ class AstroApp(QMainWindow):
             state["page"] = 0
             refresh()
 
+        def typed_coords():
+            state["name"] = ""                          # coordinates typed: no more the city's name
+            later()
+
+        def typed_place(text):
+            found = places.search(text) if len(text.strip()) >= 2 else []
+            state["found"] = {}
+            for p in found:
+                state["found"].setdefault(places.label(p), p)
+            model.setStringList(list(state["found"]))
+            if state["found"]:
+                completer.complete()
+
+        def apply_city(p):
+            completer.popup().hide()
+            lat_edit.setText(_coord_text(p["lat"]))
+            lon_edit.setText(_coord_text(p["lon"]))
+            state["name"] = p["name"]
+            choose()
+
+        def chosen(text):
+            p = state["found"].get(text)
+            if p:
+                apply_city(p)
+
+        def returned():
+            text = place_edit.text()
+            if not text.strip() or text in state["found"]:
+                return
+            found = places.search(text, limit=1)
+            if found:
+                apply_city(found[0])
+
+        def back_to_panel():
+            lat_edit.setText(self.entry_lat.text())
+            lon_edit.setText(self.entry_lon.text())
+            zone_menu.setCurrentIndex(max(0, zone_menu.findData(self.tz_name)))
+            loc = self._local(self._edit_datetime())
+            date_edit.setDate(QDate(loc.year, loc.month, loc.day))
+            state["name"] = getattr(self, "location_name", "") or ""
+            place_edit.clear()
+            choose()
+
         def save_pdf():
+            place = state["place"]
+            if place is None:
+                return
             kind = kinds.currentData()
             default = os.path.join(os.path.expanduser("~"), f"{t(f'workshop.{kind}')}.pdf")
             path, _filter = QFileDialog.getSaveFileName(dlg, t("workshop.save_title"), default,
@@ -3717,7 +4640,7 @@ class AstroApp(QMainWindow):
                 path += ".pdf"
             QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
             try:
-                count = workshop.print_instrument(kind, path, place, paper.currentData())
+                count = workshop.print_instrument(kind, path, place, paper.currentData(), options())
             except OSError as exc:
                 QApplication.restoreOverrideCursor()
                 QMessageBox.warning(dlg, t("errors.error_title"), tf("workshop.save_error", error=exc))
@@ -3725,11 +4648,24 @@ class AstroApp(QMainWindow):
             QApplication.restoreOverrideCursor()
             self.statusBar().showMessage(tf("workshop.saved", path=path, pages=count), 12000)
 
+        timer.timeout.connect(choose)
         kinds.currentIndexChanged.connect(lambda _i: choose())
         paper.currentIndexChanged.connect(lambda _i: refresh())
+        size.currentIndexChanged.connect(lambda _i: refresh())
+        zone_menu.currentIndexChanged.connect(lambda _i: later())
+        date_edit.dateChanged.connect(lambda _d: later())
+        lat_edit.textEdited.connect(lambda _t: typed_coords())
+        lon_edit.textEdited.connect(lambda _t: typed_coords())
+        place_edit.textEdited.connect(typed_place)
+        completer.activated.connect(chosen)
+        place_edit.returnPressed.connect(returned)
+        from_panel.clicked.connect(lambda _checked=False: back_to_panel())
         previous.clicked.connect(lambda _checked=False: turn(-1))
         following.clicked.connect(lambda _checked=False: turn(1))
         save.clicked.connect(lambda _checked=False: save_pdf())
+        dlg.workshop_fields = {"kinds": kinds, "place": place_edit, "lat": lat_edit, "lon": lon_edit,
+                               "zone": zone_menu, "date": date_edit, "size": size, "paper": paper,
+                               "save": save, "problem": problem, "preview": preview, "timer": timer}
         self._workshop_dialog = dlg
         dlg.show()
         refresh()
@@ -3882,7 +4818,7 @@ class AstroApp(QMainWindow):
                 text += " · " + tf("tonight.sets", time=clock(planet["set"]))
             lines.append((text, None))
         if n.get("satellites"):
-            items = [tf("tonight.satellite_item", name=t(f"satellites.short_{p['name']}"),
+            items = [tf("tonight.satellite_item", name=_satellite_name(p["name"], short=True),
                         start=clock(p["start"]), end=clock(p["end"]), alt=_num(p["max_alt"]),
                         dir=self._wind(p["max_az"])) for p in n["satellites"][:4]]
             lines.append((tf("tonight.satellites", passes=" · ".join(items)), None))
@@ -4629,10 +5565,12 @@ class AstroApp(QMainWindow):
         return dlg
 
     def _companions_card(self, obj):
-        """Second card of the data window: Jupiter's moons, Saturn's rings; None for the others."""
-        if not obj or obj.get("kind") != "planet" or obj.get("name") not in ("Jupiter", "Saturn") \
-                or self._dte is None:
+        """Second card of the data window: Jupiter's moons, Saturn's rings, the moons of Mars,
+        Saturn, Uranus, Neptune and Pluto; None for the others."""
+        if not obj or obj.get("name") not in MOON_PLANETS or self._dte is None:
             return None
+        if obj["name"] != "Jupiter":
+            return self._moons_card(obj["name"])
         tc = AstroEngine.julian_century_j2000(self._dte)
         southern = self._lat is not None and self._lat < 0
         card = _card()
@@ -4671,6 +5609,59 @@ class AstroApp(QMainWindow):
             grid.addWidget(val, r, 1)
         lay.addLayout(grid)
         lay.addWidget(_label(note, "legende", wrap=True))
+        return card
+
+    def _moons_card(self, planet):
+        """The moons of Mars, Saturn (with its rings), Uranus, Neptune or Pluto: a drawing as in a
+        telescope and, for each moon, its magnitude and its place from the planet."""
+        tc = AstroEngine.julian_century_j2000(self._dte)
+        southern = self._lat is not None and self._lat < 0
+        moons = AstroEngine.planet_moons(tc, planet)
+        card = _card()
+        lay = QVBoxLayout(card)
+        lay.setContentsMargins(16, 12, 16, 12)
+        lay.setSpacing(8)
+        def table(rows):
+            grid = QGridLayout()
+            grid.setHorizontalSpacing(24)
+            grid.setVerticalSpacing(6)
+            for r, (key, value) in enumerate(rows):
+                grid.addWidget(_label(key, "legende"), r, 0)
+                val = _label(value, "donnee")
+                val.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                val.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+                grid.addWidget(val, r, 1)
+            lay.addLayout(grid)
+
+        rows = []
+        if planet == "Saturn":
+            rings = AstroEngine.saturn_rings(tc)
+            lay.addWidget(_label(t("saturn.title"), "label"))
+            self._rings_drawing = SaturnRings(rings["tilt"], southern)
+            lay.addWidget(self._rings_drawing)
+            face = t("saturn.north_face" if rings["tilt"] >= 0 else "saturn.south_face")
+            if not rings["lit"]:
+                face = f"{face}, {t('saturn.unlit')}"
+            table([(t("saturn.tilt"), f"{_deg(abs(rings['tilt']), 1)} · {face}"),
+                   (t("saturn.size"), f"{self._diameter(rings['major_arcsec'])} × "
+                                      f"{self._diameter(rings['minor_arcsec'])}")])
+        lay.addWidget(_label(t("moons.title"), "label"))
+        if not moons:
+            first, last = AstroEngine.moon_years()
+            lay.addWidget(_label(tf("moons.out_of_range", first=first, last=last), "legende", wrap=True))
+        else:
+            radius = (AstroEngine.body_details(tc, planet).get("diameter_arcsec") or 1.0) / 2.0
+            self._moons_drawing = PlanetMoons(moons, radius, southern)
+            lay.addWidget(self._moons_drawing)
+            for moon in sorted(moons, key=lambda m: m["separation"]):
+                if moon["state"] == "free":
+                    side = t("skymap.cardinal_e") if moon["east"] > 0 else t("skymap.cardinal_w")
+                    where = f"{self._diameter(moon['separation'])} {side}"
+                else:
+                    where = tf(f"moons.{moon['state']}", planet=_planet_name(planet))
+                rows.append((t(f"moons.{moon['name']}"), f"mag {_num(moon['mag'], 1)} · {where}"))
+        table(rows)
+        lay.addWidget(_label(t("moons.note_south" if southern else "moons.note_north"), "legende", wrap=True))
         return card
 
     def _moon_text(self, moon, radius_arcsec):
@@ -5001,8 +5992,26 @@ class AstroApp(QMainWindow):
         dte = self._search_start("satellites")
         self._evt_layout.addWidget(_label(t("satellites.loading"), "legende", tone="attenuee"))
 
+        lat, lon, elevation = self._lat, self._lon, self._elevation()
+        visual_wanted = bool(prefs.get("satellites_visual"))
+
+        def work():
+            """In the background: the orbits, then the passes (150 satellites take a few seconds)."""
+            elements, error = satellites.refresh()
+            followed = dict(elements)
+            if visual_wanted:
+                visual, visual_error = satellites.refresh_visual()
+                elements = satellites.with_visual(elements, visual)
+                error = error or visual_error
+            if not elements:
+                return elements, error, []
+            passes = AstroEngine.satellite_passes(elements, dte, lat, lon, elevation)
+            if visual_wanted:                             # the others: only their high passes
+                passes = [p for p in passes if p["name"] in followed or p["max_alt"] >= 40.0]
+            return elements, error, passes
+
         def done(result):
-            elements, error = result
+            elements, error, passes = result
             QApplication.restoreOverrideCursor()
             if self._last_search != "satellites":
                 return
@@ -5010,8 +6019,8 @@ class AstroApp(QMainWindow):
             if not elements:
                 self._search_failed(error or t("satellites.no_elements"))
                 return
-            passes = AstroEngine.satellite_passes(elements, dte, self._lat, self._lon, self._elevation())
-            self._render_satellites(dte, passes, elements, error)
+            self._render_satellites(dte, passes, {k: v for k, v in elements.items()
+                                                  if k in satellites.SATELLITES}, error)
             _TONIGHT_CACHE.clear()                        # "Tonight" can now show the passes
             self._tonight_key = None
             self._update_tonight(self._dte, self._lat, self._lon, self._elevation())
@@ -5021,7 +6030,7 @@ class AstroApp(QMainWindow):
             if self._last_search == "satellites":
                 self._clear_evt_layout()
                 self._search_failed(exc)
-        _run_in_background(satellites.refresh, done, failed)
+        _run_in_background(work, done, failed)
 
     def _render_satellites(self, dte, passes, elements, error=None):
         n = len(passes)
@@ -5050,7 +6059,7 @@ class AstroApp(QMainWindow):
                 details.append(tf("events.local_time", time=f"{local:%d/%m} {self._fmt_clock(local)}",
                                   zone=getattr(self._zone, "key", "UTC")))
             pills = [(t("satellites.overhead"), "info")] if p["max_alt"] >= 60.0 else []
-            title = t(f"satellites.name_{p['name']}")
+            title = _satellite_name(p["name"])
             self._event_card(SYMBOL["dot"], "attenuee", title, self._event_when(p["start"]), pills, details,
                              None, [f"{first} · {top} · {last}"])
             self._ics_add(p["start"], p["end"], title, details + [f"{first} · {top} · {last}"])
@@ -5062,6 +6071,253 @@ class AstroApp(QMainWindow):
             return False
         vis = ev.get("visibility")
         return not (self._evt_filters["visible"].isChecked() and vis is not None and vis["period"] is None)
+
+    # ── Astronomical calendar ─────────────────────────────────────────────
+
+    _CAL_SYMBOLS = {"phases": "Moon", "eclipses": "Sun", "planets": "conjunction", "minor": "conjunction",
+                    "comets": "meteors", "moon": "Moon", "seasons": "Sun", "meteors": "meteors",
+                    "satellites": "star"}
+
+    def _calendar_title(self, item):
+        """Title of an event of the calendar, in the interface language."""
+        cat, ev = item["category"], item["event"]
+        if cat == "phases":
+            return t(f"phases.{item['kind']}")
+        if cat == "eclipses":
+            title = t("events.solar_eclipse" if ev["type"] == "solar" else "events.lunar_eclipse")
+            return f"{title} ({t('events.subtype_' + ev['sub_type'])})"
+        if cat == "satellites":
+            return tf("astro_calendar.pass", name=_satellite_name(ev["name"], short=True))
+        return self._event_title(ev, symbol=False)
+
+    def _calendar_symbol(self, item):
+        ev = item["event"]
+        if item["category"] == "eclipses":
+            return SYMBOL["Sun" if ev["type"] == "solar" else "Moon"]
+        if item["category"] in ("planets", "minor") and ev.get("type") == "opposition":
+            return SYMBOL["opposition"]
+        return SYMBOL[self._CAL_SYMBOLS[item["category"]]]
+
+    def _calendar_details(self, item):
+        """The lines under an event of the day: time, visibility, the engine's figures."""
+        ev, lines = item["event"], []
+        when = self._local(item["date"] + timedelta(seconds=30))
+        lines.append(tf("astro_calendar.at", time=self._fmt_clock(when),
+                        zone=getattr(self._zone, "key", "UTC") if self._zone else "UTC"))
+        if item["category"] == "eclipses":
+            lines += self._eclipse_details(ev)
+        elif item["category"] == "satellites":
+            lines.append(tf("satellites.highest", time=self._clock(ev["max"]), alt=_num(ev["max_alt"]),
+                            dir=self._wind(ev["max_az"])))
+        else:
+            vis = ev.get("visibility")
+            if vis is not None and item["category"] not in ("phases", "seasons"):
+                lines.append(self._visibility_text(vis) if item["kind"] != "meteor_shower"
+                             else " · ".join(self._meteor_lines(vis)))
+        return lines
+
+    def show_calendar(self):
+        """The calendar view of the Events tab: every event of a period (a year by default),
+        by category, in a month grid; the day's events below; the .ics export of what the
+        filters let through."""
+        self._last_search = "calendar"
+        self._ics_items = []
+        self._btn_ics.setEnabled(False)
+        self._evt_filter_bar.setVisible(False)
+        self._clear_evt_layout()
+        cal = getattr(self, "_cal_state", None)
+        local_now = self._local(self._edit_datetime())
+        if cal is None:
+            start = local_now.date()
+            cal = {"start": start, "end": start.replace(year=start.year + 1) if not (start.month == 2 and start.day == 29)
+                   else start + timedelta(days=365), "items": None, "key": None,
+                   "month": (start.year, start.month), "day": start,
+                   "shown": {c: c != "satellites" or bool(satellites.load()) for c in astro_calendar.CATEGORIES}}
+            self._cal_state = cal
+
+        controls = QHBoxLayout()
+        controls.setSpacing(12)
+        start_edit, end_edit = QDateEdit(), QDateEdit()
+        for edit, value in ((start_edit, cal["start"]), (end_edit, cal["end"])):
+            edit.setCalendarPopup(True)
+            edit.setDisplayFormat("dd/MM/yyyy")
+            edit.setMinimumDate(QDate(EPHEMERIS_YEARS[0], 1, 1))
+            edit.setMaximumDate(QDate(EPHEMERIS_YEARS[1], 12, 31))
+            edit.setDate(QDate(value.year, value.month, value.day))
+        controls.addWidget(InputField(t("astro_calendar.from"), start_edit))
+        controls.addWidget(InputField(t("astro_calendar.to"), end_edit))
+        compute = _button(t("astro_calendar.compute"), "calculate", "principal", compact=True)
+        compute.setToolTip(t("astro_calendar.compute_tip"))
+        controls.addWidget(compute, alignment=Qt.AlignmentFlag.AlignBottom)
+        controls.addStretch()
+        holder = QWidget()
+        holder.setLayout(controls)
+        self._evt_layout.addWidget(holder)
+
+        filters = QWidget()
+        frow = QGridLayout(filters)
+        frow.setContentsMargins(0, 0, 0, 0)
+        frow.setHorizontalSpacing(16)
+        frow.setVerticalSpacing(4)
+        boxes = {}
+        for n, key in enumerate(astro_calendar.CATEGORIES):
+            box = QCheckBox(t(f"astro_calendar.cat_{key}"))
+            box.setChecked(cal["shown"][key])
+            boxes[key] = box
+            frow.addWidget(box, n // 5, n % 5)
+        frow.setColumnStretch(5, 1)
+        self._evt_layout.addWidget(filters)
+
+        nav = QHBoxLayout()
+        prev_btn = _icon_button("previous", t("astro_calendar.previous"), compact=True)
+        next_btn = _icon_button("next", t("astro_calendar.next"), compact=True)
+        month_label = _label("", "sous-titre")
+        nav.addWidget(prev_btn)
+        nav.addWidget(month_label)
+        nav.addWidget(next_btn)
+        nav.addStretch()
+        status = _label("", "legende", wrap=True)
+        nav.addWidget(status, stretch=1)
+        nav_holder = QWidget()
+        nav_holder.setLayout(nav)
+        self._evt_layout.addWidget(nav_holder)
+
+        grid_card = _card()
+        grid = QGridLayout(grid_card)
+        grid.setContentsMargins(8, 8, 8, 8)
+        grid.setSpacing(4)
+        for d in range(7):
+            head = _label(t(f"astro_calendar.weekday_{d}"), "legende")
+            head.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            grid.addWidget(head, 0, d)
+        cells = []
+        for w in range(6):
+            for d in range(7):
+                cell = _DayCell(lambda day: choose_day(day))
+                grid.addWidget(cell, w + 1, d)
+                cells.append(cell)
+        for d in range(7):
+            grid.setColumnStretch(d, 1)
+        self._evt_layout.addWidget(grid_card)
+        day_title = _label("", "label", strong=True)
+        self._evt_layout.addWidget(day_title)
+        day_box = QVBoxLayout()
+        day_box.setSpacing(6)
+        day_holder = QWidget()
+        day_holder.setLayout(day_box)
+        self._evt_layout.addWidget(day_holder)
+        self._evt_layout.addStretch()
+        self._cal_widgets = {"cells": cells, "month": month_label, "status": status, "boxes": boxes,
+                             "start": start_edit, "end": end_edit, "day_title": day_title, "day_box": day_box}
+
+        def shown_items():
+            return [i for i in (cal["items"] or []) if boxes[i["category"]].isChecked()]
+
+        def fill_day():
+            while day_box.count():
+                w = day_box.takeAt(0).widget()
+                if w is not None:
+                    w.deleteLater()
+            day = cal["day"]
+            items = [i for i in shown_items() if self._local(i["date"]).date() == day]
+            day_title.setText(tf("astro_calendar.day_title", date=day.strftime("%d/%m/%Y"), n=len(items)))
+            for item in items:
+                row = _card()
+                lay = QVBoxLayout(row)
+                lay.setContentsMargins(12, 8, 12, 8)
+                lay.setSpacing(2)
+                lay.addWidget(_label(f"{self._calendar_symbol(item)}  {self._calendar_title(item)}", "corps",
+                                     strong=True))
+                for line in self._calendar_details(item):
+                    if line:
+                        lay.addWidget(_label(line, "legende", wrap=True))
+                day_box.addWidget(row)
+
+        def fill_month():
+            year, month = cal["month"]
+            month_label.setText(f"{t(f'workshop.month_{month}')} {year}")
+            days = astro_calendar.by_day(shown_items(), self._local)
+            for cell, day in zip(cells, [d for week in astro_calendar.month_grid(year, month) for d in week]):
+                items = days.get(day, [])
+                lines = []
+                for item in items[:3]:
+                    title = self._calendar_title(item)
+                    lines.append(f"{self._calendar_symbol(item)} {title if len(title) <= 22 else title[:21] + '…'}")
+                if len(items) > 3:
+                    lines.append(tf("astro_calendar.more", n=len(items) - 3))
+                tip = "\n".join(f"{self._clock(i['date'])}  {self._calendar_title(i)}" for i in items)
+                cell.show_day(day, str(day.day), lines, tip, day.month == month, day == cal["day"])
+            self._ics_items = []
+            for item in shown_items():
+                end = item["end"] or item["date"] + timedelta(minutes=1)
+                self._ics_add(item["date"], end, self._calendar_title(item), self._calendar_details(item))
+            self._btn_ics.setEnabled(bool(self._ics_items))
+            fill_day()
+
+        def choose_day(day):
+            cal["day"] = day
+            fill_month()
+
+        def turn(step):
+            year, month = cal["month"]
+            month += step
+            year, month = year + (month - 1) // 12, (month - 1) % 12 + 1
+            cal["month"] = (year, month)
+            fill_month()
+
+        def toggled():
+            for key, box in boxes.items():
+                cal["shown"][key] = box.isChecked()
+            fill_month()
+
+        def run():
+            a, b = start_edit.date(), end_edit.date()
+            first = datetime(a.year(), a.month(), a.day())
+            last = datetime(b.year(), b.month(), b.day()) + timedelta(days=1)
+            if last <= first:
+                status.setText(t("astro_calendar.bad_period"))
+                return
+            cal["start"], cal["end"] = first.date(), (last - timedelta(days=1)).date()
+            zone = self._zone
+            start_ut = first.replace(tzinfo=zone).astimezone(timezone.utc).replace(tzinfo=None) if zone else first
+            end_ut = last.replace(tzinfo=zone).astimezone(timezone.utc).replace(tzinfo=None) if zone else last
+            key = (start_ut, end_ut, self._lat, self._lon)
+            if cal["key"] == key and cal["items"] is not None:
+                fill_month()
+                return
+            elements = satellites.load()
+            if elements and satellites.epoch_age_days(elements) > satellites.STALE_DAYS:
+                elements = None
+            lat, lon, elev = self._lat, self._lon, self._elevation()
+            status.setText(t("astro_calendar.computing"))
+            QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+
+            def done(items):
+                QApplication.restoreOverrideCursor()
+                cal["items"], cal["key"] = items, key
+                if self._last_search == "calendar":
+                    status.setText(tf("astro_calendar.found", n=len(items), start=cal["start"].strftime("%d/%m/%Y"),
+                                      end=cal["end"].strftime("%d/%m/%Y")))
+                    fill_month()
+
+            def failed(exc):
+                QApplication.restoreOverrideCursor()
+                status.setText(tf("events.search_error", detail=exc))
+            _run_in_background(lambda: astro_calendar.collect(start_ut, end_ut, lat, lon, elev, zone, elements),
+                               done, failed)
+
+        prev_btn.clicked.connect(lambda _c=False: turn(-1))
+        next_btn.clicked.connect(lambda _c=False: turn(1))
+        compute.clicked.connect(lambda _c=False: run())
+        for box in boxes.values():
+            box.toggled.connect(lambda _v: toggled())
+        self._cal_run, self._cal_turn, self._cal_choose = run, turn, choose_day
+        if cal["items"] is None:
+            run()
+        else:
+            status.setText(tf("astro_calendar.found", n=len(cal["items"]), start=cal["start"].strftime("%d/%m/%Y"),
+                              end=cal["end"].strftime("%d/%m/%Y")))
+            fill_month()
 
     def _search_conjunctions_gui(self):
         """Searches the events of 12 months: conjunctions, oppositions and

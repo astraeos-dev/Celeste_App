@@ -192,7 +192,7 @@ class ObserveSpace:
         self._plan_split = split
         right.addWidget(split, stretch=1)
         outer.addLayout(right, stretch=1)
-        self.tabs.addTab(page, t("tabs.planner"))
+        self._add_page(page, t("tabs.planner"))
         self._planner_page = page
         if self._plan is not None:                        # rebuilt (language, theme): shown again
             self._show_plan()
@@ -744,7 +744,7 @@ class ObserveSpace:
         if target is None:
             return
         ref = ("messier", target["m"]) if target.get("m") else ("deep", target["label"])
-        self.tabs.setCurrentIndex(2)
+        self.show_page(self._sky_page)
         self._find_on_sky(ref)
 
     def _list_dialog(self, title, hint):

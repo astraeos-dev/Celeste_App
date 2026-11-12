@@ -1190,6 +1190,9 @@ QTabBar::tab {{
 }}
 QTabBar::tab:hover {{ color: {C.ENCRE}; border-bottom-color: {C.ENCRE_ATTENUEE}; }}
 QTabBar::tab:selected {{ color: {C.ENCRE}; border-bottom-color: {C.ENCRE}; }}
+QTabWidget#space > QTabBar::tab {{ font-size: 13px; font-weight: 500; padding: 6px 8px; }}
+QTabWidget#space > QTabBar::tab:selected {{ border-bottom-width: 1px; }}
+QTabWidget#space::pane {{ border-top: none; }}
 
 QTableWidget {{
     background: {C.CIEL_100}; border: 1px solid {C.CIEL_200}; border-radius: 10px;

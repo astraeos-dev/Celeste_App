@@ -21,8 +21,11 @@ v3.3 — Interface following the Astræos design system:
 
 Layout:
   - Side panel     : date, place, time zone, favourites, actions, theme
-  - Main area      : tabs Ephemeris / Trajectories / Sky map / Planets /
-                     Solar System / Coordinates / Events / Settings
+  - Main area      : five spaces (ui/), with their pages under a second
+                     row of tabs: Tonight (ephemeris) / Sky (sky map,
+                     trajectories) / Bodies (planets, Solar System,
+                     coordinates) / Calendar (events) / Observe (targets),
+                     and Settings
   - Status bar     : place, visible bodies, UT and local time
 
 The calculations come from engine.py, the charts from charts.py, the colours
@@ -132,14 +135,20 @@ class AstroApp(TonightSpace, SkySpace, BodiesSpace, CalendarSpace, ObserveSpace,
 
         self._chart_tabs = {}
         self._chart_hints = {}
-        self._build_ephemeris_tab()
-        self._build_trajectories_tab()
-        self._build_skymap_tab()
-        self._build_planets_tab()
-        self._build_solar_system_tab()
-        self._build_coordinates_tab()
-        self._build_events_tab()
-        self._build_planner_tab()
+        self._pages = []                  # every page, in the order of the spaces
+        self._space_tabs = []             # the tab bars of the spaces with several pages
+        # Five spaces (docs/ANDROID.md): Tonight, Sky, Bodies, Calendar, Observe
+        for key, builders in (
+                ("tonight", (self._build_ephemeris_tab,)),
+                ("sky", (self._build_skymap_tab, self._build_trajectories_tab)),
+                ("bodies", (self._build_planets_tab, self._build_solar_system_tab,
+                            self._build_coordinates_tab)),
+                ("calendar", (self._build_events_tab,)),
+                ("observe", (self._build_planner_tab,))):
+            self._space_pages = []
+            for build in builders:
+                build()
+            self._add_space(key, self._space_pages)
         self._build_settings_tab()
         self.tabs.currentChanged.connect(self._on_tab_changed)
 
@@ -357,6 +366,43 @@ class AstroApp(TonightSpace, SkySpace, BodiesSpace, CalendarSpace, ObserveSpace,
         self._apply_live_ui()
 
     # ──────────────────────────────────────────────────────────────────────────
+    def _add_page(self, page, title):
+        """A page of the space being built (_build_ui)."""
+        self._space_pages.append((page, title))
+        self._pages.append(page)
+
+    def _add_space(self, key, pages):
+        """A space: its single page, or its pages under a second row of tabs."""
+        if len(pages) == 1:
+            widget = pages[0][0]
+        else:
+            widget = QTabWidget()
+            widget.setObjectName("space")
+            widget.tabBar().setDrawBase(False)
+            widget.tabBar().setExpanding(False)
+            widget.setDocumentMode(True)
+            for page, title in pages:
+                widget.addTab(page, title)
+            widget.currentChanged.connect(self._on_tab_changed)
+            self._space_tabs.append(widget)
+        index = self.tabs.addTab(widget, t(f"spaces.{key}"))
+        self.tabs.setTabToolTip(index, " · ".join(title for _, title in pages) if len(pages) > 1
+                                else t(f"spaces.{key}_tip"))
+
+    def current_page(self):
+        """The page shown: the current tab of the current space."""
+        widget = self.tabs.currentWidget()
+        return widget.currentWidget() if widget in self._space_tabs else widget
+
+    def show_page(self, page):
+        """Shows *page*: its space, then its tab in the space."""
+        for space in self._space_tabs:
+            if space.indexOf(page) >= 0:
+                space.setCurrentWidget(page)
+                self.tabs.setCurrentWidget(space)
+                return
+        self.tabs.setCurrentWidget(page)
+
     # REBUILD (LANGUAGE / THEME)
     # ──────────────────────────────────────────────────────────────────────────
 
@@ -366,7 +412,7 @@ class AstroApp(TonightSpace, SkySpace, BodiesSpace, CalendarSpace, ObserveSpace,
             "lat": self._input_coord(self.entry_lat),
             "lon": self._input_coord(self.entry_lon),
             "elev": self.entry_elev.text(),
-            "tab": self.tabs.currentIndex(),
+            "page": self._pages.index(self.current_page()) if self.current_page() in self._pages else -1,
             "fav": self.combo_fav.currentIndex(),
         }
 
@@ -395,7 +441,10 @@ class AstroApp(TonightSpace, SkySpace, BodiesSpace, CalendarSpace, ObserveSpace,
             if named_by_favorite and self.combo_fav.currentIndex() >= 0:
                 self.location_name = self.combo_fav.currentText()
         self._dirty = set()
-        self.tabs.setCurrentIndex(state["tab"])
+        if state["page"] >= 0:
+            self.show_page(self._pages[state["page"]])
+        else:
+            self.tabs.setCurrentIndex(self.tabs.count() - 1)        # the settings
         self.btn_live.blockSignals(True)
         self.btn_live.setChecked(self.live_mode)
         self.btn_live.blockSignals(False)
@@ -971,17 +1020,17 @@ class AstroApp(TonightSpace, SkySpace, BodiesSpace, CalendarSpace, ObserveSpace,
 
     def _on_tab_changed(self, _index):
         timer = getattr(self, "_orrery_timer", None)
-        if timer is not None and timer.isActive() and self._chart_tabs.get(self.tabs.currentWidget()) != "orrery":
+        if timer is not None and timer.isActive() and self._chart_tabs.get(self.current_page()) != "orrery":
             self._toggle_orrery()                         # a hidden animation does not run
         self._draw_visible_chart()
         self._refresh_coordinates()
-        if self.tabs.currentWidget() is getattr(self, "_planner_page", None):
+        if self.current_page() is getattr(self, "_planner_page", None):
             self._compute_plan()                          # only when the night or the place changed
 
     def _draw_visible_chart(self):
         """Draws the chart of the shown tab when it is out of date: in real time,
         hidden charts are not redrawn."""
-        name = self._chart_tabs.get(self.tabs.currentWidget())
+        name = self._chart_tabs.get(self.current_page())
         if name not in self._dirty or self._dte is None:
             return
         self._dirty.discard(name)

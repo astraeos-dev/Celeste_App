@@ -101,7 +101,8 @@ class BodiesSpace:
         lay.addWidget(table, stretch=100)                 # scrolls when the window is too low
         lay.addWidget(self._planet_empty)
         lay.addStretch(1)
-        self.tabs.addTab(page, t("tabs.planets"))
+        self._planets_page = page
+        self._add_page(page, t("tabs.planets"))
 
     # ── Tab 5: Solar System ───────────────────────────────────────────────────
 
@@ -152,7 +153,8 @@ class BodiesSpace:
         card_l.addWidget(self.canvas_orrery)
         lay.addWidget(card, stretch=1)
         self._chart_tabs[page] = "orrery"
-        self.tabs.addTab(page, t("tabs.solar_system"))
+        self._orrery_page = page
+        self._add_page(page, t("tabs.solar_system"))
 
     def _on_planet_group(self, key):
         self._planet_group = key
@@ -273,7 +275,7 @@ class BodiesSpace:
         lay.addStretch(1)
         self._coord_page = page
         self._sync_coord_menus()
-        self.tabs.addTab(page, t("tabs.coordinates"))
+        self._add_page(page, t("tabs.coordinates"))
 
     def _coord_choice(self, key):
         return self.coord_menus[key].currentData()
@@ -305,7 +307,7 @@ class BodiesSpace:
 
     def _refresh_coordinates(self):
         """Table of the coordinates, computed when its tab is shown."""
-        if self._lat is None or self.tabs.currentWidget() is not getattr(self, "_coord_page", None):
+        if self._lat is None or self.current_page() is not getattr(self, "_coord_page", None):
             return
         cartesian, angular, from_body = (self._coord_choice(k)
                                          for k in ("cartesian", "angular", "ecliptic_from"))

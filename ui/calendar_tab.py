@@ -77,7 +77,8 @@ class CalendarSpace:
         scroll.setWidget(inner)
         lay.addWidget(scroll, stretch=1)
         self._show_events_placeholder()
-        self.tabs.addTab(page, t("tabs.events"))
+        self._events_page = page
+        self._add_page(page, t("tabs.events"))
 
     # ──────────────────────────────────────────────────────────────────────────
     # UPDATING THE CARDS

@@ -239,10 +239,10 @@ class TestCalculation:
         assert window.sun_labels["rise"].text() == "6:55 AM"
 
     def test_hidden_charts_are_drawn_on_demand(self, window, qapp):
-        window.tabs.setCurrentIndex(0)
+        window.show_page(window._ephem_page)
         window.calculate()
         assert {"traj", "sky", "orrery"} <= window._dirty
-        window.tabs.setCurrentIndex(1)
+        window.show_page(window._traj_page)
         _pump(qapp)
         assert "traj" not in window._dirty and "sky" in window._dirty
 
@@ -257,13 +257,13 @@ class TestLiveSwitching:
         window.entry_lat.setText("48.8566")
         window._lang_combo.setCurrentIndex(window._lang_combo.findData("en"))
         _pump(qapp)
-        assert window.tabs.tabText(0) == "Ephemeris"
+        assert window.tabs.tabText(0) == "Tonight"
         assert window.btn_calc.text() == "Calculate"
         assert window._edit_datetime() == DTE
         assert window.entry_lat.text() == "48.8566"
         assert prefs.get("lang") == "en"
 
-    @pytest.mark.parametrize("lang, word", [("es", "Efemérides"), ("de", "Ephemeriden")])
+    @pytest.mark.parametrize("lang, word", [("es", "Esta noche"), ("de", "Heute Nacht")])
     def test_every_language_builds(self, window, qapp, lang, word):
         window._lang_combo.setCurrentIndex(window._lang_combo.findData(lang))
         _pump(qapp)
@@ -517,7 +517,7 @@ class TestSkyMapAndTrajectory:
             window._build_detail_dialog(obj).close()
 
     def test_sky_tooltip(self, window, qapp):
-        window.tabs.setCurrentIndex(2)
+        window.show_page(window._sky_page)
         _pump(qapp)
         window.canvas_sky.draw()
         vega = _vega(window)
@@ -529,7 +529,7 @@ class TestSkyMapAndTrajectory:
         assert not tip.get_visible()
 
     def test_trajectory_tooltip(self, window, qapp):
-        window.tabs.setCurrentIndex(1)
+        window.show_page(window._traj_page)
         _pump(qapp)
         window.canvas_traj.draw()
         x, y = window._traj_ax.transData.transform((12.0, 0.0))
@@ -713,7 +713,7 @@ class TestMoonCalendar:
 
 class TestOrreryAnimation:
     def _planets_tab(self, window, qapp):
-        window.tabs.setCurrentWidget(next(p for p, n in window._chart_tabs.items() if n == "orrery"))
+        window.show_page(next(p for p, n in window._chart_tabs.items() if n == "orrery"))
         _pump(qapp)
 
     def test_steps_move_the_planets(self, window, qapp):
@@ -733,7 +733,7 @@ class TestOrreryAnimation:
         self._planets_tab(window, qapp)
         window._orrery_play.click()
         assert window._orrery_timer.isActive()
-        window.tabs.setCurrentIndex(0)
+        window.show_page(window._ephem_page)
         assert not window._orrery_timer.isActive()
 
     def test_back_to_the_date(self, window, qapp):
@@ -807,7 +807,7 @@ class TestSatellites:
 
 class TestDeepSky:
     def test_on_the_sky_map(self, window, qapp):
-        window.tabs.setCurrentWidget(next(p for p, n in window._chart_tabs.items() if n == "sky"))
+        window.show_page(next(p for p, n in window._chart_tabs.items() if n == "sky"))
         _pump(qapp)
         dso = [o for o in window._sky_objects if o["kind"] == "deep_sky"]
         assert 30 < len(dso) < 110 and all(o["alt"] > 0 for o in dso)
@@ -882,7 +882,7 @@ class TestComets:
         monkeypatch.setattr(window, "_mag_limit", lambda: 7.0)
         self._at(window, qapp, datetime(2028, 11, 11, 3), -33.45, -70.67)
         assert "Tsuchinshan" in [o.get("name") for o in window._sky_objects]
-        window.tabs.setCurrentWidget(next(p for p, n in window._chart_tabs.items() if n == "sky"))
+        window.show_page(next(p for p, n in window._chart_tabs.items() if n == "sky"))
         _pump(qapp)                                       # the map draws, name included
 
 
@@ -1076,7 +1076,7 @@ class TestCoordinatesTab:
               "Éris", "Sedna"]
 
     def _open(self, window):
-        window.tabs.setCurrentWidget(window._coord_page)
+        window.show_page(window._coord_page)
 
     def _choose(self, window, key, value):
         menu = window.coord_menus[key]
@@ -1297,7 +1297,7 @@ class TestDataWindow:
 
     def test_click_in_the_coordinates_table(self, window, qapp):
         """Sun and Vesta from the Coordinates tab; the Earth has no card."""
-        window.tabs.setCurrentWidget(window._coord_page)
+        window.show_page(window._coord_page)
         from engine import AstroEngine
         bodies = list(AstroEngine.BODIES)
         window._detail_dialog = None
@@ -1387,29 +1387,38 @@ class TestFirstLaunch:
 class TestSolarSystemTab:
     def test_its_own_tab_after_the_planets(self, window, qapp):
         names = [window.tabs.tabText(i) for i in range(window.tabs.count())]
-        assert names == ["Éphémérides", "Trajectoires", "Carte du ciel", "Planètes", "Système solaire",
-                         "Coordonnées", "Événements", "Cibles", ""]
-        assert window.tabs.tabToolTip(8) == "Paramètres" and not window.tabs.tabIcon(8).isNull()
-        page = window.tabs.widget(4)
-        assert window.canvas_orrery.isAncestorOf(window.canvas_orrery) and page.isAncestorOf(window.canvas_orrery)
-        assert not window.tabs.widget(3).isAncestorOf(window.canvas_orrery)
-        assert window.tabs.widget(3).isAncestorOf(window.planet_table)
-        window.tabs.setCurrentIndex(4)
+        assert names == ["Ce soir", "Ciel", "Astres", "Calendrier", "Observer", ""]
+        assert window.tabs.tabToolTip(5) == "Paramètres" and not window.tabs.tabIcon(5).isNull()
+        bodies = window.tabs.widget(2)
+        assert [bodies.tabText(i) for i in range(bodies.count())] == ["Planètes", "Système solaire", "Coordonnées"]
+        page = window._orrery_page
+        assert bodies.indexOf(page) == 1 and page.isAncestorOf(window.canvas_orrery)
+        assert not window._planets_page.isAncestorOf(window.canvas_orrery)
+        assert window._planets_page.isAncestorOf(window.planet_table)
+        window.show_page(page)
         _pump(qapp, 3)
+        assert window.tabs.currentIndex() == 2 and window.current_page() is page
         assert "orrery" not in window._dirty                     # drawn when its tab shows
         assert window.fig_orrery.axes
 
+    def test_the_page_survives_a_rebuild(self, window, qapp):
+        """A new language rebuilds the window on the same page of the same space."""
+        window.show_page(window._coord_page)
+        window._lang_combo.setCurrentIndex(window._lang_combo.findData("en"))
+        _pump(qapp)
+        assert window.current_page() is window._coord_page and window.tabs.tabText(2) == "Bodies"
+
     def test_animation_stops_when_the_tab_is_left(self, window, qapp):
-        window.tabs.setCurrentIndex(4)
+        window.show_page(window._orrery_page)
         window._toggle_orrery()
         assert window._orrery_timer.isActive()
-        window.tabs.setCurrentIndex(3)
+        window.show_page(window._planets_page)
         _pump(qapp, 3)
         assert not window._orrery_timer.isActive()
 
     def test_every_body_fits_in_the_planets_tab(self, window, qapp):
         """With the map gone, the table shows the 7 planets, 9 minor planets and the comets at once."""
-        window.tabs.setCurrentIndex(3)
+        window.show_page(window._planets_page)
         window._planet_selector.buttons["all"].click()
         _pump(qapp, 3)
         table = window.planet_table
@@ -1418,13 +1427,15 @@ class TestSolarSystemTab:
         window._planet_selector.buttons["planets"].click()
 
     @pytest.mark.parametrize("lang", ["fr", "en", "es", "de"])
-    def test_the_nine_tabs_fit_at_the_minimum_width(self, window, qapp, lang):
+    def test_the_spaces_fit_at_the_minimum_width(self, window, qapp, lang):
         window._lang_combo.setCurrentIndex(window._lang_combo.findData(lang))
         _pump(qapp)
         window.resize(window.minimumWidth(), window.minimumHeight())
         _pump(qapp, 3)
-        assert window.tabs.count() == 9
+        assert window.tabs.count() == 6
         assert window.tabs.tabBar().sizeHint().width() <= window.tabs.width()
+        for space in window._space_tabs:
+            assert space.tabBar().sizeHint().width() <= window.tabs.width()
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -1444,7 +1455,7 @@ def planner_tab(window, qapp, monkeypatch):
         else:
             on_done(result)
     monkeypatch.setattr(gui.common, "_run_in_background", run_now)
-    window.tabs.setCurrentWidget(window._planner_page)              # computes the night
+    window.show_page(window._planner_page)              # computes the night
     _pump(qapp, 3)
     return window
 
@@ -1472,8 +1483,8 @@ class TestPlanner:
         import gui
         monkeypatch.setattr(gui.planner, "plan", lambda *a, **k: pytest.fail("computed again"))
         planner_tab._compute_plan()
-        planner_tab.tabs.setCurrentIndex(0)
-        planner_tab.tabs.setCurrentWidget(planner_tab._planner_page)
+        planner_tab.show_page(planner_tab._ephem_page)
+        planner_tab.show_page(planner_tab._planner_page)
 
     def test_constraints_are_read_checked_and_kept(self, planner_tab):
         w = planner_tab
@@ -1533,10 +1544,10 @@ class TestPlanner:
     def test_target_shown_on_the_sky_map(self, planner_tab, qapp):
         w = planner_tab
         w._show_plan_target_on_map(3)                                   # M31
-        assert w.tabs.currentIndex() == 2 and w._sky_found == ("messier", 31)
+        assert w.current_page() is w._sky_page and w._sky_found == ("messier", 31)
         w._plan_catalog.setCurrentIndex(w._plan_catalog.findData("caldwell"))
         w._compute_plan()
-        w.tabs.setCurrentWidget(w._planner_page)
+        w.show_page(w._planner_page)
         first = w._plan["deep_sky"][0]
         row = next(r for r in range(w._plan_tables["deep_sky"].rowCount())
                    if w._plan_tables["deep_sky"].item(r, 0).data(gui_name_role()) == first["label"])
@@ -1691,7 +1702,7 @@ def gui_name_role():
 class TestSkySearch:
     @staticmethod
     def _find(window, text):
-        window.tabs.setCurrentIndex(2)
+        window.show_page(window._sky_page)
         window._find_entry.setText(text)
         window._on_find_return()
 
@@ -1765,7 +1776,7 @@ class TestSkySearch:
         assert "Lune : hauteur" in window._chart_hints["sky"].text() and len(self._rings(window)) == 1
         window._lang_combo.setCurrentIndex(window._lang_combo.findData("en"))
         _pump(qapp)
-        window.tabs.setCurrentIndex(2)
+        window.show_page(window._sky_page)
         _pump(qapp, 3)
         assert window._find_entry.text() == "Moon" and window._sky_found == ("moon",)
         assert window._chart_hints["sky"].text().startswith("Moon: altitude ")

@@ -136,6 +136,16 @@
     "planner": "Targets",
     "settings": "Settings"
   },
+  "spaces": {
+    "tonight": "Tonight",
+    "tonight_tip": "The Sun, the Moon and the bodies at the chosen date",
+    "sky": "Sky",
+    "bodies": "Bodies",
+    "calendar": "Calendar",
+    "calendar_tip": "Events, eclipses, satellite passes, calendars",
+    "observe": "Observe",
+    "observe_tip": "The night's targets under your constraints"
+  },
   "common": {
     "visible": "Visible",
     "above_horizon": "Above the horizon",

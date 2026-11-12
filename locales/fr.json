@@ -136,6 +136,16 @@
     "planner": "Cibles",
     "settings": "Paramètres"
   },
+  "spaces": {
+    "tonight": "Ce soir",
+    "tonight_tip": "Le Soleil, la Lune et les astres de la date choisie",
+    "sky": "Ciel",
+    "bodies": "Astres",
+    "calendar": "Calendrier",
+    "calendar_tip": "Évènements, éclipses, passages de satellites, calendriers",
+    "observe": "Observer",
+    "observe_tip": "Les cibles de la nuit selon vos contraintes"
+  },
   "common": {
     "visible": "Visible",
     "above_horizon": "Au-dessus de l'horizon",

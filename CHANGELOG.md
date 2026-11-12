@@ -7,6 +7,13 @@ Write for them: short sentences, as dashes, no bold or code (the window of versi
 markup as it is), about 800 characters at most (the window cuts the rest, GitHub does not). See the wiki page
 "Publier une version".
 
+## 4.13
+
+- The interface in five spaces: Tonight, Sky, Bodies, Calendar and Observe; the pages of a space under a second row
+  of tabs.
+- The taskbar shows Céleste's icon while it runs.
+- Ready for a signed installer, so that Windows names its publisher.
+
 ## 4.12
 
 - Workshop: a complete astrolabe and a nocturnal, with their own place, time zone and date.

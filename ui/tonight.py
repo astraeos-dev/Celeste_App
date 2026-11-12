@@ -107,7 +107,8 @@ class TonightSpace:
 
         lay.addLayout(row)
         lay.addStretch()
-        self.tabs.addTab(scroll, t("tabs.ephemeris"))
+        self._ephem_page = scroll
+        self._add_page(scroll, t("tabs.ephemeris"))
 
     def _body_card(self, symbol, accent, title):
         """Card of a body: (card, data grid, state badge)."""

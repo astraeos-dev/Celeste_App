@@ -17,7 +17,8 @@ class SkySpace:
         self.canvas_traj.mpl_connect("motion_notify_event", self._on_traj_hover)
         self.canvas_traj.mpl_connect("figure_leave_event",
                                      lambda _e: self._traj_tip.hide())
-        self.tabs.addTab(page, t("tabs.trajectory"))
+        self._traj_page = page
+        self._add_page(page, t("tabs.trajectory"))
 
     def _build_skymap_tab(self):
         bar = QHBoxLayout()
@@ -70,7 +71,8 @@ class SkySpace:
         self.canvas_sky.mpl_connect("motion_notify_event", self._on_sky_hover)
         self.canvas_sky.mpl_connect("button_press_event", self._on_sky_click)
         self.canvas_sky.mpl_connect("figure_leave_event", self._on_sky_leave)
-        self.tabs.addTab(page, t("tabs.skymap"))
+        self._sky_page = page
+        self._add_page(page, t("tabs.skymap"))
 
     def _draw_trajectory(self):
         if not self.hours:

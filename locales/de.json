@@ -136,6 +136,16 @@
     "planner": "Ziele",
     "settings": "Einstellungen"
   },
+  "spaces": {
+    "tonight": "Heute Nacht",
+    "tonight_tip": "Sonne, Mond und Himmelskörper zum gewählten Datum",
+    "sky": "Himmel",
+    "bodies": "Himmelskörper",
+    "calendar": "Kalender",
+    "calendar_tip": "Ereignisse, Finsternisse, Satellitenüberflüge, Kalender",
+    "observe": "Beobachten",
+    "observe_tip": "Die Ziele der Nacht nach Ihren Vorgaben"
+  },
   "common": {
     "visible": "Sichtbar",
     "above_horizon": "Über dem Horizont",

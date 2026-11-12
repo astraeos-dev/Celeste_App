@@ -24,6 +24,10 @@ An idea, a problem, a body to add? [Open a request](https://github.com/astraeos-
 
 ## Overview
 
+The window has five spaces: **Tonight** (the ephemeris of the chosen date), **Sky** (sky map, trajectories), **Bodies**
+(planets, Solar System, coordinates), **Calendar** (events, eclipses, satellite passes, calendars) and **Observe** (the
+night's targets); Settings sit behind the gear icon. The Workshop opens from the side panel.
+
 Céleste computes in real time — or for any date — the positions of the Sun, the Moon, the planets (Mercury to
 Neptune) and the minor planets, the events of the day (rise, set, twilights), the phases of the Moon, the eclipses
 (seen from the chosen place) and the events of the year: conjunctions, oppositions, close approaches of the Moon,
@@ -516,8 +520,10 @@ launch, SmartScreen shows "Windows protected your PC" (*More info*, then *Run an
 
 ### Version 5: Android
 
-- [ ] **PySide6** (4.13) — Qt for Python, whose official tool builds Android apps; a first APK in GitHub Actions
-- [ ] **Compact layout** (4.14) — the same Qt interface below 600 pixels of width: drawer, bottom bar, touch targets
+- [x] **Five spaces** (4.13) — `gui.py` split into one module per space (`ui/`); Tonight, Sky, Bodies, Calendar,
+  Observe
+- [ ] **PySide6** (4.14) — Qt for Python, whose official tool builds Android apps; a first APK in GitHub Actions
+- [ ] **Compact layout** (4.15) — the same Qt interface below 600 pixels of width: drawer, bottom bar, touch targets
 - [ ] **Android app** (5.0) — the same code as the desktop, with the phone's location and a sky map following the
   phone. The plan: [docs/ANDROID.md](docs/ANDROID.md)
 

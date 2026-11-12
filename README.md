@@ -274,7 +274,9 @@ The project follows the **MVC (model-view-controller)** pattern:
 Celeste_App/
 ├── main.py              # Entry point — --lang / --theme options, Qt window
 ├── engine.py            # Model — pure astronomical calculations (AstroEngine)
-├── gui.py               # View + controller — PyQt6 interface and application logic
+├── gui.py               # View + controller — the main window (side panel, place, date, calculation)
+├── ui/                  # One module per space: tonight, sky, bodies, calendar_tab, observe, settings_tab;
+│                        #   common.py: Astræos components, formats, shared widgets
 ├── charts.py            # matplotlib charts — paths, sky map, Solar System
 ├── utils.py             # Utilities — HMS/DMS formats, phase names
 ├── config.py            # Astræos design — colours of the Nuit, Jour and Observation themes, spacing, text styles

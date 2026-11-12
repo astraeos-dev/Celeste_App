@@ -63,7 +63,7 @@ def window(qapp, tmp_path, monkeypatch):
         "Paris": {"lat": 48.8566, "lon": 2.3522},
         "Tokyo": {"lat": 35.6762, "lon": 139.6503},
     }), encoding="utf-8")
-    monkeypatch.setattr(gui, "_FAVORITES_FILE", str(favorites))
+    monkeypatch.setattr(gui.common, "_FAVORITES_FILE", str(favorites))
     import satellites
     monkeypatch.setattr(satellites, "CACHE", str(tmp_path / "satellites.tle"))    # none on disk
     import history
@@ -288,7 +288,7 @@ class TestLiveSwitching:
         from config import Config
         window.theme_selector.buttons["observation"].click()
         _pump(qapp)
-        monkeypatch.setattr(gui, "QMessageBox", _yes_box(gui))
+        monkeypatch.setattr(gui.common, "QMessageBox", _yes_box(gui))
         window._reset_settings()
         _pump(qapp)
         assert prefs.get("theme") == "nuit" and Config.THEME == "nuit"
@@ -319,15 +319,15 @@ class TestFavorites:
             def getText(*_args, **_kwargs):
                 return "Maison", True
 
-        monkeypatch.setattr(gui, "QInputDialog", Input)
+        monkeypatch.setattr(gui.common, "QInputDialog", Input)
         window.save_location()
-        with open(gui._FAVORITES_FILE, encoding="utf-8") as f:
+        with open(gui.common._FAVORITES_FILE, encoding="utf-8") as f:
             assert json.load(f)["Maison"] == {"lat": 49.6333, "lon": -1.6167, "elev": 0}
         assert window.combo_fav.currentText() == "Maison"
 
-        monkeypatch.setattr(gui, "QMessageBox", _yes_box(gui))
+        monkeypatch.setattr(gui.common, "QMessageBox", _yes_box(gui))
         window.delete_location()
-        with open(gui._FAVORITES_FILE, encoding="utf-8") as f:
+        with open(gui.common._FAVORITES_FILE, encoding="utf-8") as f:
             assert "Maison" not in json.load(f)
 
 
@@ -766,7 +766,7 @@ class TestSatellites:
                 on_error(exc)
             else:
                 on_done(result)
-        monkeypatch.setattr(gui, "_run_in_background", run_now)
+        monkeypatch.setattr(gui.common, "_run_in_background", run_now)
         answer = {"refresh": (ELEMENTS, None)}
         monkeypatch.setattr(satellites, "refresh", lambda: answer["refresh"])
         return answer
@@ -916,7 +916,7 @@ class TestPlaceSearch:
     def test_name_without_network(self, monkeypatch):
         """Without Nominatim, the nearest city of the offline list names the point."""
         import gui
-        monkeypatch.setattr(gui, "_nominatim_name", lambda lat, lon: "")
+        monkeypatch.setattr(gui.common, "_nominatim_name", lambda lat, lon: "")
         assert gui._place_name(49.6333, -1.6167) == "Cherbourg"
         assert gui._place_name(48.0, -30.0) == ""
 
@@ -925,8 +925,8 @@ class TestGeolocation:
     def test_device_position_is_used(self, window, monkeypatch):
         """Cherbourg given by the device's service, named by OpenStreetMap."""
         import gui
-        monkeypatch.setattr(gui, "QGeoPositionInfoSource", _FakeSource((49.6386, -1.6164)))
-        monkeypatch.setattr(gui, "_place_name", lambda lat, lon: "Cherbourg-en-Cotentin")
+        monkeypatch.setattr(gui.common, "QGeoPositionInfoSource", _FakeSource((49.6386, -1.6164)))
+        monkeypatch.setattr(gui.common, "_place_name", lambda lat, lon: "Cherbourg-en-Cotentin")
         window.geolocate()
         assert window.entry_lat.text().replace(",", ".") == "49.6386"
         assert window.location_name == "Cherbourg-en-Cotentin"
@@ -935,7 +935,7 @@ class TestGeolocation:
     def test_ip_address_only_as_a_fallback(self, window, monkeypatch):
         """Silent service: position of the IP address, announced as approximate."""
         import gui
-        monkeypatch.setattr(gui, "QGeoPositionInfoSource", _FakeSource(None))
+        monkeypatch.setattr(gui.common, "QGeoPositionInfoSource", _FakeSource(None))
         answer = {"status": "success", "city": "Paris", "country": "France",
                   "lat": 48.8566, "lon": 2.3522, "timezone": "Europe/Paris"}
         monkeypatch.setattr(gui.urllib.request, "urlopen",
@@ -954,7 +954,7 @@ class TestGeolocation:
     def test_access_denied_is_explained(self, window, monkeypatch):
         """Issue #19: access denied by Windows — the window says so and opens the settings."""
         import gui
-        monkeypatch.setattr(gui, "QGeoPositionInfoSource", _FakeSource(None, error=0))
+        monkeypatch.setattr(gui.common, "QGeoPositionInfoSource", _FakeSource(None, error=0))
         monkeypatch.setattr(gui.sys, "platform", "win32")
         opened = []
         monkeypatch.setattr(gui.QDesktopServices, "openUrl", staticmethod(lambda url: opened.append(url)))
@@ -971,7 +971,7 @@ class TestGeolocation:
         """Access that cannot be allowed (setting greyed out): the window offers the map,
         and the place picked there is used."""
         import gui
-        monkeypatch.setattr(gui, "QGeoPositionInfoSource", _FakeSource(None, error=0))
+        monkeypatch.setattr(gui.common, "QGeoPositionInfoSource", _FakeSource(None, error=0))
         self._ip_answer(monkeypatch)
         picked = []
         monkeypatch.setattr(window, "choose_on_map", lambda: picked.append(True))
@@ -984,7 +984,7 @@ class TestGeolocation:
 
     def test_no_answer_at_all_offers_the_map(self, window, monkeypatch):
         import gui
-        monkeypatch.setattr(gui, "QGeoPositionInfoSource", _FakeSource(None, error=0))
+        monkeypatch.setattr(gui.common, "QGeoPositionInfoSource", _FakeSource(None, error=0))
 
         def offline(*a, **k):
             raise OSError("offline")
@@ -1038,7 +1038,7 @@ class TestGeolocation:
 
             def exec(self):
                 return gui.QDialog.DialogCode.Accepted
-        monkeypatch.setattr(gui, "PlacePicker", Fake)
+        monkeypatch.setattr(gui.common, "PlacePicker", Fake)
         window.choose_on_map()
         assert window.location_name == "Marseille"
         assert window.entry_lat.text().startswith("43,2965")
@@ -1046,9 +1046,9 @@ class TestGeolocation:
     def test_last_known_position_before_the_ip_address(self, window, monkeypatch):
         """Timeout: the device's last known position rather than the IP address."""
         import gui
-        monkeypatch.setattr(gui, "QGeoPositionInfoSource",
+        monkeypatch.setattr(gui.common, "QGeoPositionInfoSource",
                             _FakeSource(None, error=4, last=(49.6386, -1.6164)))
-        monkeypatch.setattr(gui, "_place_name", lambda lat, lon: "Cherbourg-en-Cotentin")
+        monkeypatch.setattr(gui.common, "_place_name", lambda lat, lon: "Cherbourg-en-Cotentin")
         monkeypatch.setattr(gui.urllib.request, "urlopen", lambda *a, **k: pytest.fail("adresse IP"))
         window.geolocate()
         assert window.location_name == "Cherbourg-en-Cotentin"
@@ -1056,7 +1056,7 @@ class TestGeolocation:
     def test_no_window_at_startup(self, window, monkeypatch):
         """At startup (automatic geolocation), the status bar only."""
         import gui
-        monkeypatch.setattr(gui, "QGeoPositionInfoSource", _FakeSource(None, error=4))
+        monkeypatch.setattr(gui.common, "QGeoPositionInfoSource", _FakeSource(None, error=4))
         self._ip_answer(monkeypatch)
         window._geo_dialog = None
         window.geolocate(interactive=False)
@@ -1196,8 +1196,8 @@ class TestUserFiles:
     def test_favorites_start_from_the_default_list(self, window, tmp_path, monkeypatch):
         """Without saved favourites, the starting list (36 cities); saved in the user's folder."""
         import gui
-        monkeypatch.setattr(gui, "_FAVORITES_FILE", str(tmp_path / "user" / "favorites.json"))
-        monkeypatch.setattr(gui, "_LEGACY_FAVORITES_FILE", str(tmp_path / "absent.json"))
+        monkeypatch.setattr(gui.common, "_FAVORITES_FILE", str(tmp_path / "user" / "favorites.json"))
+        monkeypatch.setattr(gui.common, "_LEGACY_FAVORITES_FILE", str(tmp_path / "absent.json"))
         favorites = window._load_favorites()
         assert len(favorites) == 36 and "Paris" in favorites
         assert favorites["Mexico"] == {"lat": 19.4326, "lon": -99.1332, "elev": 2240}
@@ -1209,8 +1209,8 @@ class TestUserFiles:
     def test_preloaded_places_in_the_interface_language(self, window, tmp_path, monkeypatch, qapp):
         """v4.8: London, Londres, Londres, London; a language without its own name: English."""
         import gui
-        monkeypatch.setattr(gui, "_FAVORITES_FILE", str(tmp_path / "user" / "favorites.json"))
-        monkeypatch.setattr(gui, "_LEGACY_FAVORITES_FILE", str(tmp_path / "legacy.json"))
+        monkeypatch.setattr(gui.common, "_FAVORITES_FILE", str(tmp_path / "user" / "favorites.json"))
+        monkeypatch.setattr(gui.common, "_LEGACY_FAVORITES_FILE", str(tmp_path / "legacy.json"))
         names = {lang: list(gui._default_favorites(lang)) for lang in ("fr", "en", "es", "de", "it")}
         assert all(len(n) == len(set(n)) == 36 for n in names.values())
         assert [n[14] for n in names.values()] == ["Londres", "London", "Londres", "London", "London"]
@@ -1443,7 +1443,7 @@ def planner_tab(window, qapp, monkeypatch):
             on_error(exc)
         else:
             on_done(result)
-    monkeypatch.setattr(gui, "_run_in_background", run_now)
+    monkeypatch.setattr(gui.common, "_run_in_background", run_now)
     window.tabs.setCurrentWidget(window._planner_page)              # computes the night
     _pump(qapp, 3)
     return window
@@ -1974,7 +1974,7 @@ class TestUpdates:
                 on_error(exc)
             else:
                 on_done(result)
-        monkeypatch.setattr(gui, "_run_in_background", run_now)
+        monkeypatch.setattr(gui.common, "_run_in_background", run_now)
         answer = {"release": dict(self.RELEASE)}
         monkeypatch.setattr(gui.updater, "latest_release", lambda: answer["release"])
         return answer
@@ -2134,7 +2134,7 @@ def test_astronomical_calendar(window, qapp, tmp_path, monkeypatch):
     the filters, and the .ics export of what they let through."""
     import gui
     from datetime import date
-    monkeypatch.setattr(gui, "_run_in_background", lambda func, done, err: done(func()))
+    monkeypatch.setattr(gui.common, "_run_in_background", lambda func, done, err: done(func()))
     window.show_calendar()
     qapp.processEvents()
     cal = window._cal_state

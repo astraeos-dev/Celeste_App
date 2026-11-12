@@ -76,7 +76,7 @@ Workshop 3 comes after the first steps of the Android port (4.13 and 4.14).
 ## Workshop 1
 
 `instruments.py` holds the geometry, `workshop.py` draws the pages (matplotlib, one axis in millimetres per A4 or
-Letter page) and writes the explanation sheets from the `workshop` texts of `locales/`. The window, in `gui.py`
+Letter page) and writes the explanation sheets from the `workshop` texts of `locales/`. The window, in `ui/observe.py`
 (`show_workshop`), takes the place, the time zone and the date of the side panel.
 
 - **Planisphere** — `planisphere(lat, lon, std_offset, year, r_edge, stars, figures)`: azimuthal equidistant

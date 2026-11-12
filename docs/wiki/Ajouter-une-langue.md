@@ -26,4 +26,4 @@ Exemple : l'italien (`it`).
    limite, objets de Messier, recherche) doit tenir dans la fenêtre à sa largeur minimale.
 
 Les dates restent au format `jj/mm/aaaa` dans toutes les langues ; les nombres suivent la langue (virgule ou
-point décimal) grâce à `_num()` dans `gui.py`.
+point décimal) grâce à `_num()` dans `ui/common.py`.

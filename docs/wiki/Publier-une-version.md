@@ -69,7 +69,7 @@ La case « Vérifier au démarrage » coupe la recherche automatique. Depuis les
 fenêtre rappelle de mettre à jour avec `git pull`.
 
 Le code est dans [`updater.py`](https://github.com/astraeos-dev/Celeste_App/blob/master/updater.py) (sans Qt) et
-dans `check_updates()` de `gui.py` ; l'installation silencieuse rouvre Céleste grâce à la ligne `skipifnotsilent`
+dans `check_updates()` de `ui/settings_tab.py` ; l'installation silencieuse rouvre Céleste grâce à la ligne `skipifnotsilent`
 de `installer/celeste.iss`.
 
 > La première version qui sait se mettre à jour (4.3) s'installe encore à la main ; les suivantes se mettent à

@@ -5,7 +5,8 @@ Le projet suit le modèle **modèle-vue-contrôleur** : le moteur calcule, l'int
 | Fichier | Rôle |
 |---|---|
 | [`engine.py`](https://github.com/astraeos-dev/Celeste_App/blob/master/engine.py) | **Modèle** : `AstroEngine`, calculs purs (positions, levers, éclipses, évènements…), sans Qt |
-| [`gui.py`](https://github.com/astraeos-dev/Celeste_App/blob/master/gui.py) | **Vue et contrôleur** : fenêtre PyQt6, onglets, tableaux, fiches |
+| [`gui.py`](https://github.com/astraeos-dev/Celeste_App/blob/master/gui.py) | **Vue et contrôleur** : la fenêtre `AstroApp` (panneau latéral, lieu, date, calcul, historique), assemblée à partir des espaces de `ui/` |
+| [`ui/`](https://github.com/astraeos-dev/Celeste_App/tree/master/ui) | Un module par espace de l'interface : `tonight.py` (Ce soir), `sky.py` (Ciel), `bodies.py` (Astres), `calendar_tab.py` (Calendrier), `observe.py` (Observer, Atelier), `settings_tab.py` (Réglages) ; `common.py` réunit les composants Astræos, les formats et les widgets partagés |
 | [`charts.py`](https://github.com/astraeos-dev/Celeste_App/blob/master/charts.py) | Graphiques matplotlib : trajectoires, carte du ciel, système solaire, cartes d'évènements ; `SYMBOL` |
 | [`locales/`](https://github.com/astraeos-dev/Celeste_App/tree/master/locales) | Textes de l'interface : `fr.json` (référence), `en.json`, `es.json`, `de.json` |
 | [`i18n.py`](https://github.com/astraeos-dev/Celeste_App/blob/master/i18n.py) | `t("clé")`, `tf("clé", valeur=…)`, choix de la langue |

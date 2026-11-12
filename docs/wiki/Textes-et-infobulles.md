@@ -38,7 +38,7 @@ Une clé `section.nom` désigne l'entrée `"nom"` de la section `"section"` du J
    "mag_tip": "Magnitude visuelle : plus elle est petite, plus l'astre est brillant",
    ```
 
-3. Dans `gui.py`, donnez-la au widget :
+3. Dans le module de l'espace (`gui.py` ou `ui/…`), donnez-la au widget :
 
    ```python
    item.setToolTip(t("planets.mag_tip"))          # une cellule de tableau
@@ -50,19 +50,19 @@ Une clé `section.nom` désigne l'entrée `"nom"` de la section `"section"` du J
 | Infobulle | Clé ou code |
 |---|---|
 | Boutons de la barre latérale | `side.*_tip` (création dans `_build_sidebar`) |
-| Nom d'un astre dans l'onglet Planètes (visible, numéro d'une planète mineure) | `_update_planet_table` dans `gui.py` |
+| Nom d'un astre dans l'onglet Planètes (visible, numéro d'une planète mineure) | `_update_planet_table` dans `ui/bodies.py` |
 | « Cliquez sur un astre… » des tableaux | `detail.click_tip` |
 | Choix « Tous / Planètes / Planètes mineures » | `planets.group_*_tip` |
 | Bouton « Carte » des évènements et des éclipses | `event_map.button_tip`, `eclipse_map.button_tip` |
 | Liens de Paramètres › À propos | `links.*_tip` |
-| Survol de la carte du ciel | titre de la fiche (`_object_details` dans `gui.py`), dessiné par `charts._tooltip` |
+| Survol de la carte du ciel | titre de la fiche (`_object_details` dans `ui/bodies.py`), dessiné par `charts._tooltip` |
 
 ## Règles vérifiées par les tests
 
 - **Mêmes clés dans les quatre langues** : une clé absente ou en trop fait échouer `tests/test_i18n.py`.
 - **Mêmes trous** `{…}` dans chaque traduction d'une clé (`{value}` en français → `{value}` partout).
 - **Pas de valeur vide**, **pas d'emoji** (`tests/test_gui.py` : « pas d'emoji dans l'interface »). Pour un
-  symbole astronomique, utilisez `SYMBOL["Venus"]` (dans `gui.py`), jamais le caractère seul.
+  symbole astronomique, utilisez `SYMBOL["Venus"]` (dans `ui/common.py`), jamais le caractère seul.
 - Le JSON reste en UTF-8, indenté de deux espaces.
 
 ## Conseils
@@ -72,5 +72,5 @@ Une clé `section.nom` désigne l'entrée `"nom"` de la section `"section"` du J
 - Une infobulle peut être plus longue : elle s'affiche au survol.
 - Un texte qui contient une valeur (« Séparation 0,37° ») se fait avec `tf()` et un trou, jamais en collant des
   morceaux : l'ordre des mots change selon les langues.
-- En français, `gui.py` élide « de » devant une voyelle dans les phrases « au nord de … »
+- En français, `ui/calendar_tab.py` élide « de » devant une voyelle dans les phrases « au nord de … »
   (`_elide`) : « au sud d'Antarès ».

@@ -184,6 +184,10 @@ Changing the date computes everything again after a moment.
   elevation and time zone. A calculation is kept once you have stayed on it for a few seconds: stepping through the
   dates only keeps the date you stop on, and the real-time mode stays out. "Clear the history" empties it
   (`~/.celeste/history.json`)
+- **Workshop** — instruments to print, cut out and assemble, computed for the typed place (latitudes 10° to 80°):
+  a planisphere, an equatorial sundial and a horizontal sundial. The window previews each page and saves the PDF;
+  print it at 100 % and check the 100 mm ruler of each page. The last pages explain the assembly, the use, the
+  astronomy behind the instrument, and give an example computed for the date of the side panel
 - **Nuit · Jour · Observation** — theme selector, at the bottom of the side panel
 
 **Events:** the buttons of the tab search for the eclipses of the next 12 lunations, the events of the coming year and
@@ -264,7 +268,8 @@ Celeste_App/
 ├── history.py           # The last calculations (~/.celeste/history.json)
 ├── planner.py           # Night planner: targets of the night under the observer's constraints
 ├── mpc.py               # Comet elements of the Minor Planet Center (~/.celeste/CometEls.txt)
-├── instruments.py       # Instruments to print and build (prototype: the astrolabe for a latitude)
+├── instruments.py       # Geometry of the instruments to make: planisphere, sundials, astrolabe (no Qt)
+├── workshop.py          # The Workshop: PDF pages at true scale and their explanation sheets
 ├── satellites.py        # Orbital elements (TLE) of the satellites: download, checks, cache
 ├── constellations.py    # Usual names of the bright stars
 ├── star_catalog.py      # 8,404 stars (Yale Bright Star Catalogue, magnitude ≤ 6.5), generated
@@ -471,19 +476,21 @@ launch, SmartScreen shows "Windows protected your PC" (*More info*, then *Run an
 ### Engineering and quality
 
 - [x] **Unit tests** — pytest on the engine, the charts, the interface (off screen), the themes, the updates,
-  `utils.py` and `i18n.py` (15 files, ~700 cases)
+  `utils.py` and `i18n.py` (16 files, ~750 cases)
 - [x] **Windows executable** — standalone `Celeste.exe` (PyInstaller), ephemeris downloaded at the first launch
 
 ### Workshop: instruments to make
 
 - [x] **Prototype** — `instruments.py`: the plate and the rete of an astrolabe for any latitude, PDF at true scale
-- [ ] **Workshop** — planisphere, sundials, nocturnal, quadrant and the complete astrolabe, computed for the place,
-  printed at true scale with assembly and use sheets. The design: [docs/INSTRUMENTS.md](docs/INSTRUMENTS.md)
+- [x] **Workshop 1** (4.11) — the Workshop window; planisphere, equatorial and horizontal sundials computed for the
+  place, with assembly, use and astronomy sheets in four languages
+- [ ] **Workshop 2 and 3** — the complete astrolabe, the nocturnal, the horary quadrant, a declining wall dial and a
+  noon mark. The design: [docs/INSTRUMENTS.md](docs/INSTRUMENTS.md)
 
 ### Version 5: Android
 
-- [ ] **PySide6** (4.11) — Qt for Python, whose official tool builds Android apps; a first APK in GitHub Actions
-- [ ] **Compact layout** (4.12) — the same Qt interface below 600 pixels of width: drawer, bottom bar, touch targets
+- [ ] **PySide6** (4.12) — Qt for Python, whose official tool builds Android apps; a first APK in GitHub Actions
+- [ ] **Compact layout** (4.13) — the same Qt interface below 600 pixels of width: drawer, bottom bar, touch targets
 - [ ] **Android app** (5.0) — the same code as the desktop, with the phone's location and a sky map following the
   phone. The plan: [docs/ANDROID.md](docs/ANDROID.md)
 

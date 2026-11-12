@@ -3,7 +3,7 @@
 A section of Céleste where the user prints, cuts and assembles real instruments, **computed for their own place**:
 an astrolabe engraved for their latitude, a sundial that reads their legal time, a planisphere of their sky. This
 document is the design: the instruments, what Céleste computes for each, how they are printed and checked, and the
-steps. A first prototype exists: `instruments.py` draws the plate and the rete of an astrolabe (see the end).
+steps. Workshop 1 is done (4.11): the planisphere and the two sundials, in a Workshop window (see the end).
 
 ## Why in Céleste
 
@@ -55,8 +55,8 @@ Every instrument gets tests of two kinds, as the engine has:
 ## In the application
 
 - **Desktop:** a *Workshop* window, opened from the side panel (the window already has nine tabs): the list of
-  instruments with a drawing, the options (size, paper, hemisphere, stars, line density), a preview, and *Print*
-  / *Save PDF* / *Save SVG*.
+  instruments with a description, the paper, a preview page by page, and *Save PDF* (4.11); later, more options
+  (size, stars, line density) and *Save SVG*.
 - **Android (version 5):** an entry of the *More* page; the PDF shared to a printer or another app.
 - **Code:** `instruments.py` holds the geometry (no Qt, tested); the drawing goes through matplotlib's PDF and SVG
   backends (already used by Céleste), at true scale; the interface only collects the options.
@@ -66,11 +66,11 @@ Every instrument gets tests of two kinds, as the engine has:
 | Step | Content |
 |---|---|
 | Prototype (done) | `instruments.py`: astrolabe plate and rete for any latitude, PDF at true scale, tests against the classic formulas |
-| Workshop 1 | The Workshop window; the **planisphere**, the **equatorial** and **horizontal sundials**; assembly and use sheets in four languages |
+| Workshop 1 (done, 4.11) | The Workshop window; the **planisphere**, the **equatorial** and **horizontal sundials**; assembly and use sheets in four languages |
 | Workshop 2 | The complete **astrolabe** (mater, back, unequal hours, rule, alidade, rete as a cut-out frame); the **nocturnal** |
 | Workshop 3 | **Horary quadrant**, **vertical declining sundial** (wall orientation measured with the Sun), **noon mark** |
 
-Where these steps fall among the versions is to be decided with the Android port (4.11 and 4.12 prepare it).
+Workshop 2 and 3 come after the first steps of the Android port (4.12 and 4.13).
 
 ## The prototype
 
@@ -86,3 +86,29 @@ It follows the astrolabes of old: the north celestial pole at the centre, the so
 ring, the east on the left; the projection is stereographic from the south pole onto the plane of the equator. Still
 missing for a usable instrument: the mater and its scales, the unequal hours, the rule, a cut-out rete, labels and
 the assembly sheet.
+
+## Workshop 1
+
+`instruments.py` holds the geometry, `workshop.py` draws the pages (matplotlib, one axis in millimetres per A4 or
+Letter page) and writes the explanation sheets from the `workshop` texts of `locales/`. The window, in `gui.py`
+(`show_workshop`), takes the place, the time zone and the date of the side panel.
+
+- **Planisphere** — `planisphere(lat, lon, std_offset, year, r_edge, stars, figures)`: azimuthal equidistant
+  projection from the visible pole, to 8° beyond the horizon of the meridian; stars to magnitude 4.5, the 88 figures,
+  the ecliptic and the equator; a date ring giving the local sidereal time at 0:00 standard time of each day of the
+  year; the mask's window (horizon, 30° and 60°, zenith, directions) and its hour ring at the sidereal rate. Two
+  pages and the sheets; the southern sky is the mirror image (east on the right).
+- **Equatorial sundial** — `equatorial_dial(lat, lon, std_offset)`: the dial at 90° − |φ|, hours 15° apart shifted
+  by the longitude's offset from the time zone; the upper face (lit when the Sun is on the side of the visible pole)
+  and the lower face, mirror images, then two wedges.
+- **Horizontal sundial** — `horizontal_dial(lat, lon, std_offset, height)`: hour lines and half hours from the
+  shadow of the polar style, date lines (solstices, equinoxes, entries of the signs) from the shadow of the nodus,
+  whose height puts the noon shadow of the winter solstice near the edge of the dial; the triangular gnomon with its
+  sizes.
+- **Corrections** — `dial_reading(legal, dst, eot)`: what the dials show at a legal time; the sheets give the
+  equation of time on the 1st, 11th and 21st of each month (DE440, through the engine).
+
+Checked by `tests/test_workshop.py`: `tan θ = sin φ tan H`, the nodus and the equinox line; the shadow of the
+engine's Sun at eight moments, north and south, on the line of the reading (within 2 × 10⁻⁴ rad) and the equatorial
+dial's angle against the Sun's hour angle (0.02°); the date ring against Skyfield's sidereal time (20 s); Vega in the
+planisphere's window where the engine puts it (1 mm); the PDF in the four languages.

@@ -28,7 +28,7 @@ a = Analysis(
     ["main.py"],
     pathex=["."],
     datas=datas,
-    hiddenimports=["PyQt6.QtPositioning", "PyQt6.QtSvg"],
+    hiddenimports=["PyQt6.QtPositioning", "PyQt6.QtSvg", "matplotlib.backends.backend_pdf"],
     excludes=["tkinter", "pytest", "pandas"],          # pandas: an optional import of Skyfield
 )
 pyz = PYZ(a.pure)

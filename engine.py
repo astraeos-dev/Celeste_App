@@ -47,6 +47,11 @@ v4.3:
   • Sedna among MINOR_PLANETS; MINOR_PLANET_NUMBERS, the Minor Planet
     Center's numbers ("(136199) Eris")
 
+v4.11:
+  • the Workshop (instruments.py, workshop.py) builds on this engine:
+    equation_of_time(), horizontal(), stars_horizontal() and the sidereal
+    time of Skyfield check and explain its instruments
+
 v4.10:
   • the night planner (planner.py, mpc.py) builds on this engine: _fast_time,
     _local_day, observations(), comets_at(), find_events()

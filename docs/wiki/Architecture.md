@@ -12,6 +12,8 @@ Le projet suit le modèle **modèle-vue-contrôleur** : le moteur calcule, l'int
 | [`updater.py`](https://github.com/astraeos-dev/Celeste_App/blob/master/updater.py) | Mises à jour : dernière Release GitHub, téléchargement vérifié (SHA-256), installation silencieuse |
 | [`places.py`](https://github.com/astraeos-dev/Celeste_App/blob/master/places.py) | Recherche de lieu hors ligne : villes de GeoNames (`assets/cities.tsv.gz`), ville la plus proche d'un point |
 | [`planner.py`](https://github.com/astraeos-dev/Celeste_App/blob/master/planner.py) | Onglet Cibles : cibles de la nuit selon les contraintes de l'observateur (d'après uptonight), masque d'horizon, rapport JSON |
+| [`instruments.py`](https://github.com/astraeos-dev/Celeste_App/blob/master/instruments.py) | Atelier : géométrie des instruments (carte tournante, cadrans solaires, astrolabe), sans Qt |
+| [`workshop.py`](https://github.com/astraeos-dev/Celeste_App/blob/master/workshop.py) | Atelier : pages PDF à l'échelle exacte et fiches d'explications ([fiche](Ajouter-un-instrument.md)) |
 | [`mpc.py`](https://github.com/astraeos-dev/Celeste_App/blob/master/mpc.py) | Comètes du Minor Planet Center : téléchargement hebdomadaire de `CometEls.txt`, orbites à deux corps, magnitudes |
 | [`history.py`](https://github.com/astraeos-dev/Celeste_App/blob/master/history.py) | Historique : les 20 derniers calculs (date, lieu, fuseau) dans `~/.celeste/history.json` |
 | [`satellites.py`](https://github.com/astraeos-dev/Celeste_App/blob/master/satellites.py) | Orbites des satellites (TLE) : téléchargement CelesTrak ou AMSAT, sommes de contrôle, copie dans `~/.celeste` |

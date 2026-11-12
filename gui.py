@@ -45,7 +45,7 @@ from PyQt6.QtCore import (
 )
 from PyQt6.QtGui import (
     QBrush, QColor, QDesktopServices, QFont, QFontDatabase, QKeySequence,
-    QPainter, QPainterPath, QPalette, QPen, QRegularExpressionValidator, QShortcut,
+    QPainter, QPainterPath, QPalette, QPen, QPixmap, QRegularExpressionValidator, QShortcut,
 )
 from PyQt6.QtPositioning import QGeoPositionInfo, QGeoPositionInfoSource
 from PyQt6.QtWidgets import (
@@ -1388,6 +1388,10 @@ class AstroApp(QMainWindow):
         self.btn_history.setToolTip(tf("side.history_tip", key="Ctrl+H"))
         self.btn_history.clicked.connect(self._show_history_menu)
         lay.addWidget(self.btn_history)
+        self.btn_workshop = _button(t("workshop.open"), "workshop", "discret")
+        self.btn_workshop.setToolTip(t("workshop.open_tip"))
+        self.btn_workshop.clicked.connect(lambda _checked=False: self.show_workshop())
+        lay.addWidget(self.btn_workshop)
 
         lay.addStretch()
         self.theme_selector = ThemeSelector(Config.THEME, self._on_theme_selected)
@@ -3600,6 +3604,136 @@ class AstroApp(QMainWindow):
         """"01/11/2026 21:30 UT · Cherbourg-en-Cotentin" (or the coordinates of an unnamed place)."""
         place = item["name"] or f"{_fmt_lat(item['lat'])}, {_fmt_lon(item['lon'])}"
         return f"{history.when(item):%d/%m/%Y %H:%M} {t('chart.ut')} · {place}"
+
+    # ── Workshop ──────────────────────────────────────────────────────────
+
+    def _workshop_place(self):
+        """The place and date of the Workshop's instruments, from the side panel; None
+        when the coordinates are invalid or out of the Workshop's latitudes."""
+        import workshop
+        try:
+            dte, lat, lon = self.current_inputs()
+        except ValueError:
+            return None
+        if not 10.0 <= abs(lat) <= 80.0:
+            return None
+        name = self.entry_place.text().strip()
+        return workshop.Place(name, lat, lon, _zone(self.tz_name, lat, lon), dte)
+
+    def show_workshop(self):
+        """Window of the Workshop: an instrument, its preview, and the PDF to save."""
+        import workshop
+        place = self._workshop_place()
+        if place is None:
+            QMessageBox.information(self, t("workshop.title"), t("workshop.latitude_range"))
+            return
+        dlg = QDialog(self)
+        dlg.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        dlg.setWindowTitle(t("workshop.title"))
+        dlg.setMinimumSize(860, 640)
+        outer = QHBoxLayout(dlg)
+        outer.setContentsMargins(24, 24, 24, 16)
+        outer.setSpacing(24)
+
+        left = QVBoxLayout()
+        left.setSpacing(12)
+        left.addWidget(_label(t("workshop.title"), "sous-titre"))
+        left.addWidget(_label(tf("workshop.intro", place=place.describe()), "legende", wrap=True))
+        kinds = QComboBox()
+        for kind in workshop.INSTRUMENTS:
+            kinds.addItem(t(f"workshop.{kind}"), kind)
+        left.addWidget(InputField(t("workshop.instrument"), kinds))
+        description = _label("", "corps", wrap=True)
+        description.setMinimumWidth(280)
+        left.addWidget(description)
+        paper = QComboBox()
+        for key in workshop.PAPERS:
+            paper.addItem(t(f"workshop.paper_{key}"), key)
+        left.addWidget(InputField(t("workshop.paper"), paper))
+        left.addStretch()
+        save = _button(t("workshop.save"), "export", "principal")
+        left.addWidget(save)
+        close = _button(t("detail.close"))
+        close.clicked.connect(dlg.reject)
+        left.addWidget(close)
+        outer.addLayout(left, stretch=2)
+
+        right = QVBoxLayout()
+        right.setSpacing(8)
+        preview = QLabel()
+        preview.setObjectName("workshopPreview")
+        preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        preview.setMinimumSize(420, 560)
+        preview.setStyleSheet("background: white; border-radius: 4px;")
+        right.addWidget(preview, stretch=1)
+        nav = QHBoxLayout()
+        previous = _icon_button("previous", t("workshop.previous_page"), compact=True)
+        following = _icon_button("next", t("workshop.next_page"), compact=True)
+        page_label = _label("", "legende")
+        nav.addStretch()
+        nav.addWidget(previous)
+        nav.addWidget(page_label)
+        nav.addWidget(following)
+        nav.addStretch()
+        right.addLayout(nav)
+        outer.addLayout(right, stretch=3)
+
+        state = {"page": 0, "pages": 1}
+
+        def refresh():
+            kind, size = kinds.currentData(), paper.currentData()
+            description.setText(t(f"workshop.desc_{kind}"))
+            QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+            try:
+                png, count = workshop.preview_png(kind, place, size, state["page"], dpi=72)
+            finally:
+                QApplication.restoreOverrideCursor()
+            state["pages"] = count
+            state["page"] = min(state["page"], count - 1)
+            pixmap = QPixmap()
+            pixmap.loadFromData(png, "PNG")
+            preview.setPixmap(pixmap.scaled(preview.size() - QSize(16, 16), Qt.AspectRatioMode.KeepAspectRatio,
+                                            Qt.TransformationMode.SmoothTransformation))
+            page_label.setText(tf("workshop.page", page=state["page"] + 1, pages=count))
+            previous.setEnabled(state["page"] > 0)
+            following.setEnabled(state["page"] < count - 1)
+
+        def turn(step):
+            state["page"] = max(0, min(state["pages"] - 1, state["page"] + step))
+            refresh()
+
+        def choose():
+            state["page"] = 0
+            refresh()
+
+        def save_pdf():
+            kind = kinds.currentData()
+            default = os.path.join(os.path.expanduser("~"), f"{t(f'workshop.{kind}')}.pdf")
+            path, _filter = QFileDialog.getSaveFileName(dlg, t("workshop.save_title"), default,
+                                                        t("workshop.pdf_filter"))
+            if not path:
+                return
+            if not path.lower().endswith(".pdf"):
+                path += ".pdf"
+            QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+            try:
+                count = workshop.print_instrument(kind, path, place, paper.currentData())
+            except OSError as exc:
+                QApplication.restoreOverrideCursor()
+                QMessageBox.warning(dlg, t("errors.error_title"), tf("workshop.save_error", error=exc))
+                return
+            QApplication.restoreOverrideCursor()
+            self.statusBar().showMessage(tf("workshop.saved", path=path, pages=count), 12000)
+
+        kinds.currentIndexChanged.connect(lambda _i: choose())
+        paper.currentIndexChanged.connect(lambda _i: refresh())
+        previous.clicked.connect(lambda _checked=False: turn(-1))
+        following.clicked.connect(lambda _checked=False: turn(1))
+        save.clicked.connect(lambda _checked=False: save_pdf())
+        self._workshop_dialog = dlg
+        dlg.show()
+        refresh()
+        return dlg
 
     def _show_history_menu(self):
         """Menu under the History button: the last calculations, the most recent first."""

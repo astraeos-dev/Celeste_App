@@ -16,6 +16,7 @@ comment vérifier le résultat.
 | [Ajouter une étoile](Ajouter-une-etoile.md) | une étoile pour les rapprochements de la Lune, ou nommée sur la carte |
 | [Ajouter une pluie d'étoiles filantes](Ajouter-une-pluie-d-etoiles-filantes.md) | une pluie de plus parmi les évènements (calendrier de l'IMO) |
 | [Ajouter une langue](Ajouter-une-langue.md) | traduire l'interface dans une cinquième langue |
+| [Ajouter un instrument à l'atelier](Ajouter-un-instrument.md) | un nouvel instrument à imprimer, calculé pour le lieu |
 | [Tester ses modifications](Tester-ses-modifications.md) | lancer les tests, l'auto-test, vérifier contre JPL Horizons |
 | [Publier une version](Publier-une-version.md) | numéro de version, tag, exécutable et programme d'installation Windows |
 

@@ -7,6 +7,7 @@
 - [Ajouter une étoile](Ajouter-une-etoile.md)
 - [Ajouter une pluie d'étoiles filantes](Ajouter-une-pluie-d-etoiles-filantes.md)
 - [Ajouter une langue](Ajouter-une-langue.md)
+- [Ajouter un instrument à l'atelier](Ajouter-un-instrument.md)
 - [Tester ses modifications](Tester-ses-modifications.md)
 - [Publier une version](Publier-une-version.md)
 

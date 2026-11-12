@@ -1900,3 +1900,34 @@ class TestUpdates:
         window._install_update(dict(self.RELEASE))
         assert launched == ["/tmp/Celeste-99.0-Setup.exe"] and timers and timers[0][0] == 300
         assert getattr(window, "_update_failure", None) is None
+
+
+def test_workshop_window(window, qapp, tmp_path, monkeypatch):
+    """The Workshop opens for the place, previews each instrument and saves its PDF."""
+    import gui
+    dlg = window.show_workshop()
+    qapp.processEvents()
+    combos = dlg.findChildren(gui.QComboBox)
+    kinds = next(c for c in combos if c.count() == 3)
+    preview = dlg.findChild(gui.QLabel, "workshopPreview")
+    assert not preview.pixmap().isNull()
+    kinds.setCurrentIndex(2)                         # horizontal sundial
+    qapp.processEvents()
+    assert not preview.pixmap().isNull()
+    target = tmp_path / "dial.pdf"
+    monkeypatch.setattr(gui.QFileDialog, "getSaveFileName", lambda *a, **k: (str(target)[:-4], ""))
+    save = next(b for b in dlg.findChildren(gui.QPushButton) if b.text() == gui.t("workshop.save"))
+    save.click()
+    assert target.read_bytes()[:5] == b"%PDF-"
+    assert "dial.pdf" in window.statusBar().currentMessage()
+    dlg.close()
+    qapp.processEvents()
+
+
+def test_workshop_refuses_the_tropics(window, qapp, monkeypatch):
+    import gui
+    shown = []
+    monkeypatch.setattr(gui.QMessageBox, "information", lambda *a: shown.append(a[2]))
+    window.entry_lat.setText("5")
+    assert window.show_workshop() is None
+    assert shown == [gui.t("workshop.latitude_range")]

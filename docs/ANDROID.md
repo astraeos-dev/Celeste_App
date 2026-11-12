@@ -61,8 +61,8 @@ would need Java calls through `QJniObject` or pyjnius. They come after 5.0, if t
 
 | Version | Content |
 |---|---|
-| **4.11** | `qt.py` and the move from PyQt6 to PySide6 on the desktop (same app for its users; Windows build and tests on PySide6). A first APK in GitHub Actions: an empty window that loads the engine and runs the self-test on an emulator, to settle the tools early. |
-| **4.12** | The compact layout in `gui.py`, tested by narrowing the window; user folder from `QStandardPaths`. |
+| **4.12** | `qt.py` and the move from PyQt6 to PySide6 on the desktop (same app for its users; Windows build and tests on PySide6). A first APK in GitHub Actions: an empty window that loads the engine and runs the self-test on an emulator, to settle the tools early. |
+| **4.13** | The compact layout in `gui.py`, tested by narrowing the window; user folder from `QStandardPaths`. |
 | **5.0 alpha** | The full app as a debug APK built by GitHub Actions: first start (ephemeris download with its progress), Tonight, ephemeris, sky map, planets, Targets, events; location by GPS; the four languages and the three themes. |
 | **5.0 beta** | Sky map following the phone; Android back button and screen rotation; sharing exports; speed on modest phones. Google Play closed test (see below). |
 | **5.0** | Release on Google Play (closed test, then production) and the APK on GitHub Releases. The desktop app becomes 5.0 too: the same code. |
@@ -71,7 +71,7 @@ would need Java calls through `QJniObject` or pyjnius. They come after 5.0, if t
 
 | Risk | Answer |
 |---|---|
-| `pyside6-android-deploy` is a technical preview | Settled in 4.11 with the smallest APK, before any interface work; the fallback is pyqtdeploy, with the same code |
+| `pyside6-android-deploy` is a technical preview | Settled in 4.12 with the smallest APK, before any interface work; the fallback is pyqtdeploy, with the same code |
 | A package without a python-for-android recipe | Skyfield, jplephem and sgp4 are pure Python (sgp4's C part is optional); timezonefinder is the one to check, with the offline place list of `places.py` as a fallback for the time zone |
 | APK size (Qt, Python, NumPy, matplotlib: about 60 to 80 MB) | arm64-v8a only at first; the ephemeris (32 MB) downloaded at the first start, not shipped; only the Qt modules used |
 | First start slow | A start screen with progress; the heavy computations already run in the background |
@@ -87,9 +87,9 @@ asks, and what it means here:
 | Requirement | What to do |
 |---|---|
 | A developer account (25 USD once, identity checked) | Opened by the project's owner; the app's identifier chosen once and for good, e.g. `dev.astraeos.celeste` |
-| An **Android App Bundle** (`.aab`), not an APK | Check in 4.11 that the PySide6 tools produce one (python-for-android can); else build the bundle from their Gradle project |
+| An **Android App Bundle** (`.aab`), not an APK | Check in 4.12 that the PySide6 tools produce one (python-for-android can); else build the bundle from their Gradle project |
 | A recent **target API level** (the store raises it every year) | Follow the Qt 6 version that supports it; checked at each release |
-| **16 KB memory pages** for the native libraries of apps targeting Android 15 and later | Python, NumPy and Qt libraries built with 16 KB alignment: one of the points the 4.11 trial settles |
+| **16 KB memory pages** for the native libraries of apps targeting Android 15 and later | Python, NumPy and Qt libraries built with 16 KB alignment: one of the points the 4.12 trial settles |
 | **Play App Signing** | Google keeps the app's key; the project keeps an upload key, in the GitHub secrets of the release workflow |
 | A **closed test** with at least 12 testers for 14 days before the first production release (new personal accounts) | The 5.0 beta: testers invited by e-mail through the Play Console |
 | **Data safety** form and a **privacy policy** | Nothing collected or shared: the location stays on the phone and is sent nowhere but to the OpenStreetMap name lookup when the user asks; the policy published on the website |

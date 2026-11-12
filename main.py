@@ -1,5 +1,5 @@
 """
-main.py — Entry point of the Céleste application (PyQt6)
+main.py — Entry point of the Céleste application (Qt: PySide6, see qt.py)
 =========================================================
 Usage:
     python main.py
@@ -16,8 +16,8 @@ restart.
 import argparse
 import sys
 
-from PyQt6.QtCore import QLocale, QTimer
-from PyQt6.QtWidgets import QApplication
+from qt.QtCore import QLocale, QTimer
+from qt.QtWidgets import QApplication
 
 import settings as prefs
 from config import Config
@@ -46,7 +46,7 @@ def ensure_ephemeris():
     """
     import os
     import threading
-    from PyQt6.QtWidgets import QMessageBox, QProgressDialog
+    from qt.QtWidgets import QMessageBox, QProgressDialog
     import engine
 
     def fail(exc):
@@ -116,7 +116,7 @@ def main(argv=None):
         from engine import AstroEngine
         from config import APP_VERSION
         AstroEngine.find_eclipses(window._dte, num_months=1)
-        from PyQt6.QtPositioning import QGeoPositionInfoSource
+        from qt.QtPositioning import QGeoPositionInfoSource
         sources = ", ".join(QGeoPositionInfoSource.availableSources()) or "none"
         sizes = window.windowIcon().availableSizes()
         if not sizes or window.windowIcon().pixmap(32, 32).isNull():

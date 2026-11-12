@@ -102,14 +102,24 @@ class ObserveSpace:
         buttons.addWidget(btn_lists)
         buttons.addStretch()
         form.addLayout(buttons)
+        # compact layout: back to the night's targets, computed with these constraints
+        self._btn_plan_back = _button(t("planner.show_results"), "search")
+        self._btn_plan_back.clicked.connect(lambda: (self._show_plan_side(False), self._compute_plan(force=True)))
+        form.addWidget(self._btn_plan_back)
         form.addStretch()
         outer.addWidget(side)
 
         # right: the night, the tables, the chart
-        right = QVBoxLayout()
+        right_w = QWidget()
+        right = QVBoxLayout(right_w)
+        right.setContentsMargins(0, 0, 0, 0)
         right.setSpacing(12)
         bar = QHBoxLayout()
         bar.setSpacing(8)
+        # compact layout: the constraints take the whole page, from this button
+        self._btn_plan_side = _icon_button("tune", t("planner.constraints"))
+        self._btn_plan_side.clicked.connect(lambda: self._show_plan_side(True))
+        bar.addWidget(self._btn_plan_side)
         self._btn_plan = _button(t("planner.compute"), "search")
         self._btn_plan.setToolTip(t("planner.compute_tip"))
         self._btn_plan.clicked.connect(lambda _checked=False: self._compute_plan(force=True))
@@ -191,11 +201,32 @@ class ObserveSpace:
         split.setToolTip(t("planner.split_tip"))
         self._plan_split = split
         right.addWidget(split, stretch=1)
-        outer.addLayout(right, stretch=1)
+        outer.addWidget(right_w, stretch=1)
+        self._plan_side, self._plan_right = side, right_w
+        self._compact_hooks.append(self._plan_compact)
         self._add_page(page, t("tabs.planner"))
         self._planner_page = page
         if self._plan is not None:                        # rebuilt (language, theme): shown again
             self._show_plan()
+
+    def _plan_compact(self, compact):
+        """Compact layout: the constraints as a page of their own, the results otherwise."""
+        side = self._plan_side
+        if compact:
+            side.setMinimumWidth(0)
+            side.setMaximumWidth(16777215)
+        else:
+            side.setFixedWidth(320)
+        self._btn_plan_side.setVisible(compact)
+        self._plan_status.setVisible(not compact)        # the summary under the bar says it too
+        self._btn_plan_back.setVisible(compact)
+        self._show_plan_side(False)
+
+    def _show_plan_side(self, shown):
+        """Compact layout: the constraints (*shown*) or the night's targets."""
+        compact = self.is_compact()
+        self._plan_side.setVisible(not compact or shown)
+        self._plan_right.setVisible(not compact or not shown)
 
     def _plan_table(self, columns):
         table = QTableWidget(0, len(columns))
@@ -762,7 +793,7 @@ class ObserveSpace:
     def _edit_plan_lists(self):
         """Window: the bucket list and the done list, one name per line."""
         dlg, lay = self._list_dialog(t("planner.lists_title"), t("planner.lists_hint"))
-        from PyQt6.QtWidgets import QPlainTextEdit
+        from qt.QtWidgets import QPlainTextEdit
         edits = {}
         row = QHBoxLayout()
         row.setSpacing(16)
@@ -791,7 +822,7 @@ class ObserveSpace:
     def _edit_custom_targets(self):
         """Window: the user's own targets, one per line: name; RA; Dec; type; size; magnitude."""
         dlg, lay = self._list_dialog(t("planner.custom_title"), t("planner.custom_hint"))
-        from PyQt6.QtWidgets import QPlainTextEdit
+        from qt.QtWidgets import QPlainTextEdit
         lines = []
         for c in prefs.get("planner_custom") or []:
             lines.append("; ".join([c["name"], _ra(c["ra"] / 15.0, "dms"), _dec(c["dec"], "dms"), c.get("type", ""),

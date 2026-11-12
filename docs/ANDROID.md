@@ -35,7 +35,8 @@ Recommendation: **PySide6**. The move from PyQt6 is mostly mechanical in Qt 6 (s
 ## What changes in the interface
 
 The window is made for a screen at least 1180 pixels wide: a side panel and five spaces (4.13). Below 600 pixels
-of width (a phone, or a narrow window on the desktop), the window switches to a **compact layout**:
+of width — 900 in practice, below which the wide layout no longer fits — the window switches to a **compact
+layout**:
 
 - the side panel (date, place, time zone, favourites, Calculate) becomes a drawer opened from a button at the top;
 - the five spaces become a bar at the bottom — **Tonight**, **Sky**, **Bodies**, **Calendar**, **Observe** — and
@@ -62,8 +63,8 @@ would need Java calls through `QJniObject` or pyjnius. They come after 5.0, if t
 | Version | Content |
 |---|---|
 | **4.13** | `gui.py` split into one module per space (`ui/`); the interface in five spaces, the ones of the phone's bottom bar. |
-| **4.14** | `qt.py` and the move from PyQt6 to PySide6 on the desktop (same app for its users; Windows build and tests on PySide6). A first APK in GitHub Actions: an empty window that loads the engine and runs the self-test on an emulator, to settle the tools early. |
-| **4.15** | The compact layout, tested by narrowing the window; user folder from `QStandardPaths`. |
+| **4.14** | `qt.py` and the move from PyQt6 to PySide6 on the desktop (same app for its users; Windows build and tests on PySide6; `CELESTE_QT=pyqt6` still runs PyQt6). A first APK in GitHub Actions (`.github/workflows/android.yml`): the smallest app, `android/main.py` (version, theme), to settle the tools early; the engine (NumPy, Skyfield) needs python-for-android recipes and comes with the alpha. |
+| **4.15** | The compact layout below 900 pixels of width (`COMPACT_WIDTH` in `gui.py`), tested by narrowing the window: drawer, bottom bar, 48-pixel touch targets, stacked cards, the Targets' constraints on their own page. Next: user folder from `QStandardPaths`. |
 | **5.0 alpha** | The full app as a debug APK built by GitHub Actions: first start (ephemeris download with its progress), Tonight, ephemeris, sky map, planets, Targets, events; location by GPS; the four languages and the three themes. |
 | **5.0 beta** | Sky map following the phone; Android back button and screen rotation; sharing exports; speed on modest phones. Google Play closed test (see below). |
 | **5.0** | Release on Google Play (closed test, then production) and the APK on GitHub Releases. The desktop app becomes 5.0 too: the same code. |

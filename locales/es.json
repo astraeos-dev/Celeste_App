@@ -146,6 +146,9 @@
     "observe": "Observar",
     "observe_tip": "Los objetivos de la noche según sus condiciones"
   },
+  "compact": {
+    "menu": "Fecha, lugar y ajustes del cálculo"
+  },
   "common": {
     "visible": "Visible",
     "above_horizon": "Sobre el horizonte",
@@ -736,7 +739,9 @@
     "types_all_tip": "Marcar todos los tipos de objeto",
     "types_none": "Desmarcar todo",
     "types_none_tip": "Desmarcar todos los tipos (y marcar los que quiera)",
-    "split_tip": "Arrastre la línea entre las tablas y el gráfico para agrandar uno u otro"
+    "split_tip": "Arrastre la línea entre las tablas y el gráfico para agrandar uno u otro",
+    "constraints": "Condiciones",
+    "show_results": "Ver los objetivos"
   },
   "observatory": {
     "section": "Lugar de observación",

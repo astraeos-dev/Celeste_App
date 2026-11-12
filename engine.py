@@ -47,6 +47,12 @@ v4.3:
   • Sedna among MINOR_PLANETS; MINOR_PLANET_NUMBERS, the Minor Planet
     Center's numbers ("(136199) Eris")
 
+v4.15:
+  • unchanged: the window gets a compact layout for phones and narrow windows
+
+v4.14:
+  • unchanged: the interface moves to PySide6 (qt.py); a first Android build
+
 v4.13:
   • unchanged: the interface is split into spaces (ui/) around this engine,
     which stays free of Qt

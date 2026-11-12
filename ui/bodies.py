@@ -36,6 +36,7 @@ class BodiesSpace:
         bar.setSpacing(24)
         bar.addWidget(self._planet_selector, stretch=1)
         bar.addWidget(self._planet_visible)
+        self._reflow.append(bar)
         bar.addStretch()
         lay.addLayout(bar)
 
@@ -135,12 +136,18 @@ class BodiesSpace:
         reset = _button(t("planets.orrery_reset"), "reset", "discret", compact=True)
         reset.setToolTip(t("planets.orrery_reset_tip"))
         reset.clicked.connect(self._reset_orrery)
+        controls = QHBoxLayout()
+        controls.setSpacing(4)
         for widget in (back, self._orrery_play, forward, self._orrery_speed):
-            bar.addWidget(widget)
-        bar.addSpacing(12)
-        bar.addWidget(self._orrery_date)
-        bar.addStretch()
-        bar.addWidget(reset)
+            controls.addWidget(widget)
+        date_row = QHBoxLayout()
+        date_row.addSpacing(12)
+        date_row.addWidget(self._orrery_date)
+        date_row.addStretch()
+        date_row.addWidget(reset)
+        bar.addLayout(controls)
+        bar.addLayout(date_row, stretch=1)
+        self._reflow.append(bar)                            # compact: the date under the controls
         card_l.addLayout(bar)
         if getattr(self, "_orrery_timer", None) is None:
             self._orrery_timer = QTimer(self)

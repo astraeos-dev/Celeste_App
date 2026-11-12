@@ -146,6 +146,9 @@
     "observe": "Observe",
     "observe_tip": "The night's targets under your constraints"
   },
+  "compact": {
+    "menu": "Date, place and calculation settings"
+  },
   "common": {
     "visible": "Visible",
     "above_horizon": "Above the horizon",
@@ -736,7 +739,9 @@
     "types_all_tip": "Select every type of object",
     "types_none": "Clear all",
     "types_none_tip": "Clear every type (then tick the ones you want)",
-    "split_tip": "Drag the line between the tables and the chart to enlarge one or the other"
+    "split_tip": "Drag the line between the tables and the chart to enlarge one or the other",
+    "constraints": "Constraints",
+    "show_results": "Show the targets"
   },
   "observatory": {
     "section": "Observing site",

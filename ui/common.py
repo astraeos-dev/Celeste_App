@@ -21,21 +21,21 @@ import functools
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError, available_timezones
 
-from PyQt6.QtCore import (
+from qt.QtCore import (
     QDate, QDateTime, QEvent, QLocale, QPoint, QPointF, QRectF, QRegularExpression, QSize,
     QStringListModel, Qt, QTime, QTimer, QTimeZone, QUrl,
 )
-from PyQt6.QtGui import (
+from qt.QtGui import (
     QBrush, QColor, QCursor, QDesktopServices, QFont, QFontDatabase, QKeySequence,
     QPainter, QPainterPath, QPalette, QPen, QPixmap, QRegularExpressionValidator, QShortcut,
 )
-from PyQt6.QtPositioning import QGeoPositionInfo, QGeoPositionInfoSource
-from PyQt6.QtWidgets import (
-    QAbstractItemView, QApplication, QButtonGroup, QCheckBox, QComboBox, QCompleter,
+from qt.QtPositioning import QGeoPositionInfo, QGeoPositionInfoSource
+from qt.QtWidgets import (
+    QAbstractItemView, QApplication, QBoxLayout, QButtonGroup, QCheckBox, QComboBox, QCompleter,
     QDateEdit, QDateTimeEdit, QDialog, QDialogButtonBox, QFileDialog, QFrame, QGridLayout, QProgressDialog,
     QHBoxLayout, QHeaderView, QInputDialog, QLabel, QLineEdit, QMainWindow, QMenu,
     QMessageBox, QProgressBar, QPushButton, QScrollArea, QSizePolicy, QSlider, QSplitter, QToolTip,
-    QStatusBar, QTabWidget, QTableWidget, QTableWidgetItem, QToolButton,
+    QStatusBar, QTabBar, QTabWidget, QTableWidget, QTableWidgetItem, QToolButton,
     QVBoxLayout, QWidget,
 )
 
@@ -470,10 +470,15 @@ def _run_in_background(func, on_done, on_error):
         _BACKGROUND.discard(timer)
         executor.shutdown(wait=False)
         error = future.exception()
-        if error is not None:
-            on_error(error)
-        else:
-            on_done(future.result())
+        try:
+            if error is not None:
+                on_error(error)
+            else:
+                on_done(future.result())
+        except RuntimeError as exc:
+            # the window was rebuilt (language, theme) or closed meanwhile: its widgets are gone
+            if "deleted" not in str(exc):
+                raise
     timer.timeout.connect(poll)
     _BACKGROUND.add(timer)
     timer.start()
@@ -1073,6 +1078,25 @@ def _qss_family(families):
     return ", ".join(f'"{f}"' for f in families)
 
 
+def compact_stylesheet():
+    """
+    The compact layout (phone, narrow window), over the theme's style sheet:
+    touch targets of 48 pixels, the spaces as a bar at the bottom whose
+    current entry is marked on top.
+    """
+    C = Config
+    return f"""
+QPushButton, QToolButton {{ min-height: 48px; }}
+QLineEdit, QComboBox, QDateTimeEdit, QDateEdit {{ min-height: 44px; }}
+QTabWidget#spaces > QTabBar::tab {{
+    font-size: 11px; padding: 12px 2px; margin-right: 0px;
+    border-bottom: none; border-top: 2px solid transparent;
+}}
+QTabWidget#spaces > QTabBar::tab:selected {{ border-top-color: {C.ENCRE}; }}
+QTabWidget#space > QTabBar::tab {{ padding: 12px 6px; }}
+"""
+
+
 def build_stylesheet():
     """Qt style sheet of the active theme, after the Astræos components."""
     C = Config
@@ -1367,7 +1391,7 @@ class OsmMap(QWidget):
         return self.tiles.get(key)
 
     def _request(self, key):
-        from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkRequest
+        from qt.QtNetwork import QNetworkAccessManager, QNetworkRequest
         if self._net is None:
             self._net = QNetworkAccessManager(self)
         z, x, y = key

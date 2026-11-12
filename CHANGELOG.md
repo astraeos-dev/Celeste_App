@@ -7,6 +7,19 @@ Write for them: short sentences, as dashes, no bold or code (the window of versi
 markup as it is), about 800 characters at most (the window cuts the rest, GitHub does not). See the wiki page
 "Publier une version".
 
+## 4.15
+
+- On a narrow window, and soon on phones: a compact layout, with the date and the place in a drawer, the five spaces in
+  a bar at the bottom and larger touch targets.
+- Targets: on a narrow screen, the constraints have a page of their own.
+- Also since 4.12: the five spaces (Tonight, Sky, Bodies, Calendar, Observe), Céleste's icon in the taskbar, and Qt
+  for Python (PySide6) under the hood.
+
+## 4.14
+
+- Céleste now runs on Qt for Python (PySide6), the road to the Android version.
+- A first Android build, for testing.
+
 ## 4.13
 
 - The interface in five spaces: Tonight, Sky, Bodies, Calendar and Observe; the pages of a space under a second row

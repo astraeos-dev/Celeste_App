@@ -892,9 +892,11 @@ def draw_orrery(fig, scene, labels):
     fig.set_layout_engine("constrained")
     fig.get_layout_engine().set(w_pad=0.16, h_pad=0.12, wspace=0.08)
     fig.patch.set_facecolor(Config.CIEL_100)
+    width, height = fig.get_size_inches()
+    rows, cols = (2, 1) if width < 0.9 * height else (1, 2)    # a phone: one above the other
     panels = (
-        (fig.add_subplot(1, 2, 1), 1.8, ("Mercury", "Venus", "Mars"), labels["inner"]),
-        (fig.add_subplot(1, 2, 2), 31.5, ("Jupiter", "Saturn", "Uranus", "Neptune"), labels["outer"]),
+        (fig.add_subplot(rows, cols, 1), 1.8, ("Mercury", "Venus", "Mars"), labels["inner"]),
+        (fig.add_subplot(rows, cols, 2), 31.5, ("Jupiter", "Saturn", "Uranus", "Neptune"), labels["outer"]),
     )
     earth = scene["earth"]
     fig._orrery_moving = []                     # (name, marker, label): what move_orrery moves

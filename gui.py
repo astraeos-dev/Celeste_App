@@ -1,5 +1,5 @@
 """
-gui.py — Graphical interface of Céleste (PyQt6), Astræos design
+gui.py — Graphical interface of Céleste (Qt, PySide6), Astræos design
 =================================================================
 v3.3 — Interface following the Astræos design system:
   ★ Three themes: Nuit (night, the default), Jour (day), Observation (red on
@@ -42,13 +42,19 @@ from ui.observe import ObserveSpace
 from ui.settings_tab import SettingsSpace
 
 
+# Below this width (a phone, or a narrow window) the window takes its compact
+# layout: the side panel becomes a drawer, the spaces a bar at the bottom
+COMPACT_WIDTH = 900
+_TOUCH_SIZE = 48              # touch targets of the compact layout (Material: 48 dp)
+
+
 class AstroApp(TonightSpace, SkySpace, BodiesSpace, CalendarSpace, ObserveSpace, SettingsSpace, QMainWindow):
     """Main window of Céleste."""
 
     def __init__(self):
         super().__init__()
         self.resize(1400, 880)
-        self.setMinimumSize(1180, 720)
+        self.setMinimumSize(360, 560)          # a phone; below COMPACT_WIDTH, the compact layout
         self.setWindowIcon(icons.app_icon())
 
         # State
@@ -121,13 +127,19 @@ class AstroApp(TonightSpace, SkySpace, BodiesSpace, CalendarSpace, ObserveSpace,
         root = QHBoxLayout(central)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
-        root.addWidget(self._scrolling_sidebar(self._build_sidebar()))
+        self._central = central
+        self._sidebar_scroll = self._scrolling_sidebar(self._build_sidebar())
+        root.addWidget(self._sidebar_scroll)
 
         main = QWidget()
         main.setObjectName("central")
+        self._main = main
         main_l = QVBoxLayout(main)
         main_l.setContentsMargins(16, 8, 16, 0)
+        self._main_layout = main_l
+        main_l.addWidget(self._build_top_bar())
         self.tabs = QTabWidget()
+        self.tabs.setObjectName("spaces")
         self.tabs.tabBar().setDrawBase(False)
         self.tabs.tabBar().setExpanding(False)
         main_l.addWidget(self.tabs)
@@ -135,6 +147,8 @@ class AstroApp(TonightSpace, SkySpace, BodiesSpace, CalendarSpace, ObserveSpace,
 
         self._chart_tabs = {}
         self._chart_hints = {}
+        self._reflow = []                 # rows of cards stacked in the compact layout
+        self._compact_hooks = []          # what a page changes itself in the compact layout
         self._pages = []                  # every page, in the order of the spaces
         self._space_tabs = []             # the tab bars of the spaces with several pages
         # Five spaces (docs/ANDROID.md): Tonight, Sky, Bodies, Calendar, Observe
@@ -154,8 +168,107 @@ class AstroApp(TonightSpace, SkySpace, BodiesSpace, CalendarSpace, ObserveSpace,
 
         self.setCentralWidget(central)
         self._build_status_bar()
+        self._compact = None
+        self._drawer_open = False
+        self._apply_layout()
         # Otherwise the date field gets the focus with its day selected
         self.tabs.setFocus()
+
+    # ── Compact layout (phone, narrow window) ─────────────────────────────────
+
+    def _build_top_bar(self):
+        """The bar of the compact layout: the drawer's button, the place and the date."""
+        bar = QFrame()
+        bar.setObjectName("topBar")
+        row = QHBoxLayout(bar)
+        row.setContentsMargins(0, 4, 0, 4)
+        row.setSpacing(8)
+        self._drawer_btn = _icon_button("menu", t("compact.menu"))
+        self._drawer_btn.setFixedSize(_TOUCH_SIZE, _TOUCH_SIZE)
+        self._drawer_btn.clicked.connect(lambda: self.set_drawer(not self._drawer_open))
+        row.addWidget(self._drawer_btn)
+        self._top_summary = _label("", "legende", wrap=True)
+        row.addWidget(self._top_summary, stretch=1)
+        return bar
+
+    def is_compact(self):
+        return bool(self._compact)
+
+    def _apply_layout(self):
+        """Wide or compact layout, by the window's width."""
+        compact = self.width() < COMPACT_WIDTH
+        if compact == self._compact:
+            return
+        self._compact = compact
+        self._central.setStyleSheet(compact_stylesheet() if compact else "")
+        self.tabs.setTabPosition(QTabWidget.TabPosition.South if compact else QTabWidget.TabPosition.North)
+        self.tabs.tabBar().setExpanding(compact)
+        self.tabs.setDocumentMode(compact)             # the bar over the whole width
+        direction = QBoxLayout.Direction.TopToBottom if compact else QBoxLayout.Direction.LeftToRight
+        for layout in self._reflow:                    # side-by-side cards: one under another
+            layout.setDirection(direction)
+        for hook in self._compact_hooks:
+            hook(compact)
+        self._fit_space_bar()
+        if getattr(self, "_dte", None) is not None:      # the charts take the new shape
+            self._dirty |= set(self._chart_tabs.values())
+            QTimer.singleShot(0, self._draw_visible_chart)
+        self._top_summary.parentWidget().setVisible(compact)
+        self.statusBar().setVisible(not compact)
+        self._main_layout.setContentsMargins(*((8, 0, 8, 0) if compact else (16, 8, 16, 0)))
+        self._fit_sidebar()
+        self.set_drawer(False)
+
+    def set_drawer(self, open_):
+        """Compact layout: the side panel over the whole window (open) or hidden."""
+        self._drawer_open = bool(open_) and bool(self._compact)
+        if not self._compact:
+            self._sidebar_scroll.setVisible(True)
+            self._main.setVisible(True)
+        else:
+            self._sidebar_scroll.setVisible(self._drawer_open)
+            self._main.setVisible(not self._drawer_open)
+        self._fit_sidebar()
+        self._update_top_summary()
+
+    def _fit_sidebar(self):
+        scroll = getattr(self, "_sidebar_scroll", None)
+        if scroll is None:
+            return
+        if self._compact:
+            scroll.setMinimumWidth(0)
+            scroll.setMaximumWidth(16777215)
+        else:
+            bar = scroll.verticalScrollBar()
+            scroll.setFixedWidth(312 + (bar.sizeHint().width() if bar.maximum() > 0 else 0))
+
+    def _update_top_summary(self):
+        label = getattr(self, "_top_summary", None)
+        if label is None or getattr(self, "_dte", None) is None or self._lat is None:
+            return
+        place = self.location_name or f"{_fmt_lat(self._lat)}, {_fmt_lon(self._lon)}"
+        local = self._local(self._dte)
+        label.setText(f"{place}\n{local.strftime('%d/%m/%Y')} {self._fmt_clock(local)}")
+
+    def _fit_space_bar(self):
+        """Compact layout: the entries of the bottom bar share its whole width."""
+        bar = self.tabs.tabBar()
+        bar.setUsesScrollButtons(not self._compact)
+        bar.setElideMode(Qt.TextElideMode.ElideRight if self._compact else Qt.TextElideMode.ElideNone)
+        settings = 36                                  # the gear, last
+        available = self.width() - 16                  # the window less the margins (8 + 8)
+        width = max(0, (available - settings) // max(1, bar.count() - 1) - 4) if self._compact else 0
+        if getattr(self, "_space_bar_width", None) != width:
+            self._space_bar_width = width
+            bar.setStyleSheet(f"QTabBar::tab {{ min-width: {width}px; max-width: {width}px; }} "
+                              f"QTabBar::tab:last {{ min-width: {settings - 4}px; max-width: {settings - 4}px; }}"
+                              if width else "")
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if getattr(self, "_compact", None) is not None:
+            self._apply_layout()
+            self._fit_space_bar()
 
     # ── Side panel ────────────────────────────────────────────────────────────
 
@@ -274,6 +387,7 @@ class AstroApp(TonightSpace, SkySpace, BodiesSpace, CalendarSpace, ObserveSpace,
         self.btn_calc = _button(t("side.calculate"), "calculate", "principal")
         self.btn_calc.setToolTip(tf("side.calculate_tip", key="F5"))
         self.btn_calc.clicked.connect(self.calculate)
+        self.btn_calc.clicked.connect(lambda: self.set_drawer(False))     # compact: back to the result
         lay.addWidget(self.btn_calc)
         self.btn_live = _button(t("side.live"), "live", "secondaire", checkable=True)
         self.btn_live.setToolTip(tf("side.live_tip", key="Ctrl+L"))
@@ -294,8 +408,7 @@ class AstroApp(TonightSpace, SkySpace, BodiesSpace, CalendarSpace, ObserveSpace,
         lay.addWidget(_label(tf("app.version", version=_version_text()), "legende"))
         return side
 
-    @staticmethod
-    def _scrolling_sidebar(side):
+    def _scrolling_sidebar(self, side):
         """The side panel, which scrolls when the window is lower than it
         (screens 768 pixels high)."""
         side.setMinimumWidth(280)          # otherwise its natural width (337) would overflow 312
@@ -308,6 +421,8 @@ class AstroApp(TonightSpace, SkySpace, BodiesSpace, CalendarSpace, ObserveSpace,
         bar = scroll.verticalScrollBar()
 
         def fit(_low=0, high=0):            # the scroll bar adds to the 312 pixels
+            if getattr(self, "_compact", None):
+                return                      # compact: the drawer takes the whole width
             scroll.setFixedWidth(312 + (bar.sizeHint().width() if high > 0 else 0))
         bar.rangeChanged.connect(fit)
         fit()
@@ -1002,6 +1117,7 @@ class AstroApp(TonightSpace, SkySpace, BodiesSpace, CalendarSpace, ObserveSpace,
     def _update_status(self):
         if self._lat is None:
             return
+        self._update_top_summary()
         coords = f"{_fmt_lat(self._lat)}, {_fmt_lon(self._lon)}"
         self._lbl_pos.setText(f"{self.location_name} · {coords}"
                               if self.location_name else coords)

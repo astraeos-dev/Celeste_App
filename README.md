@@ -9,7 +9,7 @@
 [![GitHub repository](https://img.shields.io/github/stars/astraeos-dev/Celeste_App?style=social&label=Repository)](https://github.com/astraeos-dev/Celeste_App)
 [![Wiki](https://img.shields.io/badge/Wiki-how--to%20guides-1f2a3b)](https://github.com/astraeos-dev/Celeste_App/wiki)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python)
-![PyQt6](https://img.shields.io/badge/UI-PyQt6-blueviolet)
+![PySide6](https://img.shields.io/badge/UI-PySide6-blueviolet)
 
 <a href="https://buymeacoffee.com/gregorychau"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me a Coffee" height="40"></a>
 
@@ -31,7 +31,7 @@ night's targets); Settings sit behind the gear icon. The Workshop opens from the
 Céleste computes in real time — or for any date — the positions of the Sun, the Moon, the planets (Mercury to
 Neptune) and the minor planets, the events of the day (rise, set, twilights), the phases of the Moon, the eclipses
 (seen from the chosen place) and the events of the year: conjunctions, oppositions, close approaches of the Moon,
-seasons. The results show in a PyQt6 interface with the Astræos design (Nuit, Jour and Observation themes), with
+seasons. The results show in a Qt interface (PySide6) with the Astræos design (Nuit, Jour and Observation themes), with
 interactive charts and a sky map.
 
 The interface is translated into French, English, Spanish and German.
@@ -147,7 +147,7 @@ The interface is translated into French, English, Spanish and German.
 
 ## Installation
 
-Requirements: Python 3.10 or newer, and pip. PyQt6 bundles Qt; on a minimal Linux, Qt also needs a few system
+Requirements: Python 3.10 or newer, and pip. PySide6 bundles Qt; on a minimal Linux, Qt also needs a few system
 libraries (`sudo apt install libegl1 libxkbcommon0` on Debian or Ubuntu).
 
 ```bash
@@ -278,6 +278,7 @@ The project follows the **MVC (model-view-controller)** pattern:
 Celeste_App/
 ├── main.py              # Entry point — --lang / --theme options, Qt window
 ├── engine.py            # Model — pure astronomical calculations (AstroEngine)
+├── qt.py                # The Qt binding: PySide6 (PyQt6 as a fallback)
 ├── gui.py               # View + controller — the main window (side panel, place, date, calculation)
 ├── ui/                  # One module per space: tonight, sky, bodies, calendar_tab, observe, settings_tab;
 │                        #   common.py: Astræos components, formats, shared widgets
@@ -302,6 +303,7 @@ Celeste_App/
 ├── locales/             # Translations (fr.json is the reference)
 ├── fonts/               # IBM Plex Sans, IBM Plex Mono and Astraeos Symboles fonts (OFL licence)
 ├── assets/              # Astræos symbol and icon (SVG), land, minor planets, comets, cities, Messier objects
+├── android/             # The Android build's entry point (pyside6-android-deploy)
 ├── scripts/             # Application build, star catalogue, data tables, release notes
 ├── celeste.spec         # PyInstaller recipe of Celeste.exe (Windows)
 ├── installer/           # Inno Setup installer (celeste.iss)
@@ -450,7 +452,7 @@ launch, SmartScreen shows "Windows protected your PC" (*More info*, then *Run an
 
 | Package | Min. version | Role |
 |---------|-------------|------|
-| [PyQt6](https://www.riverbankcomputing.com/software/pyqt/) | 6.5 | Graphical interface (Qt 6) |
+| [PySide6](https://doc.qt.io/qtforpython-6/) | 6.8 | Graphical interface (Qt 6, Qt for Python); PyQt6 also works (`CELESTE_QT=pyqt6`, see `qt.py`) |
 | [matplotlib](https://matplotlib.org/) | 3.10.8 | Interactive astronomical charts |
 | [Skyfield](https://rhodesmill.org/skyfield/) | 1.47 | JPL DE440 ephemeris, time (UT1, ΔT), rises and sets, satellites (installs NumPy) |
 | [timezonefinder](https://github.com/jannikmi/timezonefinder) | 6.5 | IANA time zone of a place, offline ("Automatic" mode) |
@@ -522,8 +524,9 @@ launch, SmartScreen shows "Windows protected your PC" (*More info*, then *Run an
 
 - [x] **Five spaces** (4.13) — `gui.py` split into one module per space (`ui/`); Tonight, Sky, Bodies, Calendar,
   Observe
-- [ ] **PySide6** (4.14) — Qt for Python, whose official tool builds Android apps; a first APK in GitHub Actions
-- [ ] **Compact layout** (4.15) — the same Qt interface below 600 pixels of width: drawer, bottom bar, touch targets
+- [x] **PySide6** (4.14) — Qt for Python (`qt.py`), whose official tool builds Android apps; a first APK in GitHub
+  Actions (`android/`)
+- [x] **Compact layout** (4.15) — the same Qt interface below 900 pixels of width: drawer, bottom bar, touch targets
 - [ ] **Android app** (5.0) — the same code as the desktop, with the phone's location and a sky map following the
   phone. The plan: [docs/ANDROID.md](docs/ANDROID.md)
 

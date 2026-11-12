@@ -13,9 +13,9 @@ Apache License 2.0: see assets/LICENSE-MDI.txt.
 
 import os
 
-from PyQt6.QtCore import QByteArray, QRectF, Qt
-from PyQt6.QtGui import QIcon, QPainter, QPixmap
-from PyQt6.QtSvg import QSvgRenderer
+from qt.QtCore import QByteArray, QRectF, Qt
+from qt.QtGui import QIcon, QPainter, QPixmap
+from qt.QtSvg import QSvgRenderer
 
 _ASSETS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
 
@@ -45,6 +45,12 @@ MDI = {
         "M13.5,8H12V13L16.28,15.54L17,14.33L13.5,12.25V8M13,3A9,9 0 0,0 4,12H1L4.96,16.03L9,12H6A7,7 0 0,1 13,5A7,7 0 0,1 20,12A7,7 0 0,1 13,19C11.07,19 9.32,18.21 8.06,16.94L6.64,18.36C8.27,20 10.5,21 13,21A9,9 0 0,0 22,12A9,9 0 0,0 13,3"),
     "workshop": (  # a set square with its hole (drawn for Céleste)
         "M3 3V21H21L3 3M5 7.83L16.17 19H5V7.83M7.5 13.5V16.5H10.5L7.5 13.5M2 22H22V23H2V22Z"),
+    "tune": (  # mdi-tune
+        "M3,17V19H9V17H3M3,5V7H13V5H3M13,21V19H21V17H13V15H11V21H13M7,9V11H3V13H7V15H9V9H7M21,13V11H11V13H21M15,9H17V7H21V5H17V3H15V9Z"),
+    "menu": (  # mdi-menu
+        "M3,6H21V8H3V6M3,11H21V13H3V11M3,16H21V18H3V16Z"),
+    "close": (  # mdi-close
+        "M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z"),
     "map": (  # mdi-map
         "M15,19L9,16.89V5L15,7.11M20.5,3C20.44,3 20.39,3 20.34,3L15,5.1L9,3L3.36,4.9C3.15,4.97 3,5.15 3,5.38V20.5A0.5,0.5 0 0,0 3.5,21C3.55,21 3.61,21 3.66,20.97L9,18.9L15,21L20.64,19.1C20.85,19 21,18.85 21,18.62V3.5A0.5,0.5 0 0,0 20.5,3Z"),
     "zoom_in": (  # mdi-magnify-plus-outline

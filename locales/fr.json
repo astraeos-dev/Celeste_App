@@ -146,6 +146,9 @@
     "observe": "Observer",
     "observe_tip": "Les cibles de la nuit selon vos contraintes"
   },
+  "compact": {
+    "menu": "Date, lieu et réglages du calcul"
+  },
   "common": {
     "visible": "Visible",
     "above_horizon": "Au-dessus de l'horizon",
@@ -736,7 +739,9 @@
     "types_all_tip": "Cocher tous les types d'objets",
     "types_none": "Tout décocher",
     "types_none_tip": "Décocher tous les types (puis cocher ceux voulus)",
-    "split_tip": "Faites glisser la ligne entre les tableaux et le graphique pour agrandir l'un ou l'autre"
+    "split_tip": "Faites glisser la ligne entre les tableaux et le graphique pour agrandir l'un ou l'autre",
+    "constraints": "Contraintes",
+    "show_results": "Voir les cibles"
   },
   "observatory": {
     "section": "Lieu d'observation",

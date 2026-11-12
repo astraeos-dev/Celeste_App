@@ -25,6 +25,7 @@ class TonightSpace:
                      self.card_moon_illum):
             cards.addWidget(card, stretch=1)
         lay.addLayout(cards)
+        self._reflow.append(cards)
 
         # Tonight: the night, the Moon, the visible planets and the next events
         card = _card()
@@ -106,6 +107,7 @@ class TonightSpace:
         row.addWidget(card, stretch=1)
 
         lay.addLayout(row)
+        self._reflow.append(row)
         lay.addStretch()
         self._ephem_page = scroll
         self._add_page(scroll, t("tabs.ephemeris"))

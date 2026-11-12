@@ -58,9 +58,9 @@ def make_icons():
     """Windows icon (.ico) drawn from the design system's SVG."""
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PIL import Image
-    from PyQt6.QtCore import Qt
-    from PyQt6.QtGui import QGuiApplication, QImage, QPainter
-    from PyQt6.QtSvg import QSvgRenderer
+    from qt.QtCore import Qt
+    from qt.QtGui import QGuiApplication, QImage, QPainter
+    from qt.QtSvg import QSvgRenderer
 
     app = QGuiApplication.instance() or QGuiApplication([])  # noqa: F841 (needed to paint)
     out = os.path.join(ROOT, "build", "icons")

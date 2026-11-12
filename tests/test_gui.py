@@ -1,5 +1,5 @@
 """
-tests/test_gui.py — Tests of the PyQt6 interface (without a screen)
+tests/test_gui.py — Tests of the Qt interface (without a screen)
 ===================================================================
 Builds the Céleste window off screen (QT_QPA_PLATFORM=offscreen) and drives
 it: calculation, change of language and theme (Nuit, Jour, Observation)
@@ -9,7 +9,7 @@ symbols followed by U+FE0E).
 
 The preferences and favourites are written to a temporary folder: the
 user's (~/.celeste) are never modified.
-The tests are skipped when PyQt6 (or Qt's system libraries) is
+The tests are skipped when PySide6 and PyQt6 (or Qt's system libraries) are
 missing.
 
 Run with:  pytest tests/test_gui.py -v
@@ -27,13 +27,13 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-pytest.importorskip("PyQt6.QtWidgets", reason="PyQt6 or the Qt libraries are missing")
+pytest.importorskip("qt", reason="PySide6 (or PyQt6) or the Qt libraries are missing")
 pytest.importorskip("matplotlib")
 
 from engine import COMETS  # noqa: E402
 from matplotlib.backend_bases import MouseEvent  # noqa: E402
-from PyQt6.QtCore import QEvent, Qt  # noqa: E402
-from PyQt6.QtWidgets import (  # noqa: E402
+from qt.QtCore import QEvent, Qt  # noqa: E402
+from qt.QtWidgets import (  # noqa: E402
     QAbstractButton, QApplication, QDialog, QFrame, QLabel, QMessageBox,
 )
 
@@ -387,7 +387,7 @@ class TestEvents:
 
     def test_map_of_a_conjunction(self, window, qapp):
         """The "Map" button of a conjunction opens the path of the bodies among the stars."""
-        from PyQt6.QtWidgets import QPushButton
+        from qt.QtWidgets import QPushButton
         window._search_conjunctions_gui()
         qapp.processEvents()
         buttons = [b for card in _event_cards(window) for b in card.findChildren(QPushButton)
@@ -603,7 +603,7 @@ class TestAstraeosRules:
 
     def test_single_gold_area(self, window):
         """A single primary button (gold fill) in the window."""
-        from PyQt6.QtWidgets import QPushButton
+        from qt.QtWidgets import QPushButton
         principal = [b for b in window.findChildren(QPushButton)
                      if b.property("variant") == "principal" and b.isVisibleTo(window)]
         assert principal == [window.btn_calc]
@@ -611,8 +611,8 @@ class TestAstraeosRules:
     def test_focused_field_shows_the_gold_ring(self, window, qapp):
         """v4.8: the box of a field with the keyboard focus is outlined in gold (the
         property was named "focus", Qt's own read-only one, and never changed)."""
-        from PyQt6.QtCore import Qt
-        from PyQt6.QtGui import QFocusEvent
+        from qt.QtCore import Qt
+        from qt.QtGui import QFocusEvent
         from config import Config
         for field in (window.field_lat, window.field_date):
             box = field.box
@@ -643,15 +643,16 @@ class _FakeSource:
     (0 access denied, 1 closed, 2 unknown, 4 timeout), with or without a last
     known position."""
     def __init__(self, coord, error=2, last=None):
-        from PyQt6.QtCore import QObject, pyqtSignal
+        from qt import Signal
+        from qt.QtCore import QObject
 
         class Source(QObject):
-            positionUpdated = pyqtSignal(object)
-            errorOccurred = pyqtSignal(int)
+            positionUpdated = Signal(object)
+            errorOccurred = Signal(int)
 
             def lastKnownPosition(self, *_args):
-                from PyQt6.QtCore import QDateTime
-                from PyQt6.QtPositioning import QGeoCoordinate, QGeoPositionInfo
+                from qt.QtCore import QDateTime
+                from qt.QtPositioning import QGeoCoordinate, QGeoPositionInfo
                 if last is None:
                     return QGeoPositionInfo()
                 return QGeoPositionInfo(QGeoCoordinate(*last), QDateTime.currentDateTime())
@@ -660,8 +661,8 @@ class _FakeSource:
                 if coord is None:
                     self.errorOccurred.emit(error)
                 else:
-                    from PyQt6.QtCore import QDateTime
-                    from PyQt6.QtPositioning import QGeoCoordinate, QGeoPositionInfo
+                    from qt.QtCore import QDateTime
+                    from qt.QtPositioning import QGeoCoordinate, QGeoPositionInfo
                     info = QGeoPositionInfo(QGeoCoordinate(*coord), QDateTime.currentDateTime())
                     info.setAttribute(QGeoPositionInfo.Attribute.HorizontalAccuracy, 25.0)
                     self.positionUpdated.emit(info)
@@ -1232,7 +1233,7 @@ class TestUserFiles:
 class TestEclipseMap:
     def test_map_of_a_solar_eclipse(self, window, qapp):
         """The "Map" button of an eclipse opens its ground projection."""
-        from PyQt6.QtWidgets import QPushButton
+        from qt.QtWidgets import QPushButton
         window._search_eclipses_gui()
         qapp.processEvents()
         buttons = [b for b in window.findChildren(QPushButton) if b.text() == "Carte"]
@@ -2163,3 +2164,75 @@ def test_astronomical_calendar(window, qapp, tmp_path, monkeypatch):
     text = target.read_text(encoding="utf-8")
     assert text.count("BEGIN:VEVENT") == len(window._ics_items) and "Pleine lune" in text
     widgets["boxes"]["moon"].setChecked(True)
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Compact layout: a phone, or a narrow window (v4.15, docs/ANDROID.md)
+# ──────────────────────────────────────────────────────────────────────
+
+class TestCompactLayout:
+    from qt.QtWidgets import QTabWidget
+
+    @staticmethod
+    def _phone(window, qapp, width=360, height=740):
+        window.resize(width, height)
+        _pump(qapp, 5)
+
+    def test_wide_by_default(self, window, qapp):
+        assert not window.is_compact()
+        assert window._sidebar_scroll.isVisible() and window._main.isVisible()
+        assert window.tabs.tabPosition() == self.QTabWidget.TabPosition.North
+        assert not window._top_summary.parentWidget().isVisible()
+
+    def test_phone_width(self, window, qapp):
+        self._phone(window, qapp)
+        assert window.is_compact()
+        assert window.width() == 360
+        assert not window._sidebar_scroll.isVisible() and window._main.isVisible()
+        assert window.tabs.tabPosition() == self.QTabWidget.TabPosition.South
+        assert window._top_summary.parentWidget().isVisible()
+        assert "Cherbourg" in window._top_summary.text()
+        assert not window.statusBar().isVisible()
+
+    def test_the_spaces_fit_the_bottom_bar(self, window, qapp):
+        self._phone(window, qapp)
+        bar = window.tabs.tabBar()
+        right = max(bar.tabRect(i).right() for i in range(bar.count()))
+        assert right <= window.tabs.width()
+        assert all(bar.tabRect(i).height() >= 44 for i in range(bar.count()))     # touch targets
+
+    def test_drawer(self, window, qapp):
+        self._phone(window, qapp)
+        window._drawer_btn.click()
+        _pump(qapp, 3)
+        assert window._sidebar_scroll.isVisible() and not window._main.isVisible()
+        assert window._sidebar_scroll.width() > 312                               # the whole width
+        window.btn_calc.click()
+        _pump(qapp, 3)
+        assert not window._sidebar_scroll.isVisible() and window._main.isVisible()
+
+    def test_cards_one_under_another(self, window, qapp):
+        self._phone(window, qapp)
+        assert window.card_sun_alt.y() < window.card_sun_rise.y()
+        window.resize(1400, 880)
+        _pump(qapp, 5)
+        assert not window.is_compact()
+        assert window.card_sun_alt.y() == window.card_sun_rise.y()
+        assert window._sidebar_scroll.isVisible()
+
+    def test_targets_constraints_on_their_own_page(self, window, qapp):
+        self._phone(window, qapp)
+        window.show_page(window._planner_page)
+        _pump(qapp, 3)
+        assert not window._plan_side.isVisible() and window._plan_right.isVisible()
+        window._btn_plan_side.click()
+        assert window._plan_side.isVisible() and not window._plan_right.isVisible()
+        window._show_plan_side(False)
+        assert not window._plan_side.isVisible()
+
+    def test_survives_a_rebuild(self, window, qapp):
+        self._phone(window, qapp)
+        window._lang_combo.setCurrentIndex(window._lang_combo.findData("en"))
+        _pump(qapp, 5)
+        assert window.is_compact()
+        assert window.tabs.tabPosition() == self.QTabWidget.TabPosition.South

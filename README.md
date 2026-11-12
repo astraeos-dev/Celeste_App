@@ -475,9 +475,10 @@ launch, SmartScreen shows "Windows protected your PC" (*More info*, then *Run an
 
 ### Version 5: Android
 
-- [ ] **Shared core** (4.11) — the Qt-free modules in one `celeste` package, with a JSON-ready API
-- [ ] **Android app** (5.0) — Kotlin and Jetpack Compose interface on the same Python engine (Chaquopy): Tonight,
-  sky map following the phone, Targets, Events, notifications and a widget. The plan: [docs/ANDROID.md](docs/ANDROID.md)
+- [ ] **PySide6** (4.11) — Qt for Python, whose official tool builds Android apps; a first APK in GitHub Actions
+- [ ] **Compact layout** (4.12) — the same Qt interface below 600 pixels of width: drawer, bottom bar, touch targets
+- [ ] **Android app** (5.0) — the same code as the desktop, with the phone's location and a sky map following the
+  phone. The plan: [docs/ANDROID.md](docs/ANDROID.md)
 
 ---
 

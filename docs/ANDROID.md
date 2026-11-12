@@ -1,95 +1,82 @@
 # Céleste 5 — the Android port
 
-Version 5 brings Céleste to Android phones and tablets. This document is the plan: what is reused, how the app is
-built, the steps from 4.x to 5.0, and the risks. It will be updated as the work goes.
+Version 5 brings Céleste to Android phones and tablets **with the same Qt interface as the desktop**: one code
+base, one look, the Astræos design everywhere. This document is the plan: what is reused, the tools, the steps from
+4.x to 5.0, and the risks. It will be updated as the work goes.
 
 ## What can be reused
 
-Céleste was written model–view–controller from the start, and only the view depends on Qt:
+Everything. The engine and the data are reused as they are; the Qt interface is reused too, given a compact layout
+for small screens:
 
-| Module | Lines | Qt | On Android |
-|---|---|---|---|
-| `engine.py` (DE440, rises, eclipses, events, moons, rings, satellites) | 2,800 | no | reused as is |
-| `planner.py`, `mpc.py` (night planner, comets) | 670 | no | reused as is |
-| `places.py`, `satellites.py`, `history.py`, `settings.py`, `i18n.py`, `utils.py`, `config.py` | 1,100 | no | reused (paths adapted) |
-| `assets/`, `locales/`, `star_catalog.py`, fonts | — | — | reused as is |
-| `charts.py` (matplotlib) | 1,100 | no | its *scene* functions reused; drawing redone natively |
-| `gui.py`, `icons.py`, `main.py` (PyQt6) | 5,400 | yes | rewritten for touch screens |
+| Module | Lines | On Android |
+|---|---|---|
+| `engine.py` (DE440, rises, eclipses, events, moons, rings, satellites) | 2,800 | as is |
+| `planner.py`, `mpc.py`, `places.py`, `satellites.py`, `history.py`, `settings.py`, `i18n.py`, `utils.py`, `config.py` | 1,800 | as is (user folder from `QStandardPaths`) |
+| `charts.py` (matplotlib, drawn in Qt by its QtAgg backend) | 1,100 | as is |
+| `gui.py`, `icons.py`, `main.py` (Qt) | 5,400 | the same code, with a compact layout below 600 pixels of width |
+| `assets/`, `locales/`, `star_catalog.py`, `fonts/` | — | as is |
 
-The 688 tests check the engine against JPL Horizons, NASA, the USNO and the IMO. Keeping that engine, rather than
-rewriting it, keeps its precision.
+The 688 tests run unchanged, and the interface tests also run in the compact layout.
 
-## The choice: Python engine, native interface
+## The tools: Qt for Python on Android
+
+Two ways lead to Android with a Python Qt application:
 
 | Option | For | Against |
 |---|---|---|
-| **Kotlin + Jetpack Compose interface, Python engine through [Chaquopy](https://chaquo.com/chaquopy/)** (recommended) | Native look and speed, Material components, Android sensors and notifications; the engine and its tests unchanged; Chaquopy is open source (MIT) and ships NumPy | Two languages; Python adds about 25 MB to the APK and a second or two at the first start |
-| PySide6 for Android (Qt for Python) | One interface for desktop and phone | Still marked technical preview; the desktop layout (side panel, nine tabs) does not suit a phone anyway; NumPy and Skyfield must be cross-built |
-| Kivy or BeeWare | All in Python | A third interface toolkit to learn; neither looks native; packaging of NumPy is fragile |
-| Rewrite everything in Kotlin | Smallest, fastest app | Months of work and a new engine to validate: DE440 reading, ΔT, eclipses, events… |
+| **PySide6 and `pyside6-android-deploy`** (recommended) | The official tool of the Qt Company; builds an APK from a Python project with python-for-android, whose recipes include NumPy and matplotlib; PySide6 is under the LGPL | Still labelled a technical preview; Céleste moves from PyQt6 to PySide6 |
+| PyQt6 and `pyqtdeploy` | No change of binding | Every package with C code (NumPy, matplotlib) must be cross-built by hand; little used for Android |
 
-Recommendation: **Chaquopy**. The Compose interface calls a thin Python API that returns plain data (dicts and
-lists, or JSON), and draws the charts and the sky map itself on a `Canvas`.
+Recommendation: **PySide6**. The move from PyQt6 is mostly mechanical in Qt 6 (same class and enum names):
+`pyqtSignal` becomes `Signal`, the imports change, and a few calls differ. Going through one small module
+(`qt.py`) that imports either binding lets the desktop switch first and keeps PyQt6 working during the move.
 
-## Architecture
+## What changes in the interface
 
-```
-Celeste_App/
-├── celeste/              # (4.11) the Qt-free core, one package shared by both apps
-│   ├── engine.py, planner.py, mpc.py, places.py, satellites.py, history.py, …
-│   ├── scenes.py         # what charts.py computes before drawing: sky scene, curves, orrery
-│   └── api.py            # entry points for Android: tonight(), ephemeris(), plan(), sky(), events()…
-├── desktop/              # the PyQt6 app (today's gui.py, charts.py, main.py)
-├── android/              # Gradle project: Kotlin, Jetpack Compose, Chaquopy
-│   └── app/src/main/python → ../../celeste   (the same core)
-├── assets/, locales/, fonts/
-└── tests/                # unchanged, run on the core
-```
+The window today is made for a screen at least 1180 pixels wide: a side panel and nine tabs. Below 600 pixels of
+width (a phone, or a narrow window on the desktop), `gui.py` switches to a **compact layout**:
 
-- **Data:** the ephemeris (32 MB) is downloaded at the first start into the app's private storage, with the same
-  size and SHA-256 checks as on Windows; the catalogues travel in the APK (about 1 MB).
-- **Texts:** the same `locales/*.json` files; the Compose interface reads them, so a translation serves both apps.
-- **Design:** the Astræos tokens of `config.py` become a Compose theme (Nuit, Jour, Observation in red).
-- **Settings:** the same keys as `settings.py`, stored in the app's folder; favourites and history likewise.
+- the side panel (date, place, time zone, favourites, Calculate) becomes a drawer opened from a button at the top;
+- the tabs become a bar at the bottom with five entries — **Tonight**, **Sky**, **Targets**, **Events**, **More**
+  (ephemeris tables, trajectories, planets, Solar System, coordinates, settings);
+- the touch targets grow to 48 pixels at least; what the mouse hover shows today (chart tooltips, help texts) shows
+  on a tap or a long press;
+- the tables keep their first columns and scroll sideways; the planner's constraints open in a full-screen page.
 
-## The phone interface
+Because the compact layout is part of `gui.py`, it can be built and tested on the desktop, by narrowing the window,
+long before the first APK.
 
-A phone shows one thing at a time, so the nine desktop tabs become five destinations of a bottom bar:
+What Android brings on top, through Qt:
 
-1. **Tonight** — the dark night, the Moon, the visible planets, the next events, the satellite passes.
-2. **Sky** — the sky map, which can follow the phone's orientation (compass and accelerometer) to point at an
-   object; search by name.
-3. **Targets** — the night planner (constraints in a bottom sheet, the tables, the altitude chart).
-4. **Events** — eclipses, conjunctions, meteor showers, comets, satellites; added to the phone's calendar.
-5. **More** — ephemeris tables, planets, Solar System, coordinates, lunar calendar, settings, about.
+- **location** of the phone: `QtPositioning`, already used on the desktop;
+- **a sky map that follows the phone** (compass and accelerometer): `QtSensors`;
+- **storage** in the app's private folder: `QStandardPaths`;
+- **sharing** an export (plan, calendar) with other apps: `QDesktopServices` and Android intents.
 
-The place comes from the phone's location (with permission), a search by name, or the favourites.
-
-What Android adds: **notifications** (an ISS pass in ten minutes, the peak of a meteor shower, an eclipse seen from
-here), a **home-screen widget** (tonight's Moon and the next event), and the red **Observation** theme kept on at
-night to protect dark adaptation.
+Notifications (an ISS pass in ten minutes, a meteor peak) and a home-screen widget have no Qt API on Android; they
+would need Java calls through `QJniObject` or pyjnius. They come after 5.0, if they are wanted.
 
 ## Steps
 
 | Version | Content |
 |---|---|
-| **4.11** | Move the Qt-free modules into the `celeste` package and `charts.py`'s computations into `scenes.py`; add `api.py` with JSON-ready results and its tests. The desktop app is unchanged for its users. |
-| **5.0 alpha** | `android/` project built by GitHub Actions (debug APK as an artifact): Chaquopy, first start (ephemeris download), Tonight and the ephemeris, place by GPS or search, the four languages, the three themes. |
-| **5.0 beta** | Sky map drawn natively, with orientation; Targets; Events and calendar export; notifications; widget. Testers through the Play Console's internal track or a signed APK on GitHub. |
-| **5.0** | Release: signed APK on GitHub Releases, then Google Play (and F-Droid if the build is reproducible). The desktop app becomes 5.0 too, on the shared core. |
-
-Each step keeps the full test suite green; the Android app adds its own interface tests (Compose UI tests) and a
-check that the Python API gives the same results on the phone as on the desktop.
+| **4.11** | `qt.py` and the move from PyQt6 to PySide6 on the desktop (same app for its users; Windows build and tests on PySide6). A first APK in GitHub Actions: an empty window that loads the engine and runs the self-test on an emulator, to settle the tools early. |
+| **4.12** | The compact layout in `gui.py`, tested by narrowing the window; user folder from `QStandardPaths`. |
+| **5.0 alpha** | The full app as a debug APK built by GitHub Actions: first start (ephemeris download with its progress), Tonight, ephemeris, sky map, planets, Targets, events; location by GPS; the four languages and the three themes. |
+| **5.0 beta** | Sky map following the phone; Android back button and screen rotation; sharing exports; speed on modest phones. A signed APK for testers. |
+| **5.0** | Release: signed APK on GitHub Releases, then Google Play if wanted. The desktop app becomes 5.0 too: the same code. |
 
 ## Risks and how to meet them
 
 | Risk | Answer |
 |---|---|
-| APK size (Python, NumPy, Skyfield: about 25 MB) | Only arm64-v8a and armeabi-v7a; the ephemeris downloaded, not shipped; Android App Bundle splits per device |
-| First start slow (Python start, ephemeris load) | A splash with progress; the engine kept warm in a background service while the app is open |
-| Speed on modest phones | The heavy work (events of the year, NGC/IC planner) already runs in the background on the desktop; same on Android, with cached results |
-| Skyfield or NumPy versions Chaquopy does not offer | Pin the versions the tests pass with; Chaquopy offers NumPy builds for Python 3.10–3.13 |
-| Two interfaces to maintain | The core holds the logic and the texts; the interfaces only lay out what `api.py` returns |
+| `pyside6-android-deploy` is a technical preview | Settled in 4.11 with the smallest APK, before any interface work; the fallback is pyqtdeploy, with the same code |
+| A package without a python-for-android recipe | Skyfield, jplephem and sgp4 are pure Python (sgp4's C part is optional); timezonefinder is the one to check, with the offline place list of `places.py` as a fallback for the time zone |
+| APK size (Qt, Python, NumPy, matplotlib: about 60 to 80 MB) | arm64-v8a only at first; the ephemeris (32 MB) downloaded at the first start, not shipped; only the Qt modules used |
+| First start slow | A start screen with progress; the heavy computations already run in the background |
+| Speed of the charts on a phone | matplotlib redraws only the shown chart, as on the desktop; the sky map can move to `QPainter` if needed |
+| Touch use of a desktop interface | The compact layout is designed for touch and tested on the desktop at phone width |
 | Store requirements (privacy policy, location permission) | Location only when the user asks, no account, no tracking: a short privacy page on the website |
 
 ## Decisions to take
@@ -97,4 +84,4 @@ check that the Python API gives the same results on the phone as on the desktop.
 - **One app or two?** Céleste for Android as its own app, or inside the existing
   [Ganymede](https://github.com/astraeos-dev/Ganymede) Android app.
 - **Distribution:** GitHub Releases only, or Google Play too (a developer account is needed, 25 USD once).
-- **Minimum Android version:** Android 8 (API 26) reaches nearly every phone in use and is what Chaquopy needs.
+- **Minimum Android version:** Android 9 (API 28) is what recent Qt 6 versions require.

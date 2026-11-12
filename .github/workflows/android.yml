@@ -108,8 +108,11 @@ jobs:
           else
             cp *.py favorites_default.json "$project/"
             cp -r ui assets locales fonts "$project/"
-            # Qt's modules: qt.py imports them by name, which the tool does not see
-            extra=(--extra-modules Core,Gui,Widgets,Svg,Network,Positioning)
+            # Qt's modules: qt.py imports them by name, which the tool does not read; it reads
+            # them in qt_modules.py and takes from them Qt6Android.jar, the plugins and the
+            # permissions (--extra-modules only reaches the libraries' list, not those)
+            cp android/qt_modules.py "$project/"
+            extra=()
             export CELESTE_ANDROID_REQUIREMENTS="numpy,matplotlib,pillow,certifi,jplephem,sgp4,skyfield,tzdata"
           fi
           python android/make_images.py "$project"            # icon.png (launcher), logo.png

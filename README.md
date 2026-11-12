@@ -69,8 +69,10 @@ The interface is translated into French, English, Spanish and German.
   altitude limits, airmass, size, share of the night observable, distance to the Moon (fixed or from its phase),
   magnitude and type; ranked by the share of the night; your own targets, a to-do list (always shown) and a done
   list (never shown); the Moon and the planets of the night; the comets brighter than magnitude 12, from Céleste's
-  table or every comet the Minor Planet Center follows; the altitude of the chosen targets through the night;
-  export as a text report, JSON or PNG
+  table or every comet the Minor Planet Center follows; the altitude of the chosen targets through the night, or
+  their paths across the sky (a map with the hours, a slider through the night, the details under the pointer);
+  export as a text report, JSON, PNG, or an interactive map (a web page that works offline: the paths, the
+  altitude chart, a slider and a legend to show or hide each target)
 - **Observing site** — a horizon mask (azimuth and altitude pairs: trees, houses), used by the planner and drawn on
   the sky map; temperature and pressure for the refraction
 - **Search on the sky map** — the name of a star (Vega, "alpha cyg"), a planet, a comet, a Messier object ("m31",
@@ -175,8 +177,12 @@ Changing the date computes everything again after a moment.
 **Buttons:**
 
 - Clock, to the right of the date — back to the present instant
+- Map, to the right of the latitude — pick the place on a map: the wheel zooms, a drag moves the map, a click sets
+  the point (named after the nearest city); fills the coordinates, the time zone and the elevation. For computers
+  whose location service cannot be allowed
 - Crosshair, to the right of the longitude — fills the latitude, the longitude and the time zone from the device's
   location service (to be allowed in the privacy settings of Windows or macOS); otherwise, from the IP address
+  (three services in turn), and a window offers the map
 - **Calculate** (`F5`) — runs the calculations for the typed date and place
 - **Follow in real time** (`Ctrl+L`) — toggle button: follows the current time while it stays pressed (interval
   adjustable in the settings)
@@ -184,10 +190,12 @@ Changing the date computes everything again after a moment.
   elevation and time zone. A calculation is kept once you have stayed on it for a few seconds: stepping through the
   dates only keeps the date you stop on, and the real-time mode stays out. "Clear the history" empties it
   (`~/.celeste/history.json`)
-- **Workshop** — instruments to print, cut out and assemble, computed for the typed place (latitudes 10° to 80°):
-  a planisphere, an equatorial sundial and a horizontal sundial. The window previews each page and saves the PDF;
-  print it at 100 % and check the 100 mm ruler of each page. The last pages explain the assembly, the use, the
-  astronomy behind the instrument, and give an example computed for the date of the side panel
+- **Workshop** — instruments to print, cut out and assemble, computed for a place (latitudes 10° to 80°): a
+  planisphere, an equatorial sundial, a horizontal sundial, a planispheric astrolabe and a nocturnal. The window
+  starts with the side panel's place and has its own fields (city, coordinates, time zone, date, size of the
+  astrolabe); it previews each page and saves the PDF. Print at 100 % and check the 100 mm ruler of each page. The
+  last pages explain the assembly, the use, the astronomy behind the instrument, and give examples computed for the
+  date
 - **Nuit · Jour · Observation** — theme selector, at the bottom of the side panel
 
 **Events:** the buttons of the tab search for the eclipses of the next 12 lunations, the events of the coming year and
@@ -476,7 +484,7 @@ launch, SmartScreen shows "Windows protected your PC" (*More info*, then *Run an
 ### Engineering and quality
 
 - [x] **Unit tests** — pytest on the engine, the charts, the interface (off screen), the themes, the updates,
-  `utils.py` and `i18n.py` (16 files, ~750 cases)
+  `utils.py` and `i18n.py` (16 files, ~790 cases)
 - [x] **Windows executable** — standalone `Celeste.exe` (PyInstaller), ephemeris downloaded at the first launch
 
 ### Workshop: instruments to make
@@ -484,13 +492,15 @@ launch, SmartScreen shows "Windows protected your PC" (*More info*, then *Run an
 - [x] **Prototype** — `instruments.py`: the plate and the rete of an astrolabe for any latitude, PDF at true scale
 - [x] **Workshop 1** (4.11) — the Workshop window; planisphere, equatorial and horizontal sundials computed for the
   place, with assembly, use and astronomy sheets in four languages
-- [ ] **Workshop 2 and 3** — the complete astrolabe, the nocturnal, the horary quadrant, a declining wall dial and a
-  noon mark. The design: [docs/INSTRUMENTS.md](docs/INSTRUMENTS.md)
+- [x] **Workshop 2** (4.12) — the complete planispheric astrolabe and the nocturnal; the window's own place, zone
+  and date
+- [ ] **Workshop 3** — the horary quadrant, a declining wall dial and a noon mark. The design:
+  [docs/INSTRUMENTS.md](docs/INSTRUMENTS.md)
 
 ### Version 5: Android
 
-- [ ] **PySide6** (4.12) — Qt for Python, whose official tool builds Android apps; a first APK in GitHub Actions
-- [ ] **Compact layout** (4.13) — the same Qt interface below 600 pixels of width: drawer, bottom bar, touch targets
+- [ ] **PySide6** (4.13) — Qt for Python, whose official tool builds Android apps; a first APK in GitHub Actions
+- [ ] **Compact layout** (4.14) — the same Qt interface below 600 pixels of width: drawer, bottom bar, touch targets
 - [ ] **Android app** (5.0) — the same code as the desktop, with the phone's location and a sky map following the
   phone. The plan: [docs/ANDROID.md](docs/ANDROID.md)
 

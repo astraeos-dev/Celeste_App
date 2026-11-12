@@ -308,7 +308,7 @@ def _summary(alt, az, ok, ctx, i):
         best = (times[int(run[0])], times[int(run[-1])])
     return {"alt_start": float(alt[i, 0]), "az_start": float(az[i, 0]), "alt_max": float(alt[i, k]),
             "az_max": float(az[i, k]), "time_max": times[k], "fraction": float(flags.mean()),
-            "best": best, "altitudes": alt[i].copy()}
+            "best": best, "altitudes": alt[i].copy(), "azimuths": az[i].copy()}
 
 
 def _transit(ra_deg, ctx):
@@ -437,7 +437,7 @@ def _comets(ctx, dte, lat, lon, elevation_m, tz, mpc_comets):
                        "earth_au": float(dist.au[len(jds) // 2]), "sun_au": float(helio),
                        "alt_start": float(alt[0]), "az_start": float(az[0]), "alt_max": float(alt[k]),
                        "az_max": float(az[k]), "time_max": times_dt[k], "rise": rise, "set": setting,
-                       "fraction": float(up.mean())})
+                       "fraction": float(up.mean()), "altitudes": alt.copy(), "azimuths": az.copy()})
     result.sort(key=lambda r: r["mag"])
     return result
 
@@ -475,3 +475,130 @@ def report_json(result, place=""):
             "comets": [clean(c, ("name", "mag", "earth_au", "sun_au", "alt_start", "az_start", "alt_max",
                                  "rise", "set", "fraction")) for c in result["comets"]]}
     return json.dumps(data, ensure_ascii=False, indent=2)
+
+
+def report_html(data):
+    """
+    The night's tracks as an interactive page (HTML, no network needed), after
+    uptonight's sky plots: a map of the sky (zenith at the centre, north up, east on
+    the left) with the path of each target through the night and its hours, the
+    altitude–time chart beside it, a slider to move through the night, a legend to
+    show or hide each target, and the details of a point under the mouse.
+
+    Args:
+        data (dict): title, subtitle, times (local "HH:MM" of the samples), tracks
+            ([{name, kind, alt, az, on}], kind: deep_sky, body, comet, moon),
+            horizon ([[az, alt], ...]), limits ([altitude min, max]), labels
+            (north, east, south, west, altitude, azimuth, time, hide_all, show_all,
+            moon, made_with).
+    """
+    def r(v):
+        return None if v is None or v != v else round(float(v), 2)
+
+    clean = dict(data)
+    clean["tracks"] = [dict(t, alt=[r(v) for v in t["alt"]], az=[r(v) for v in t["az"]]) for t in data["tracks"]]
+    payload = json.dumps(clean, ensure_ascii=False).replace("</", "<\\/")
+    return _HTML_TEMPLATE.replace("__TITLE__", _escape(data.get("title", ""))).replace("__DATA__", payload)
+
+
+def _escape(text):
+    return (str(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
+
+
+_HTML_TEMPLATE = """<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__TITLE__</title>
+<style>
+:root{--bg:#0b0f17;--card:#121826;--line:#26324a;--ink:#e8ecf2;--soft:#9aa6b8;--gold:#f2b84b;--sky:#0e1524}
+@media (prefers-color-scheme: light){:root{--bg:#f4f6fa;--card:#ffffff;--line:#d5dbe6;--ink:#141a26;--soft:#5b6578;--gold:#b7791f;--sky:#eef2f8}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
+header{padding:20px 24px 8px}h1{margin:0;font-size:20px;font-weight:600}header p{margin:4px 0 0;color:var(--soft)}
+main{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) 260px;gap:16px;padding:12px 24px 24px}
+@media (max-width:1100px){main{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px}
+svg{width:100%;height:auto;display:block}
+.controls{display:flex;align-items:center;gap:12px;padding:0 24px}
+input[type=range]{flex:1;accent-color:var(--gold)}#now{font-variant-numeric:tabular-nums;min-width:56px;font-weight:600}
+.legend label{display:flex;align-items:center;gap:8px;padding:3px 0;cursor:pointer}
+.legend .sw{width:14px;height:4px;border-radius:2px;display:inline-block}
+.legend h3{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--soft);margin:12px 0 4px}
+.legend button{background:none;border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:3px 8px;margin-right:6px;cursor:pointer}
+#tip{position:fixed;pointer-events:none;background:var(--card);border:1px solid var(--line);border-radius:6px;padding:6px 8px;font-size:12px;display:none;white-space:nowrap}
+footer{color:var(--soft);font-size:12px;padding:0 24px 20px}
+</style></head><body>
+<header><h1 id="title"></h1><p id="subtitle"></p></header>
+<div class="controls"><span id="now"></span><input id="slider" type="range" min="0" value="0" step="1"></div>
+<main><div class="card"><svg id="map" viewBox="-1.18 -1.18 2.36 2.36"></svg></div>
+<div class="card"><svg id="chart" viewBox="0 0 640 420"></svg></div>
+<div class="card legend" id="legend"></div></main>
+<div id="tip"></div><footer id="made"></footer>
+<script>
+const D = __DATA__;
+const L = D.labels, NS = "http://www.w3.org/2000/svg";
+const COLORS = ["#f2b84b","#7cc4ff","#ff8a80","#9be7a4","#d7a8ff","#ffd180","#80deea","#f48fb1","#c5e1a5","#b0bec5","#ffab91","#90caf9"];
+D.tracks.forEach((t,i)=>{t.color = t.kind==="moon" ? "#cfd8e3" : COLORS[i % COLORS.length];});
+const $ = id => document.getElementById(id);
+const HOUR = D.times.map((s,i)=> i>0 && s.slice(0,2)!==D.times[i-1].slice(0,2));   // the first sample of each hour
+$("title").textContent = D.title; $("subtitle").textContent = D.subtitle; $("made").textContent = L.made_with;
+function el(tag, attrs, parent){const e=document.createElementNS(NS,tag);for(const k in attrs)e.setAttribute(k,attrs[k]);if(parent)parent.appendChild(e);return e;}
+function xy(alt, az){const r=(90-alt)/90, a=az*Math.PI/180;return [-Math.sin(a)*r, -Math.cos(a)*r];}
+const tip = $("tip");
+function showTip(ev, t, i){tip.style.display="block";tip.style.left=(ev.clientX+14)+"px";tip.style.top=(ev.clientY+10)+"px";
+  tip.textContent = t.name+" — "+D.times[i]+" · "+L.altitude+" "+t.alt[i].toFixed(0)+"° · "+L.azimuth+" "+t.az[i].toFixed(0)+"°";}
+function hideTip(){tip.style.display="none";}
+// the map
+const map = $("map");
+el("circle",{cx:0,cy:0,r:1,fill:"var(--sky)",stroke:"var(--line)","stroke-width":0.006},map);
+for(const a of [30,60]) el("circle",{cx:0,cy:0,r:(90-a)/90,fill:"none",stroke:"var(--line)","stroke-width":0.004},map);
+el("circle",{cx:0,cy:0,r:(90-D.limits[0])/90,fill:"none",stroke:"var(--soft)","stroke-width":0.004,"stroke-dasharray":"0.02 0.015"},map);
+if(D.horizon.length){let d="";const pts=[...D.horizon].sort((p,q)=>p[0]-q[0]);
+  for(let az=0;az<=360;az+=2){let h=0;for(let k=0;k<pts.length-1;k++){if(az>=pts[k][0]&&az<=pts[k+1][0]){const f=(az-pts[k][0])/((pts[k+1][0]-pts[k][0])||1);h=pts[k][1]+f*(pts[k+1][1]-pts[k][1]);}}
+    const [x,y]=xy(Math.max(h,0),az);d+=(az?"L":"M")+x.toFixed(4)+" "+y.toFixed(4);}
+  for(let az=360;az>=0;az-=2){const [x,y]=xy(0,az);d+="L"+x.toFixed(4)+" "+y.toFixed(4);}
+  el("path",{d:d+"Z",fill:"var(--line)",opacity:0.6},map);}
+for(const [lab,az] of [[L.north,0],[L.east,90],[L.south,180],[L.west,270]]){const [x,y]=xy(-9,az);
+  const t=el("text",{x:x,y:y,"font-size":0.07,"text-anchor":"middle","dominant-baseline":"middle",fill:"var(--soft)"},map);t.textContent=lab;}
+const layers = {}, dots = {}, lines = {};
+D.tracks.forEach((t,ti)=>{const g=el("g",{},map);layers[ti]=g;let d="",pen=false;
+  t.alt.forEach((a,i)=>{if(a===null||a<0){pen=false;return;}const [x,y]=xy(a,t.az[i]);d+=(pen?"L":"M")+x.toFixed(4)+" "+y.toFixed(4);pen=true;});
+  el("path",{d:d,fill:"none",stroke:t.color,"stroke-width":t.kind==="moon"?0.008:0.01,"stroke-dasharray":t.kind==="moon"?"0.015 0.012":"none"},g);
+  t.alt.forEach((a,i)=>{if(a===null||a<0)return;const [x,y]=xy(a,t.az[i]);const hour=HOUR[i];
+    const c=el("circle",{cx:x,cy:y,r:hour?0.014:0.02,fill:hour?t.color:"transparent"},g);
+    c.addEventListener("mousemove",ev=>showTip(ev,t,i));c.addEventListener("mouseleave",hideTip);
+    if(hour){const lab=el("text",{x:x+0.02,y:y-0.015,"font-size":0.035,fill:"var(--soft)"},g);lab.textContent=D.times[i].slice(0,2);}});
+  let k=0;t.alt.forEach((a,i)=>{if(a!==null&&a>t.alt[k])k=i;});
+  if(t.alt[k]>0){const [x,y]=xy(t.alt[k],t.az[k]);const n=el("text",{x:x,y:y-0.035,"font-size":0.045,"text-anchor":"middle",fill:t.color,"font-weight":600},g);n.textContent=t.name;}
+  dots[ti]=el("circle",{r:0.028,fill:t.color,stroke:"var(--bg)","stroke-width":0.006},g);});
+// the chart
+const chart=$("chart"),X0=48,X1=624,Y0=388,Y1=16,n=D.times.length;
+const cx=i=>X0+(X1-X0)*i/Math.max(n-1,1), cy=a=>Y0-(Y0-Y1)*Math.max(a,0)/90;
+el("rect",{x:X0,y:Y1,width:X1-X0,height:Y0-Y1,fill:"var(--sky)"},chart);
+el("rect",{x:X0,y:cy(D.limits[0]),width:X1-X0,height:Y0-cy(D.limits[0]),fill:"var(--line)",opacity:0.45},chart);
+el("rect",{x:X0,y:Y1,width:X1-X0,height:cy(D.limits[1])-Y1,fill:"var(--line)",opacity:0.45},chart);
+for(let a=0;a<=90;a+=15){el("line",{x1:X0,x2:X1,y1:cy(a),y2:cy(a),stroke:"var(--line)","stroke-width":0.6},chart);
+  const t=el("text",{x:X0-6,y:cy(a)+4,"font-size":11,"text-anchor":"end",fill:"var(--soft)"},chart);t.textContent=a+"°";}
+D.times.forEach((s,i)=>{if(!HOUR[i])return;el("line",{x1:cx(i),x2:cx(i),y1:Y1,y2:Y0,stroke:"var(--line)","stroke-width":0.6},chart);
+  const t=el("text",{x:cx(i),y:Y0+16,"font-size":11,"text-anchor":"middle",fill:"var(--soft)"},chart);t.textContent=s.slice(0,2);});
+D.tracks.forEach((t,ti)=>{let d="",pen=false;t.alt.forEach((a,i)=>{if(a===null||a<0){pen=false;return;}d+=(pen?"L":"M")+cx(i).toFixed(1)+" "+cy(a).toFixed(1);pen=true;});
+  lines[ti]=el("path",{d:d,fill:"none",stroke:t.color,"stroke-width":t.kind==="moon"?1.5:2,"stroke-dasharray":t.kind==="moon"?"3 3":"none"},chart);
+  lines[ti].addEventListener("mousemove",ev=>{const b=chart.getBoundingClientRect();const i=Math.round((ev.clientX-b.left)/b.width*640-X0)/(X1-X0)*(n-1);showTip(ev,t,Math.max(0,Math.min(n-1,Math.round(i))));});
+  lines[ti].addEventListener("mouseleave",hideTip);});
+const cursor=el("line",{y1:Y1,y2:Y0,stroke:"var(--gold)","stroke-width":1.2},chart);
+// the legend
+const legend=$("legend");const groups={};
+const tools=document.createElement("div");legend.appendChild(tools);
+for(const [lab,on] of [[L.show_all,true],[L.hide_all,false]]){const b=document.createElement("button");b.textContent=lab;b.onclick=()=>{D.tracks.forEach((t,i)=>{t.on=on;boxes[i].checked=on;});apply();};tools.appendChild(b);}
+const boxes={};
+D.tracks.forEach((t,ti)=>{if(!groups[t.kind]){const h=document.createElement("h3");h.textContent=L["group_"+t.kind]||t.kind;legend.appendChild(h);groups[t.kind]=true;}
+  const lab=document.createElement("label");const box=document.createElement("input");box.type="checkbox";box.checked=t.on;boxes[ti]=box;
+  box.onchange=()=>{t.on=box.checked;apply();};const sw=document.createElement("span");sw.className="sw";sw.style.background=t.color;
+  lab.append(box,sw,document.createTextNode(t.name));legend.appendChild(lab);});
+function apply(){D.tracks.forEach((t,ti)=>{layers[ti].style.display=t.on?"":"none";lines[ti].style.display=t.on?"":"none";});}
+// the time
+const slider=$("slider");slider.max=n-1;
+function at(i){$("now").textContent=D.times[i];cursor.setAttribute("x1",cx(i));cursor.setAttribute("x2",cx(i));
+  D.tracks.forEach((t,ti)=>{const a=t.alt[i];if(a===null||a<0){dots[ti].style.display="none";return;}
+    const [x,y]=xy(a,t.az[i]);dots[ti].style.display="";dots[ti].setAttribute("cx",x);dots[ti].setAttribute("cy",y);});}
+slider.oninput=()=>at(+slider.value);slider.value=Math.floor((n-1)/2);at(+slider.value);apply();
+</script></body></html>
+"""

@@ -238,6 +238,93 @@ def _target_colors():
             Config.SIGNAL_ALERTE, mix(Config.LUNE, Config.SIGNAL_OK, 0.5), Config.ENCRE_ATTENUEE)
 
 
+def track_xy(alt, az):
+    """Position on the night's map of the sky: zenith at the centre, the horizon on the
+    unit circle, north up and east on the left (as the sky map)."""
+    r = (90.0 - np.asarray(alt, dtype=float)) / 90.0
+    a = np.radians(np.asarray(az, dtype=float))
+    return -np.sin(a) * r, np.cos(a) * r
+
+
+def draw_night_tracks(fig, times, tracks, moon, horizon, limits, labels, now=None):
+    """
+    The paths of the planner's targets across the sky through the night, as uptonight's
+    sky plots: a map of the sky (zenith at the centre, north up, east on the left), each
+    target's path while it is up, a dot at each full hour with the hour, its name at its
+    highest point; the Moon dotted; the horizon mask and the minimum altitude.
+
+    Args:
+        times (list[str]): local "HH:MM" of the samples.
+        tracks (list): (label, altitudes, azimuths) of the targets.
+        moon: (altitudes, azimuths) of the Moon, or None.
+        horizon: (azimuth, altitude) points of the mask; limits: (min, max) altitude.
+        labels (dict): title, north, east, south, west, empty.
+        now (int | None): index of the sample whose positions are marked.
+
+    Returns:
+        list: [(label, x, y, i)] of the drawn samples, for the pointer's tooltip.
+    """
+    fig.clear()
+    fig.set_layout_engine(None)
+    fig.patch.set_facecolor(Config.CIEL_100)
+    ax = fig.add_axes((0.02, 0.02, 0.96, 0.9))
+    ax.set_aspect("equal")
+    ax.axis("off")
+    ax.set_xlim(-1.18, 1.18)
+    ax.set_ylim(-1.12, 1.12)
+    a = np.linspace(0, 2 * np.pi, 361)
+    ax.fill(np.cos(a), np.sin(a), color=mix(Config.CIEL_000, Config.CIEL_100, 0.5), zorder=0)
+    ax.plot(np.cos(a), np.sin(a), color=Config.CIEL_200, linewidth=1.0, zorder=1)
+    for alt in (30, 60):
+        r = (90 - alt) / 90
+        ax.plot(r * np.cos(a), r * np.sin(a), color=Config.CIEL_200, linewidth=0.6, zorder=1)
+    r = (90 - limits[0]) / 90
+    ax.plot(r * np.cos(a), r * np.sin(a), color=Config.ENCRE_ATTENUEE, linewidth=0.8,
+            linestyle=(0, (4, 3)), zorder=1)
+    if horizon:
+        az = np.linspace(0, 360, 361)
+        pts = sorted(horizon)
+        h = np.interp(az, [p[0] for p in pts], [p[1] for p in pts], period=360)
+        hx, hy = track_xy(np.maximum(h, 0), az)
+        ex, ey = track_xy(np.zeros_like(az), az)
+        ax.fill(np.concatenate([hx, ex[::-1]]), np.concatenate([hy, ey[::-1]]), color=Config.CIEL_200,
+                alpha=0.8, zorder=2, linewidth=0)
+    for key, az in (("north", 0), ("east", 90), ("south", 180), ("west", 270)):
+        x, y = track_xy(-9, az)
+        ax.text(x, y, labels.get(key, ""), ha="center", va="center", fontsize=SIZE_LEGENDE,
+                color=Config.ENCRE_ATTENUEE, fontweight=600)
+    ax.set_title(labels.get("title", ""), color=Config.ENCRE, fontsize=SIZE_LEGENDE * 1.1, loc="left")
+    points = []
+    colors = _target_colors()
+    series = [(lab, alt, az, colors[i % len(colors)], False) for i, (lab, alt, az) in enumerate(tracks)]
+    if moon is not None:
+        series.append((labels.get("moon", ""), moon[0], moon[1], Config.LUNE, True))
+    if not tracks:
+        ax.text(0, 0, labels.get("empty", ""), ha="center", va="center", color=Config.ENCRE_ATTENUEE,
+                fontsize=SIZE_LEGENDE)
+    for lab, alt, az, color, dotted in series:
+        alt, az = np.asarray(alt, dtype=float), np.asarray(az, dtype=float)
+        x, y = track_xy(alt, az)
+        x, y = np.where(alt >= 0, x, np.nan), np.where(alt >= 0, y, np.nan)
+        ax.plot(x, y, color=color, linewidth=1.2 if dotted else 1.8,
+                linestyle=(0, (1, 2)) if dotted else "-", zorder=4)
+        for i, stamp in enumerate(times):
+            if alt[i] >= 0:
+                points.append((lab, float(x[i]), float(y[i]), i))
+                if i and stamp[:2] != times[i - 1][:2] and not dotted:          # the first sample of an hour
+                    ax.plot(x[i], y[i], "o", color=color, markersize=3.2, zorder=5)
+                    ax.text(x[i] + 0.02, y[i] + 0.02, stamp[:2], fontsize=SIZE_LEGENDE * 0.75,
+                            color=Config.ENCRE_ATTENUEE, zorder=5)
+        if np.isfinite(x).any():
+            k = int(np.nanargmax(np.where(alt >= 0, alt, -np.inf)))
+            ax.text(x[k], y[k] + 0.04, lab, ha="center", va="bottom", fontsize=SIZE_LEGENDE * 0.9,
+                    color=color, fontweight=600, zorder=6)
+        if now is not None and 0 <= now < len(alt) and alt[now] >= 0:
+            ax.plot(x[now], y[now], "o", color=color, markersize=8, markeredgecolor=Config.CIEL_100,
+                    markeredgewidth=1.2, zorder=7)
+    return points
+
+
 def draw_night_plan(fig, hours, series, moon_alts, limits, labels):
     """
     Altitude of the planner's targets through the night, as uptonight's
@@ -828,6 +915,69 @@ def world_rings():
                 lon, lat = zip(*ring)
                 _world_rings.append((np.array(lon), np.array(lat)))
     return _world_rings
+
+
+def place_map_view(lat, lon, span, ratio=1.5):
+    """The box (lat_min, lat_max, lon_min, lon_max) of the place map centred on (lat, lon),
+    *span* degrees of latitude high, *ratio* = width / height of the map; the longitudes
+    stretched by 1 / cos(lat), so that the map keeps its true shape."""
+    span = max(0.05, min(160.0, span))
+    lat = max(-85.0 + span / 2, min(85.0 - span / 2, lat))
+    half_lon = min(180.0, span * ratio / 2 / max(0.2, math.cos(math.radians(lat))))
+    return lat - span / 2, lat + span / 2, lon - half_lon, lon + half_lon
+
+
+def draw_place_map(fig, lat, lon, span, cities, chosen=None, labels=None):
+    """
+    The map where a place is picked by a click (equirectangular, centred on (lat, lon),
+    *span* degrees high): the lands, a grid, the *cities* of the view (dots, the names of
+    the most populated) and the *chosen* point (lat, lon) in gold.
+    """
+    from matplotlib.collections import PolyCollection
+    labels = labels or {}
+    width, height = fig.get_size_inches()
+    lat0, lat1, lon0, lon1 = place_map_view(lat, lon, span, width / max(height, 0.1))
+    fig.clear()
+    fig.patch.set_facecolor(Config.CIEL_100)
+    ax = fig.add_axes((0, 0, 1, 1))
+    ax.set_facecolor(mix(Config.CIEL_000, Config.CIEL_100, 0.5))
+    land = []
+    for shift in (-360.0, 0.0, 360.0):
+        for lons, lats in world_rings():
+            if lons.max() + shift < lon0 or lons.min() + shift > lon1 or lats.max() < lat0 or lats.min() > lat1:
+                continue
+            land.append(np.column_stack((lons + shift, lats)))
+    ax.add_collection(PolyCollection(land, facecolors=Config.CIEL_200, edgecolors=Config.ENCRE_ATTENUEE,
+                                     linewidths=0.5))
+    step = next(s for s in (0.1, 0.25, 0.5, 1, 2, 5, 10, 15, 30) if span / s <= 8)
+    for v in np.arange(math.floor(lat0 / step) * step, lat1 + step, step):
+        ax.axhline(v, color=Config.CIEL_200, linewidth=0.5, zorder=1)
+    for v in np.arange(math.floor(lon0 / step) * step, lon1 + step, step):
+        ax.axvline(v, color=Config.CIEL_200, linewidth=0.5, zorder=1)
+    if cities:
+        xs = [c["lon"] if lon0 <= c["lon"] <= lon1 else c["lon"] + (360 if c["lon"] < lon0 else -360)
+              for c in cities]
+        ax.scatter(xs, [c["lat"] for c in cities], s=4, color=Config.ENCRE_ATTENUEE, zorder=3, linewidths=0)
+        placed = []                                   # names that do not overlap
+        dy, dx = (lat1 - lat0) * 0.045, (lon1 - lon0) * 0.12
+        for x, c in zip(xs, cities):
+            if len(placed) >= int(labels.get("names", 18)):
+                break
+            if any(abs(c["lat"] - py) < dy and -dx * 0.4 < x - px < dx for px, py in placed):
+                continue
+            placed.append((x, c["lat"]))
+            ax.text(x, c["lat"], " " + c["name"], fontsize=SIZE_LEGENDE, color=Config.ENCRE, va="center",
+                    zorder=4, clip_on=True)
+    if chosen:
+        ax.plot(chosen[1], chosen[0], marker="*", markersize=16, color=Config.OR, markeredgecolor=Config.ENCRE,
+                markeredgewidth=0.8, zorder=6)
+    ax.set_xlim(lon0, lon1)
+    ax.set_ylim(lat0, lat1)
+    ax.set_xticks([])
+    ax.set_yticks([])
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+    return ax
 
 
 def _wrapped(lons, lats):

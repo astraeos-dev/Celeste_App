@@ -105,3 +105,26 @@ def nearest(lat, lon, max_km=25.0):
         if d < best_d:
             best, best_d = place, d
     return best
+
+
+def in_box(lat_min, lat_max, lon_min, lon_max, limit=1500):
+    """Cities inside a box of latitudes and longitudes (lon_min > lon_max across the 180°
+    meridian), the most populated first: the dots of the map where a place is picked."""
+    found = []
+    for place, _names in _cities():
+        lat, lon = place["lat"], place["lon"]
+        if not lat_min <= lat <= lat_max:
+            continue
+        if (lon_min <= lon <= lon_max) if lon_min <= lon_max else (lon >= lon_min or lon <= lon_max):
+            found.append(place)
+            if len(found) >= limit:
+                break
+    return found
+
+
+def distance_km(lat1, lon1, lat2, lon2):
+    """Great-circle distance (km) between two points."""
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dl = math.radians(lon2 - lon1)
+    c = math.sin(p1) * math.sin(p2) + math.cos(p1) * math.cos(p2) * math.cos(dl)
+    return 6371.0 * math.acos(max(-1.0, min(1.0, c)))

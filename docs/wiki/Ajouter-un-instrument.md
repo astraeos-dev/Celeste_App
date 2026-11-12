@@ -1,8 +1,8 @@
 # Ajouter un instrument à l'atelier
 
 L'atelier (bouton **Atelier** du panneau latéral) imprime des instruments calculés pour le lieu : carte tournante,
-cadran solaire équatorial, cadran solaire horizontal. Cette fiche explique comment en ajouter un, par exemple le
-nocturlabe ou le quadrant horaire prévus dans [docs/INSTRUMENTS.md](https://github.com/astraeos-dev/Celeste_App/blob/master/docs/INSTRUMENTS.md).
+cadran solaire équatorial, cadran solaire horizontal, astrolabe planisphérique et nocturlabe. Cette fiche explique
+comment en ajouter un, par exemple le quadrant horaire ou le cadran vertical déclinant prévus dans [docs/INSTRUMENTS.md](https://github.com/astraeos-dev/Celeste_App/blob/master/docs/INSTRUMENTS.md).
 
 ## Les trois couches
 
@@ -21,8 +21,10 @@ nocturlabe ou le quadrant horaire prévus dans [docs/INSTRUMENTS.md](https://git
    - une **formule fermée** connue (comme `tan θ = sin φ · tan H` pour le cadran horizontal) ;
    - le **ciel du moteur** : la lecture faite sur l'instrument doit correspondre à `AstroEngine` au même instant
      (l'ombre du vrai Soleil, la position d'une étoile…). Testez aussi l'hémisphère sud.
-3. **Les pages.** Ajoutez `_build_<instrument>` dans `workshop.py`, puis son nom dans `INSTRUMENTS` et dans
-   `instrument_pages()`. Traits de découpe avec `_cut()` (plus épais), traits dessinés en 0,3 à 0,6 pt, gris pour
+3. **Les pages.** Ajoutez `_build_<instrument>(place, paper, options)` dans `workshop.py`, puis son nom dans
+   `INSTRUMENTS` et dans `instrument_pages()`. `options` reçoit les choix propres à l'instrument (par exemple
+   `{"size": 150}` pour le diamètre de l'astrolabe) ; la fenêtre de l'atelier les propose dans sa section Options.
+   Les instruments réglés sur les étoiles les ramènent à l'année avec `stars_of_date(stars, year)`. Traits de découpe avec `_cut()` (plus épais), traits dessinés en 0,3 à 0,6 pt, gris pour
    les aides. Les fiches suivent l'ordre des autres instruments : l'instrument, matériel et montage, utilisation,
    l'astronomie derrière, un exemple calculé par Céleste pour la date du panneau.
 4. **Les textes.** Ajoutez les clés `workshop.<instrument>`, `workshop.desc_<instrument>` et celles des pages et des
@@ -43,4 +45,7 @@ nocturlabe ou le quadrant horaire prévus dans [docs/INSTRUMENTS.md](https://git
   fuseau) et `has_dst`. `place.dst_hours(ut)` donne l'heure d'été d'un instant.
 - L'atelier refuse les latitudes de moins de 10° et de plus de 80° (`_workshop_place` dans `gui.py`) : la carte
   tournante et le cadran horizontal y dégénèrent. Un nouvel instrument qui va plus loin peut assouplir cette règle.
-- L'aperçu de la fenêtre appelle `preview_png()` : gardez la construction des pages rapide (une à deux secondes).
+- La fenêtre de l'atelier a ses propres champs (ville, coordonnées, fuseau, date) : elle part du lieu du panneau
+  latéral, mais les changer ne touche pas au panneau.
+- L'aperçu de la fenêtre appelle `preview_png()` : gardez la construction des pages rapide (deux à trois secondes
+  au plus) ; les trois dernières constructions sont gardées en mémoire, pour feuilleter les pages sans attendre.

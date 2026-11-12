@@ -44,15 +44,15 @@ from PyQt6.QtCore import (
     QStringListModel, Qt, QTime, QTimer, QTimeZone, QUrl,
 )
 from PyQt6.QtGui import (
-    QBrush, QColor, QDesktopServices, QFont, QFontDatabase, QKeySequence,
+    QBrush, QColor, QCursor, QDesktopServices, QFont, QFontDatabase, QKeySequence,
     QPainter, QPainterPath, QPalette, QPen, QPixmap, QRegularExpressionValidator, QShortcut,
 )
 from PyQt6.QtPositioning import QGeoPositionInfo, QGeoPositionInfoSource
 from PyQt6.QtWidgets import (
     QAbstractItemView, QApplication, QButtonGroup, QCheckBox, QComboBox, QCompleter,
-    QDateTimeEdit, QDialog, QDialogButtonBox, QFileDialog, QFrame, QGridLayout, QProgressDialog,
+    QDateEdit, QDateTimeEdit, QDialog, QDialogButtonBox, QFileDialog, QFrame, QGridLayout, QProgressDialog,
     QHBoxLayout, QHeaderView, QInputDialog, QLabel, QLineEdit, QMainWindow, QMenu,
-    QMessageBox, QProgressBar, QPushButton, QScrollArea, QSizePolicy, QSlider,
+    QMessageBox, QProgressBar, QPushButton, QScrollArea, QSizePolicy, QSlider, QToolTip,
     QStatusBar, QTabWidget, QTableWidget, QTableWidgetItem, QToolButton,
     QVBoxLayout, QWidget,
 )
@@ -247,6 +247,34 @@ def _zone(name, lat=None, lon=None):
 
 def _elev_text(metres):
     return str(int(round(metres)))
+
+
+# Services giving the approximate position of the IP address, over HTTPS first
+_IP_SERVICES = (
+    ("https://ipwho.is/", lambda d: d.get("success") and (
+        d["latitude"], d["longitude"], d.get("city"), d.get("country"), (d.get("timezone") or {}).get("id"))),
+    ("https://ipapi.co/json/", lambda d: "latitude" in d and not d.get("error") and (
+        d["latitude"], d["longitude"], d.get("city"), d.get("country_name"), d.get("timezone"))),
+    ("http://ip-api.com/json/?fields=status,country,city,lat,lon,timezone", lambda d: d.get("status") == "success"
+     and (d["lat"], d["lon"], d.get("city"), d.get("country"), d.get("timezone"))),
+)
+
+
+def _ip_location(services=_IP_SERVICES, timeout=4):
+    """(lat, lon, city, country, IANA zone) of the IP address from the first service that
+    answers; None when none does (offline, blocked)."""
+    for url, parse in services:
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": f"Celeste/{APP_VERSION}"})
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+            found = parse(data)
+        except Exception:  # network, delay, JSON, missing field: the next service
+            continue
+        if found:
+            lat, lon, city, country, zone = found
+            return float(lat), float(lon), city or "", country or "", zone
+    return None
 
 
 def _place_name(lat, lon):
@@ -1155,6 +1183,130 @@ class _TooltipLayer:
 
 # ── Main class ────────────────────────────────────────────────────────────────
 
+class PlacePicker(QDialog):
+    """
+    A map where the place is chosen with the mouse: the wheel zooms, a drag moves
+    the map, a click puts the point. For a computer whose location service cannot
+    be allowed (or gives nothing), more precise than the position of the IP.
+    """
+
+    def __init__(self, parent, lat, lon):
+        super().__init__(parent)
+        self.setWindowTitle(t("picker.title"))
+        self.setMinimumSize(760, 560)
+        self.chosen = None                    # (lat, lon)
+        self.name = ""
+        self.center = [lat, lon]
+        self.span = 12.0
+        self._press = None
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(24, 24, 24, 16)
+        lay.setSpacing(12)
+        lay.addWidget(_label(t("picker.hint"), "legende", wrap=True))
+        self.search = QLineEdit()
+        self.search.setPlaceholderText(t("picker.search_placeholder"))
+        self.search.setClearButtonEnabled(True)
+        self.search.returnPressed.connect(self._find)
+        lay.addWidget(InputField(t("side.place"), self.search))
+        self.figure = Figure()
+        self.canvas = FigureCanvasQTAgg(self.figure)
+        self.canvas.setMinimumHeight(380)
+        lay.addWidget(self.canvas, stretch=1)
+        self.status = _label(t("picker.none"), "corps", wrap=True)
+        lay.addWidget(self.status)
+        row = QHBoxLayout()
+        zoom_in = _icon_button("zoom_in", t("picker.zoom_in"), compact=True)
+        zoom_out = _icon_button("zoom_out", t("picker.zoom_out"), compact=True)
+        zoom_in.clicked.connect(lambda _c=False: self._zoom(0.5))
+        zoom_out.clicked.connect(lambda _c=False: self._zoom(2.0))
+        row.addWidget(zoom_in)
+        row.addWidget(zoom_out)
+        row.addStretch()
+        cancel = _button(t("picker.cancel"))
+        cancel.clicked.connect(self.reject)
+        self.use = _button(t("picker.use"), "place", "principal")
+        self.use.setEnabled(False)
+        self.use.clicked.connect(self.accept)
+        row.addWidget(cancel)
+        row.addWidget(self.use)
+        lay.addLayout(row)
+        self.canvas.mpl_connect("scroll_event", self._on_scroll)
+        self.canvas.mpl_connect("button_press_event", self._on_press)
+        self.canvas.mpl_connect("motion_notify_event", self._on_motion)
+        self.canvas.mpl_connect("button_release_event", self._on_release)
+        self.draw()
+
+    def draw(self):
+        width, height = self.figure.get_size_inches()
+        lat0, lat1, lon0, lon1 = charts.place_map_view(self.center[0], self.center[1], self.span,
+                                                       width / max(height, 0.1))
+        cities = places.in_box(lat0, lat1, ((lon0 + 180) % 360) - 180, ((lon1 + 180) % 360) - 180, limit=1500)
+        self.ax = charts.draw_place_map(self.figure, self.center[0], self.center[1], self.span, cities,
+                                        self.chosen, {"names": 18 if self.span > 3 else 30})
+        self.canvas.draw_idle()
+
+    def _zoom(self, factor, at=None):
+        if at is not None:                    # keep the point under the mouse in place
+            self.center = [at[0] + (self.center[0] - at[0]) * factor, at[1] + (self.center[1] - at[1]) * factor]
+        self.span = max(0.05, min(160.0, self.span * factor))
+        self.draw()
+
+    def _on_scroll(self, event):
+        if event.xdata is None:
+            return
+        self._zoom(0.7 if event.button == "up" else 1 / 0.7, (event.ydata, event.xdata))
+
+    def _on_press(self, event):
+        if event.xdata is not None and event.button == 1:
+            self._press = (event.x, event.y, event.xdata, event.ydata, list(self.center))
+
+    def _on_motion(self, event):
+        if self._press is None or event.xdata is None:
+            return
+        x, y, _xd, _yd, center = self._press
+        if abs(event.x - x) + abs(event.y - y) < 6:
+            return
+        # pixels to degrees with the axes' current transform
+        inv = self.ax.transData.inverted()
+        (lon_a, lat_a), (lon_b, lat_b) = inv.transform([(x, y), (event.x, event.y)])
+        self.center = [max(-85.0, min(85.0, center[0] - (lat_b - lat_a))), center[1] - (lon_b - lon_a)]
+        self._press = (event.x, event.y, event.xdata, event.ydata, list(self.center))
+        self._dragged = True
+        self.draw()
+
+    def _on_release(self, event):
+        press, self._press = self._press, None
+        if press is None or getattr(self, "_dragged", False):
+            self._dragged = False
+            return
+        if event.xdata is None:
+            return
+        lon = ((event.xdata + 180.0) % 360.0) - 180.0
+        self.choose(float(event.ydata), lon)
+
+    def choose(self, lat, lon, name=None):
+        self.chosen = (lat, lon)
+        near = places.nearest(lat, lon, max_km=30.0)
+        self.name = name if name is not None else (near["name"] if near else "")
+        where = f"{_fmt_lat(lat)}, {_fmt_lon(lon)}"
+        if near:
+            km = places.distance_km(lat, lon, near["lat"], near["lon"])
+            self.status.setText(tf("picker.near", point=where, city=places.label(near), km=_num(km, 1)))
+        else:
+            self.status.setText(tf("picker.point", point=where))
+        self.use.setEnabled(True)
+        self.draw()
+
+    def _find(self):
+        found = places.search(self.search.text(), limit=1)
+        if not found:
+            self.status.setText(tf("side.place_unknown", name=self.search.text().strip()))
+            return
+        city = found[0]
+        self.center, self.span = [city["lat"], city["lon"]], 0.6
+        self.choose(city["lat"], city["lon"], city["name"])
+
+
 class AstroApp(QMainWindow):
     """Main window of Céleste."""
 
@@ -1334,7 +1486,9 @@ class AstroApp(QMainWindow):
             edit.setToolTip(t(f"side.{key}_tip"))
             edit.returnPressed.connect(self.calculate)
             edit.textEdited.connect(self._on_coords_edited)
-        lay.addWidget(self.field_lat)
+        btn_map = _icon_button("map", t("side.map_tip"))
+        btn_map.clicked.connect(lambda _checked=False: self.choose_on_map())
+        lay.addLayout(self._with_button(self.field_lat, btn_map))
         btn_geo = _icon_button("geolocate", t("side.geoloc_tip"))
         btn_geo.clicked.connect(lambda _checked=False: self.geolocate())
         lay.addLayout(self._with_button(self.field_lon, btn_geo))
@@ -2319,9 +2473,32 @@ class AstroApp(QMainWindow):
         card = _card()
         card_l = QVBoxLayout(card)
         card_l.setContentsMargins(8, 8, 8, 8)
+        views = QHBoxLayout()
+        views.setSpacing(6)
+        self._plan_view_buttons = {}
+        group = QButtonGroup(card)
+        group.setExclusive(True)
+        for key in ("altitude", "map"):
+            btn = _button(t(f"planner.view_{key}"), None, "secondaire", compact=True, checkable=True)
+            btn.setToolTip(t(f"planner.view_{key}_tip"))
+            group.addButton(btn)
+            views.addWidget(btn)
+            self._plan_view_buttons[key] = btn
+            btn.toggled.connect(lambda on, _k=key: on and self._draw_plan_chart())
+        self._plan_view_buttons["altitude"].setChecked(True)
+        self._plan_slider = QSlider(Qt.Orientation.Horizontal)
+        self._plan_slider.setToolTip(t("planner.time_tip"))
+        self._plan_slider.valueChanged.connect(lambda _v: self._draw_plan_chart())
+        self._plan_time = _label("", "legende")
+        views.addSpacing(12)
+        views.addWidget(self._plan_time)
+        views.addWidget(self._plan_slider, stretch=1)
+        card_l.addLayout(views)
         self.fig_plan = Figure(facecolor=Config.CIEL_100)
         self.canvas_plan = FigureCanvasQTAgg(self.fig_plan)
         self.canvas_plan.setMinimumHeight(220)
+        self.canvas_plan.mpl_connect("motion_notify_event", self._on_plan_hover)
+        self._plan_points = []
         card_l.addWidget(self.canvas_plan)
         right.addWidget(card, stretch=2)
         outer.addLayout(right, stretch=1)
@@ -2525,9 +2702,79 @@ class AstroApp(QMainWindow):
             table.sortItems(0, Qt.SortOrder.AscendingOrder)
         self._draw_plan_chart()
 
+    def _plan_chosen(self):
+        """(tab key, items of the targets chosen in the table: the first five without a choice)."""
+        result = self._plan
+        key = "bodies" if self._plan_tabs.currentIndex() == 1 else "deep_sky"
+        table = self._plan_tables[key]
+        rows = sorted({i.row() for i in table.selectedItems()}) or list(range(min(5, table.rowCount())))
+        names = [table.item(r, 0).data(_NAME_ROLE) for r in rows[:8]]
+        items = {o["label"]: o for o in result["deep_sky"]} if key == "deep_sky" else \
+            {b["name"]: b for b in result["bodies"]}
+        chosen = []
+        for name in names:
+            item = items.get(name)
+            if item is not None:
+                title = (t("chart.moon") if name == "moon" else _planet_name(name)) if key == "bodies" else name
+                chosen.append((title, item))
+        return key, chosen
+
+    def _plan_map_mode(self):
+        return hasattr(self, "_plan_view_buttons") and self._plan_view_buttons["map"].isChecked()
+
+    def _plan_times(self):
+        return [self._local(x).strftime("%H:%M") for x in self._plan["times"]]
+
+    def _draw_plan_tracks(self):
+        """The paths across the sky of the chosen targets (the map of the night)."""
+        result = self._plan
+        labels = {"title": t("planner.map_title"), "empty": t("planner.chart_empty"), "moon": t("chart.moon"),
+                  **{k: t(f"skymap.cardinal_{k[0]}") for k in ("north", "east", "south", "west")}}
+        times = self._plan_times() if result is not None else []
+        self._plan_slider.blockSignals(True)
+        self._plan_slider.setRange(0, max(0, len(times) - 1))
+        self._plan_slider.blockSignals(False)
+        if result is None or not times:
+            self._plan_points = charts.draw_night_tracks(self.fig_plan, [], [], None, [], (30, 80), labels)
+            self.canvas_plan.draw_idle()
+            return
+        _key, chosen = self._plan_chosen()
+        tracks = [(title, item["altitudes"], item["azimuths"]) for title, item in chosen if item.get("name") != "moon"]
+        moon = next(((b["altitudes"], b["azimuths"]) for b in result["bodies"] if b["name"] == "moon"), None)
+        now = self._plan_slider.value()
+        self._plan_time.setText(times[now])
+        labels["title"] = tf("planner.map_title_date", date=self._local(result["times"][0]).strftime("%d/%m/%Y"))
+        c = result["constraints"]
+        self._plan_points = charts.draw_night_tracks(self.fig_plan, times, tracks, moon, result["horizon"],
+                                                     (c["altitude_min"], c["altitude_max"]), labels, now)
+        self.canvas_plan.draw_idle()
+
+    def _on_plan_hover(self, event):
+        """Over the map of the night: the target, the hour, its altitude and azimuth."""
+        if not self._plan_map_mode() or event.xdata is None or self._plan is None:
+            return
+        best = min(self._plan_points, key=lambda p: (p[1] - event.xdata) ** 2 + (p[2] - event.ydata) ** 2,
+                   default=None)
+        if best is None or (best[1] - event.xdata) ** 2 + (best[2] - event.ydata) ** 2 > 0.04 ** 2:
+            QToolTip.hideText()
+            return
+        label, _x, _y, i = best
+        r = math.hypot(best[1], best[2])
+        alt = 90.0 * (1.0 - r)
+        az = math.degrees(math.atan2(-best[1], best[2])) % 360.0
+        QToolTip.showText(QCursor.pos(), tf("planner.map_tip", name=label, time=self._plan_times()[i],
+                                            alt=_deg(alt, 0), az=_deg(az, 0)), self.canvas_plan)
+
     def _draw_plan_chart(self):
-        """Altitude through the night of the targets chosen in the table (the first five without a choice)."""
+        """Altitude through the night of the targets chosen in the table (the first five without a choice),
+        or their paths across the sky."""
         if not hasattr(self, "fig_plan"):
+            return
+        map_mode = self._plan_map_mode()
+        self._plan_slider.setVisible(map_mode)
+        self._plan_time.setVisible(map_mode)
+        if map_mode:
+            self._draw_plan_tracks()
             return
         result = self._plan
         labels = {"title": t("planner.chart_title"), "xlabel": t("planner.chart_x"),
@@ -2536,18 +2783,8 @@ class AstroApp(QMainWindow):
             charts.draw_night_plan(self.fig_plan, [], [], None, (30, 80), labels)
             self.canvas_plan.draw_idle()
             return
-        key = "bodies" if self._plan_tabs.currentIndex() == 1 else "deep_sky"
-        table = self._plan_tables[key]
-        rows = sorted({i.row() for i in table.selectedItems()}) or list(range(min(5, table.rowCount())))
-        names = [table.item(r, 0).data(_NAME_ROLE) for r in rows[:8]]
-        items = {o["label"]: o for o in result["deep_sky"]} if key == "deep_sky" else \
-            {b["name"]: b for b in result["bodies"]}
-        series = []
-        for name in names:
-            item = items.get(name)
-            if item is not None:
-                title = (t("chart.moon") if name == "moon" else _planet_name(name)) if key == "bodies" else name
-                series.append((title, item["altitudes"]))
+        _key, chosen = self._plan_chosen()
+        series = [(title, item["altitudes"]) for title, item in chosen]
         start = self._local(result["times"][0])
         hours = [start.hour + start.minute / 60 + (self._local(x) - start).total_seconds() / 3600
                  for x in result["times"]]
@@ -2723,11 +2960,15 @@ class AstroApp(QMainWindow):
         name = f"celeste-plan-{self._local(self._plan['window']['start']).strftime('%Y-%m-%d')}"
         path, chosen = QFileDialog.getSaveFileName(
             self, t("planner.export"), os.path.join(os.path.expanduser("~"), name + ".txt"),
-            f"{t('planner.export_txt')} (*.txt);;JSON (*.json);;PNG (*.png)")
+            f"{t('planner.export_txt')} (*.txt);;{t('planner.export_html')} (*.html);;JSON (*.json);;PNG (*.png)")
         if not path:
             return
         try:
-            if path.lower().endswith(".png") or "png" in chosen.lower():
+            if path.lower().endswith(".html") or "html" in chosen.lower():
+                path = path if path.lower().endswith(".html") else path + ".html"
+                with open(path, "w", encoding="utf-8") as f:
+                    f.write(planner.report_html(self._plan_html_data()))
+            elif path.lower().endswith(".png") or "png" in chosen.lower():
                 self.fig_plan.savefig(path if path.lower().endswith(".png") else path + ".png", dpi=150,
                                       facecolor=self.fig_plan.get_facecolor())
             elif path.lower().endswith(".json") or "json" in chosen.lower():
@@ -2740,6 +2981,48 @@ class AstroApp(QMainWindow):
             QMessageBox.critical(self, t("errors.error_title"), str(exc))
             return
         self.statusBar().showMessage(tf("planner.exported", path=path), 6000)
+
+    def _plan_html_data(self):
+        """What the interactive map of the night shows: the deep-sky targets of the table (the
+        chosen ones shown), the planets, the comets and the Moon, each one to show or hide."""
+        result = self._plan
+        key, chosen = self._plan_chosen()
+        shown = {title for title, _item in chosen}
+        tracks = []
+        table = self._plan_tables["deep_sky"]
+        names = [table.item(r, 0).data(_NAME_ROLE) for r in range(min(15, table.rowCount()))]
+        by_label = {o["label"]: o for o in result["deep_sky"]}
+        for name in names + [n for n in shown if n in by_label and n not in names]:
+            o = by_label.get(name)
+            if o is not None:
+                tracks.append({"name": name, "kind": "deep_sky", "alt": list(o["altitudes"]),
+                               "az": list(o["azimuths"]), "on": key == "deep_sky" and name in shown})
+        for b in result["bodies"]:
+            if b["name"] == "moon":
+                continue
+            title = _planet_name(b["name"])
+            tracks.append({"name": title, "kind": "body", "alt": list(b["altitudes"]), "az": list(b["azimuths"]),
+                           "on": key == "bodies" and title in shown})
+        for k in result["comets"][:6]:
+            tracks.append({"name": _planet_name(k["table"], numbered=True) if k["table"] else k["name"],
+                           "kind": "comet", "alt": list(k["altitudes"]), "az": list(k["azimuths"]), "on": False})
+        moon = next((b for b in result["bodies"] if b["name"] == "moon"), None)
+        if moon is not None:
+            tracks.append({"name": t("chart.moon"), "kind": "moon", "alt": list(moon["altitudes"]),
+                           "az": list(moon["azimuths"]), "on": True})
+        c = result["constraints"]
+        day = self._local(result["times"][0]).strftime("%d/%m/%Y")
+        where = self.location_name or f"{_fmt_lat(self._lat)}, {_fmt_lon(self._lon)}"
+        labels = {"north": t("skymap.cardinal_n"), "east": t("skymap.cardinal_e"), "south": t("skymap.cardinal_s"),
+                  "west": t("skymap.cardinal_w"), "altitude": t("planner.html_altitude"),
+                  "azimuth": t("planner.html_azimuth"), "show_all": t("planner.html_show_all"),
+                  "hide_all": t("planner.html_hide_all"), "group_deep_sky": t("planner.tab_deep_sky"),
+                  "group_body": t("planner.tab_bodies"), "group_comet": t("planner.tab_comets"),
+                  "group_moon": t("chart.moon"), "made_with": tf("planner.html_made_with", version=APP_VERSION)}
+        return {"title": tf("planner.map_title_date", date=day),
+                "subtitle": tf("planner.html_subtitle", place=where, zone=_fmt_offset(self._offset_at(result["times"][0]))),
+                "times": self._plan_times(), "tracks": tracks, "horizon": [list(p) for p in result["horizon"]],
+                "limits": [c["altitude_min"], c["altitude_max"]], "labels": labels}
 
     def _plan_report_text(self):
         """The plan as text, in the interface language (uptonight's txt report)."""
@@ -3384,6 +3667,24 @@ class AstroApp(QMainWindow):
         reason = {0: "access", 1: "closed", 4: "timeout"}.get(code, "unknown")
         self._geolocate_by_ip(reason)
 
+    def choose_on_map(self):
+        """The place picked on a map (PlacePicker): coordinates, name, time zone, elevation of
+        the nearest city, then calculation."""
+        try:
+            _dte, lat, lon = self.current_inputs()
+        except ValueError:
+            lat, lon = 48.0, 2.0
+        picker = PlacePicker(self, lat, lon)
+        self._place_picker = picker
+        if picker.exec() != QDialog.DialogCode.Accepted or picker.chosen is None:
+            return None
+        lat, lon = picker.chosen
+        near = places.nearest(lat, lon, max_km=10.0)
+        if near:
+            self.entry_elev.setText(_elev_text(near["elevation"]))
+        self._set_place(lat, lon, picker.name, _zone_at(round(lat, 3), round(lon, 3)))
+        return lat, lon
+
     def _set_place(self, lat, lon, name, zone=None):
         """Place found by geolocation: coordinates, name, time zone, then calculation."""
         self.entry_lat.setText(_coord_text(lat))
@@ -3397,46 +3698,41 @@ class AstroApp(QMainWindow):
 
     def _geolocate_by_ip(self, reason=None):
         """Fallback: position of the IP address, often the internet provider's;
-        *reason*: why the device's service did not answer."""
-        url = ("http://ip-api.com/json/"
-               "?fields=status,message,country,city,lat,lon,timezone")
+        *reason*: why the device's service did not answer. Without an answer, the map."""
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
-            req = urllib.request.Request(
-                url, headers={"User-Agent": f"Celeste/{APP_VERSION}"})
-            with urllib.request.urlopen(req, timeout=5) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-        except Exception as exc:  # network, delay, JSON
+            found = _ip_location()
+        finally:
             QApplication.restoreOverrideCursor()
-            QMessageBox.critical(self, t("errors.network_title"),
-                                 tf("errors.geoloc_network", detail=exc))
+        if found is None:
+            self._explain_geolocation(reason or "unknown", None, None)
             return
-        QApplication.restoreOverrideCursor()
-        if data.get("status") != "success":
-            QMessageBox.warning(self, t("errors.geoloc_title"), t("errors.geoloc_fail"))
-            return
-        self._set_place(float(data["lat"]), float(data["lon"]), data.get("city") or "",
-                        data.get("timezone"))
-        self.statusBar().showMessage(
-            tf("errors.geoloc_ip", city=data.get("city", "?"),
-               country=data.get("country", "?")), 12000)
+        lat, lon, city, country, zone = found
+        self._set_place(lat, lon, city, zone)
+        self.statusBar().showMessage(tf("errors.geoloc_ip", city=city or "?", country=country or "?"), 12000)
         if reason and getattr(self, "_geo_interactive", False):
-            self._explain_geolocation(reason, data.get("city", "?"), data.get("country", "?"))
+            self._explain_geolocation(reason, city or "?", country or "?")
 
     def _explain_geolocation(self, reason, city, country):
-        """Window (non-modal): position of the IP, why, and the settings to open."""
-        box = QMessageBox(QMessageBox.Icon.Information, t("errors.geoloc_title"),
-                          tf("errors.geoloc_ip_short", city=city, country=country), parent=self)
+        """Window (non-modal): position of the IP (or none), why, the map to pick the place
+        on, and the system settings to open."""
+        text = (tf("errors.geoloc_ip_short", city=city, country=country) if city is not None
+                else t("errors.geoloc_no_answer"))
+        box = QMessageBox(QMessageBox.Icon.Information, t("errors.geoloc_title"), text, parent=self)
         box.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         box.setInformativeText(t(f"errors.geoloc_reason_{reason}"))
+        on_map = box.addButton(t("errors.geoloc_choose_map"), QMessageBox.ButtonRole.AcceptRole)
         url = _LOCATION_SETTINGS.get(sys.platform)
         settings = None
         if url and reason in ("access", "closed", "no_source", "timeout"):
             settings = box.addButton(t("errors.geoloc_open_settings"), QMessageBox.ButtonRole.ActionRole)
         box.addButton(QMessageBox.StandardButton.Close)
+        box.setDefaultButton(on_map)
 
         def done(_result):
-            if settings is not None and box.clickedButton() is settings:
+            if box.clickedButton() is on_map:
+                QTimer.singleShot(0, self.choose_on_map)
+            elif settings is not None and box.clickedButton() is settings:
                 QDesktopServices.openUrl(QUrl(url))
         box.finished.connect(done)
         self._geo_dialog = box
@@ -3607,63 +3903,113 @@ class AstroApp(QMainWindow):
 
     # ── Workshop ──────────────────────────────────────────────────────────
 
-    def _workshop_place(self):
-        """The place and date of the Workshop's instruments, from the side panel; None
-        when the coordinates are invalid or out of the Workshop's latitudes."""
-        import workshop
-        try:
-            dte, lat, lon = self.current_inputs()
-        except ValueError:
-            return None
-        if not 10.0 <= abs(lat) <= 80.0:
-            return None
-        name = self.entry_place.text().strip()
-        return workshop.Place(name, lat, lon, _zone(self.tz_name, lat, lon), dte)
-
     def show_workshop(self):
-        """Window of the Workshop: an instrument, its preview, and the PDF to save."""
+        """Window of the Workshop: an instrument, its place, date and options, a preview
+        page by page, and the PDF to save. The place starts as the side panel's."""
         import workshop
-        place = self._workshop_place()
-        if place is None:
-            QMessageBox.information(self, t("workshop.title"), t("workshop.latitude_range"))
-            return
         dlg = QDialog(self)
         dlg.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         dlg.setWindowTitle(t("workshop.title"))
-        dlg.setMinimumSize(860, 640)
+        dlg.setMinimumSize(980, 700)
         outer = QHBoxLayout(dlg)
         outer.setContentsMargins(24, 24, 24, 16)
         outer.setSpacing(24)
 
-        left = QVBoxLayout()
+        # left: the choices, in a column that scrolls when the window is low
+        form = QWidget()
+        left = QVBoxLayout(form)
+        left.setContentsMargins(0, 0, 8, 0)
         left.setSpacing(12)
         left.addWidget(_label(t("workshop.title"), "sous-titre"))
-        left.addWidget(_label(tf("workshop.intro", place=place.describe()), "legende", wrap=True))
+        intro = _label("", "legende", wrap=True)
+        left.addWidget(intro)
         kinds = QComboBox()
         for kind in workshop.INSTRUMENTS:
             kinds.addItem(t(f"workshop.{kind}"), kind)
         left.addWidget(InputField(t("workshop.instrument"), kinds))
         description = _label("", "corps", wrap=True)
-        description.setMinimumWidth(280)
         left.addWidget(description)
+
+        left.addWidget(_label(t("workshop.where_title"), "label", strong=True))
+        place_edit = QLineEdit()
+        place_edit.setPlaceholderText(t("side.place_placeholder"))
+        place_edit.setClearButtonEnabled(True)
+        model = QStringListModel(dlg)
+        completer = QCompleter(model, dlg)
+        completer.setCompletionMode(QCompleter.CompletionMode.UnfilteredPopupCompletion)
+        completer.setMaxVisibleItems(10)
+        place_edit.setCompleter(completer)
+        left.addWidget(InputField(t("side.place"), place_edit))
+        validator = QRegularExpressionValidator(QRegularExpression(_COORD_REGEX))
+        lat_edit, lon_edit = QLineEdit(self.entry_lat.text()), QLineEdit(self.entry_lon.text())
+        lat_field = InputField(t("side.latitude"), lat_edit, unit="°", numeric=True)
+        lon_field = InputField(t("side.longitude"), lon_edit, unit="°", numeric=True)
+        for edit in (lat_edit, lon_edit):
+            edit.setValidator(validator)
+        coords = QHBoxLayout()
+        coords.setSpacing(12)
+        coords.addWidget(lat_field)
+        coords.addWidget(lon_field)
+        left.addLayout(coords)
+        zone_menu = QComboBox()
+        zone_menu.setEditable(True)
+        zone_menu.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        zone_menu.setMaxVisibleItems(14)
+        zone_menu.addItem(t("side.timezone_auto"), _AUTO_ZONE)
+        for name in _zone_names():
+            zone_menu.addItem(name, name)
+        zc = zone_menu.completer()
+        zc.setFilterMode(Qt.MatchFlag.MatchContains)
+        zc.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        zone_menu.setCurrentIndex(max(0, zone_menu.findData(self.tz_name)))
+        left.addWidget(InputField(t("side.timezone"), zone_menu))
+        date_edit = QDateEdit()
+        date_edit.setCalendarPopup(True)
+        date_edit.setDisplayFormat("dd/MM/yyyy")
+        date_edit.setMinimumDate(QDate(EPHEMERIS_YEARS[0], 1, 1))
+        date_edit.setMaximumDate(QDate(EPHEMERIS_YEARS[1], 12, 31))
+        local = self._local(self._edit_datetime())
+        date_edit.setDate(QDate(local.year, local.month, local.day))
+        left.addWidget(InputField(t("workshop.date"), date_edit, hint=t("workshop.date_hint")))
+        from_panel = _button(t("workshop.from_panel"), "place", "discret", compact=True)
+        left.addWidget(from_panel)
+
+        left.addWidget(_label(t("workshop.options_title"), "label", strong=True))
+        size = QComboBox()
+        for mm in workshop.ASTROLABE_SIZES:
+            size.addItem(tf("workshop.size_mm", size=mm), mm)
+        size.setCurrentIndex(len(workshop.ASTROLABE_SIZES) - 1)
+        size_field = InputField(t("workshop.size"), size)
+        left.addWidget(size_field)
         paper = QComboBox()
         for key in workshop.PAPERS:
             paper.addItem(t(f"workshop.paper_{key}"), key)
         left.addWidget(InputField(t("workshop.paper"), paper))
+        problem = _label("", "legende", tone="alerte", strong=True, wrap=True)
+        problem.hide()
+        left.addWidget(problem)
         left.addStretch()
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setWidget(form)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        column = QVBoxLayout()
+        column.setSpacing(8)
+        column.addWidget(scroll, stretch=1)
         save = _button(t("workshop.save"), "export", "principal")
-        left.addWidget(save)
+        column.addWidget(save)
         close = _button(t("detail.close"))
         close.clicked.connect(dlg.reject)
-        left.addWidget(close)
-        outer.addLayout(left, stretch=2)
+        column.addWidget(close)
+        outer.addLayout(column, stretch=2)
 
         right = QVBoxLayout()
         right.setSpacing(8)
         preview = QLabel()
         preview.setObjectName("workshopPreview")
         preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        preview.setMinimumSize(420, 560)
+        preview.setMinimumSize(440, 600)
         preview.setStyleSheet("background: white; border-radius: 4px;")
         right.addWidget(preview, stretch=1)
         nav = QHBoxLayout()
@@ -3678,14 +4024,48 @@ class AstroApp(QMainWindow):
         right.addLayout(nav)
         outer.addLayout(right, stretch=3)
 
-        state = {"page": 0, "pages": 1}
+        state = {"page": 0, "pages": 1, "place": None, "name": self.entry_place.text().strip()
+                 or getattr(self, "location_name", "") or "", "found": {}}
+        timer = QTimer(dlg)
+        timer.setSingleShot(True)
+
+        def current_place():
+            """The place of the fields; an error text instead when they are not usable."""
+            try:
+                lat = _parse_coord(lat_edit.text(), 90.0)
+                lon = _parse_coord(lon_edit.text(), 180.0)
+            except ValueError:
+                return t("status.invalid_coords")
+            if not 10.0 <= abs(lat) <= 80.0:
+                return t("workshop.latitude_range")
+            zone = _zone(zone_menu.currentData() or _AUTO_ZONE, lat, lon)
+            day = date_edit.date()
+            noon = datetime(day.year(), day.month(), day.day(), 20, 0, tzinfo=zone)
+            when = noon.astimezone(timezone.utc).replace(tzinfo=None)
+            return workshop.Place(state["name"], lat, lon, zone, when)
+
+        def options():
+            return {"size": size.currentData()} if kinds.currentData() == "astrolabe" else {}
 
         def refresh():
-            kind, size = kinds.currentData(), paper.currentData()
+            kind = kinds.currentData()
             description.setText(t(f"workshop.desc_{kind}"))
+            size_field.setVisible(kind == "astrolabe")
+            place = current_place()
+            if isinstance(place, str):
+                problem.setText(place)
+                problem.show()
+                save.setEnabled(False)
+                state["place"] = None
+                return
+            problem.hide()
+            save.setEnabled(True)
+            state["place"] = place
+            intro.setText(tf("workshop.intro", place=place.describe()))
             QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
             try:
-                png, count = workshop.preview_png(kind, place, size, state["page"], dpi=72)
+                png, count = workshop.preview_png(kind, place, paper.currentData(), state["page"], dpi=72,
+                                                  options=options())
             finally:
                 QApplication.restoreOverrideCursor()
             state["pages"] = count
@@ -3698,6 +4078,9 @@ class AstroApp(QMainWindow):
             previous.setEnabled(state["page"] > 0)
             following.setEnabled(state["page"] < count - 1)
 
+        def later():
+            timer.start(450)
+
         def turn(step):
             state["page"] = max(0, min(state["pages"] - 1, state["page"] + step))
             refresh()
@@ -3706,7 +4089,53 @@ class AstroApp(QMainWindow):
             state["page"] = 0
             refresh()
 
+        def typed_coords():
+            state["name"] = ""                          # coordinates typed: no more the city's name
+            later()
+
+        def typed_place(text):
+            found = places.search(text) if len(text.strip()) >= 2 else []
+            state["found"] = {}
+            for p in found:
+                state["found"].setdefault(places.label(p), p)
+            model.setStringList(list(state["found"]))
+            if state["found"]:
+                completer.complete()
+
+        def apply_city(p):
+            completer.popup().hide()
+            lat_edit.setText(_coord_text(p["lat"]))
+            lon_edit.setText(_coord_text(p["lon"]))
+            state["name"] = p["name"]
+            choose()
+
+        def chosen(text):
+            p = state["found"].get(text)
+            if p:
+                apply_city(p)
+
+        def returned():
+            text = place_edit.text()
+            if not text.strip() or text in state["found"]:
+                return
+            found = places.search(text, limit=1)
+            if found:
+                apply_city(found[0])
+
+        def back_to_panel():
+            lat_edit.setText(self.entry_lat.text())
+            lon_edit.setText(self.entry_lon.text())
+            zone_menu.setCurrentIndex(max(0, zone_menu.findData(self.tz_name)))
+            loc = self._local(self._edit_datetime())
+            date_edit.setDate(QDate(loc.year, loc.month, loc.day))
+            state["name"] = getattr(self, "location_name", "") or ""
+            place_edit.clear()
+            choose()
+
         def save_pdf():
+            place = state["place"]
+            if place is None:
+                return
             kind = kinds.currentData()
             default = os.path.join(os.path.expanduser("~"), f"{t(f'workshop.{kind}')}.pdf")
             path, _filter = QFileDialog.getSaveFileName(dlg, t("workshop.save_title"), default,
@@ -3717,7 +4146,7 @@ class AstroApp(QMainWindow):
                 path += ".pdf"
             QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
             try:
-                count = workshop.print_instrument(kind, path, place, paper.currentData())
+                count = workshop.print_instrument(kind, path, place, paper.currentData(), options())
             except OSError as exc:
                 QApplication.restoreOverrideCursor()
                 QMessageBox.warning(dlg, t("errors.error_title"), tf("workshop.save_error", error=exc))
@@ -3725,11 +4154,24 @@ class AstroApp(QMainWindow):
             QApplication.restoreOverrideCursor()
             self.statusBar().showMessage(tf("workshop.saved", path=path, pages=count), 12000)
 
+        timer.timeout.connect(choose)
         kinds.currentIndexChanged.connect(lambda _i: choose())
         paper.currentIndexChanged.connect(lambda _i: refresh())
+        size.currentIndexChanged.connect(lambda _i: refresh())
+        zone_menu.currentIndexChanged.connect(lambda _i: later())
+        date_edit.dateChanged.connect(lambda _d: later())
+        lat_edit.textEdited.connect(lambda _t: typed_coords())
+        lon_edit.textEdited.connect(lambda _t: typed_coords())
+        place_edit.textEdited.connect(typed_place)
+        completer.activated.connect(chosen)
+        place_edit.returnPressed.connect(returned)
+        from_panel.clicked.connect(lambda _checked=False: back_to_panel())
         previous.clicked.connect(lambda _checked=False: turn(-1))
         following.clicked.connect(lambda _checked=False: turn(1))
         save.clicked.connect(lambda _checked=False: save_pdf())
+        dlg.workshop_fields = {"kinds": kinds, "place": place_edit, "lat": lat_edit, "lon": lon_edit,
+                               "zone": zone_menu, "date": date_edit, "size": size, "paper": paper,
+                               "save": save, "problem": problem, "preview": preview, "timer": timer}
         self._workshop_dialog = dlg
         dlg.show()
         refresh()

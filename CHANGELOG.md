@@ -7,6 +7,14 @@ Write for them: short sentences, as dashes, no bold or code (the window of versi
 markup as it is), about 800 characters at most (the window cuts the rest, GitHub does not). See the wiki page
 "Publier une version".
 
+## 4.12
+
+- Workshop: a complete planispheric astrolabe (plate of your latitude, rete of the stars of the year, rule, back
+  with calendar and shadow square, alidade) and a nocturnal that tells the time at night from the Great Bear.
+- The Workshop window has its own place, time zone and date: no need to change the side panel.
+- Location: pick your place on a map, when Windows does not let Céleste use its location service.
+- Targets: a sky map of the night with the path of each target, and an interactive map to save as a web page.
+
 ## 4.11
 
 - New Workshop, from the side panel: instruments to print at true scale, cut out and assemble, computed for your

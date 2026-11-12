@@ -47,6 +47,11 @@ v4.3:
   • Sedna among MINOR_PLANETS; MINOR_PLANET_NUMBERS, the Minor Planet
     Center's numbers ("(136199) Eris")
 
+v4.12:
+  • the astrolabe and the nocturnal of the Workshop check their scales against
+    this engine (sun_position(), stars_horizontal(), equation_of_time()); the
+    planner keeps the azimuths of the night for its map of the tracks
+
 v4.11:
   • the Workshop (instruments.py, workshop.py) builds on this engine:
     equation_of_time(), horizontal(), stars_horizontal() and the sidereal

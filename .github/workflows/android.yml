@@ -51,7 +51,7 @@ jobs:
           pip install --upgrade pip
           pip install "PySide6==$PYSIDE_VERSION"
           git clone --depth 1 --branch "v$PYSIDE_VERSION" https://code.qt.io/pyside/pyside-setup "$RUNNER_TEMP/pyside-setup"
-          pip install -r "$RUNNER_TEMP/pyside-setup/tools/cross_compile_android/requirements.txt"
+          pip install -r "$RUNNER_TEMP/pyside-setup/tools/cross_compile_android/requirements.txt" packaging
 
       - name: Android wheels of PySide6 and Shiboken
         run: |

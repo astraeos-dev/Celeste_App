@@ -4,7 +4,8 @@ scripts/build_exe.py — Builds Céleste.exe for Windows
 1. puts the JPL DE440 ephemeris in ~/.celeste (copied from data/, or
    downloaded) for the check of step 4: it is not in the application, which
    downloads it at its first launch;
-2. draws the icon (build/icons/celeste.ico) from assets/astraeos-icone.svg;
+2. draws the icon (build/icons/celeste.ico) from assets/astraeos-icone.svg, and
+   copies it to assets/celeste.ico for the window and the taskbar;
 3. runs PyInstaller with celeste.spec, and checks that the ephemeris is not in;
 4. checks that the built application starts (--self-test);
 5. gathers the result in dist/Celeste-<version>-Windows.zip;
@@ -69,7 +70,10 @@ def make_icons():
     painter.end()
     image.save(png)
     icon = Image.open(png)
-    icon.save(os.path.join(out, "celeste.ico"), sizes=[(s, s) for s in (16, 24, 32, 48, 64, 128, 256)])
+    sizes = [(s, s) for s in (16, 20, 24, 32, 40, 48, 64, 128, 256)]
+    icon.save(os.path.join(out, "celeste.ico"), sizes=sizes)
+    # the same icon inside the application: the window and the taskbar (icons.app_icon)
+    shutil.copyfile(os.path.join(out, "celeste.ico"), os.path.join(ROOT, "assets", "celeste.ico"))
 
 
 def executable():

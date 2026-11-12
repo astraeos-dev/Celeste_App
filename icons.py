@@ -139,10 +139,24 @@ def symbol_pixmap(height, encre, star):
     return _render(svg, height * box.width() / box.height(), height)
 
 
+APP_ICON_SIZES = (16, 20, 24, 32, 40, 48, 64, 128, 256)
+
+
 def app_icon():
-    """Application icon: the Astræos symbol on its Nuit tile."""
+    """
+    Application icon: the Astræos symbol on its Nuit tile.
+
+    Drawn from the SVG at every size Windows asks for (the taskbar takes 24,
+    32 or 40 pixels by the screen's scale), plus the .ico of the built
+    application when it is there (assets/celeste.ico, written by
+    scripts/build_exe.py): the taskbar then shows the same picture as the
+    installer and the Start menu.
+    """
     svg = _asset("astraeos-icone.svg")
     result = QIcon()
-    for size in (16, 24, 32, 48, 64, 128, 256):
+    ico = os.path.join(_ASSETS, "celeste.ico")
+    if os.path.isfile(ico):
+        result.addFile(ico)
+    for size in APP_ICON_SIZES:
         result.addPixmap(_render(svg, size, size, ratio=1.0))
     return result

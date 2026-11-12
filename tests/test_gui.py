@@ -587,6 +587,15 @@ class TestAstraeosRules:
         bad = {text for text in texts if any(_is_emoji(ch) for ch in text)}
         assert not bad, bad
 
+    def test_window_icon_at_taskbar_sizes(self, window):
+        """The window carries Céleste's icon at every size the Windows taskbar takes."""
+        import icons
+        sizes = {(s.width(), s.height()) for s in window.windowIcon().availableSizes()}
+        for size in (16, 24, 32, 40, 48):
+            assert (size, size) in sizes
+            assert not window.windowIcon().pixmap(size, size).isNull()
+        assert set(icons.APP_ICON_SIZES) >= {16, 24, 32, 40, 48}
+
     def test_symbols_use_text_presentation(self, window):
         """Each body symbol is followed by U+FE0E (never shown as an emoji)."""
         name = window._planet_items["Venus"]["col_planet"].text()

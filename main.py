@@ -118,6 +118,10 @@ def main(argv=None):
         AstroEngine.find_eclipses(window._dte, num_months=1)
         from PyQt6.QtPositioning import QGeoPositionInfoSource
         sources = ", ".join(QGeoPositionInfoSource.availableSources()) or "none"
+        sizes = window.windowIcon().availableSizes()
+        if not sizes or window.windowIcon().pixmap(32, 32).isNull():
+            print("self-test: the window has no icon")
+            return 1
         print(f"Céleste {APP_VERSION} self-test OK: {window.tz_menu.currentText()}, "
               f"{len(window.visible_stars)} stars, {len(window.minor_planets)} minor planets, "
               f"location sources: {sources}")

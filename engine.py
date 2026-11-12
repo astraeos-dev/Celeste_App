@@ -47,6 +47,10 @@ v4.3:
   • Sedna among MINOR_PLANETS; MINOR_PLANET_NUMBERS, the Minor Planet
     Center's numbers ("(136199) Eris")
 
+v4.13:
+  • unchanged: the interface is split into spaces (ui/) around this engine,
+    which stays free of Qt
+
 v4.12:
   • the astrolabe and the nocturnal of the Workshop check their scales against
     this engine (sun_position(), stars_horizontal(), equation_of_time()); the

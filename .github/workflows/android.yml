@@ -50,6 +50,7 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install "PySide6==$PYSIDE_VERSION"
+          pip install -r "$(python -c 'import os, PySide6; print(os.path.dirname(PySide6.__file__))')/scripts/requirements-android.txt"
           git clone --depth 1 --branch "v$PYSIDE_VERSION" https://code.qt.io/pyside/pyside-setup "$RUNNER_TEMP/pyside-setup"
           pip install -r "$RUNNER_TEMP/pyside-setup/tools/cross_compile_android/requirements.txt" packaging
 

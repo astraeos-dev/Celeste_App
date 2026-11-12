@@ -44,7 +44,8 @@ jobs:
       - name: System packages (python-for-android)
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y autoconf automake libtool libffi-dev libssl-dev zlib1g-dev unzip zip
+          sudo apt-get install -y autoconf automake libtool libltdl-dev pkg-config cmake build-essential \
+            libffi-dev libssl-dev zlib1g-dev libncurses-dev unzip zip
 
       - name: Qt for Python and its Android tools
         run: |

@@ -28,8 +28,10 @@ a = Analysis(
     ["main.py"],
     pathex=["."],
     datas=datas,
-    hiddenimports=["PySide6.QtPositioning", "PySide6.QtSvg", "PySide6.QtNetwork",
-                   "matplotlib.backends.backend_pdf"],
+    # qt.py imports the binding's modules by name: PyInstaller does not see them
+    hiddenimports=["qt", "PySide6.QtCore", "PySide6.QtGui", "PySide6.QtWidgets", "PySide6.QtSvg",
+                   "PySide6.QtNetwork", "PySide6.QtPositioning",
+                   "matplotlib.backends.backend_qtagg", "matplotlib.backends.backend_pdf"],
     excludes=["tkinter", "pytest", "pandas", "PyQt6"],    # pandas: an optional import of Skyfield
 )
 pyz = PYZ(a.pure)

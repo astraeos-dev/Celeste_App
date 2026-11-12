@@ -8,7 +8,15 @@ package="$2"
 adb install -r "$apk" || { echo "::error::adb install failed"; exit 1; }
 adb logcat -c
 adb shell monkey -p "$package" -c android.intent.category.LAUNCHER 1
-sleep 45
+# the engine's line comes once the ephemeris is downloaded (32 MB): up to 5 minutes
+for _ in $(seq 60); do
+  sleep 5
+  adb logcat -d > logcat.txt
+  if grep -qE "android engine (OK|FAILED)" logcat.txt; then
+    break
+  fi
+done
+sleep 5
 adb logcat -d > logcat.txt
 echo "--- process"
 adb shell pidof "$package" || echo "not running"
@@ -19,9 +27,14 @@ if [ -n "$pid" ]; then
   grep -E "^\S+ \S+ +$pid " logcat.txt | grep -v "extracting _python_bundle" | tail -250
 fi
 grep -E " F |DEBUG +:|libc +:|crash_dump|tombstone|Fatal signal|backtrace" logcat.txt | tail -80
-if grep -q "android self-test OK" logcat.txt; then
-  echo "Céleste started on the emulator"
-else
+grep -E "android (self-test|engine)" logcat.txt
+if ! grep -q "android self-test OK" logcat.txt; then
   echo "::error::no self-test line in logcat: the app did not start (see logcat.txt)"
   exit 1
 fi
+echo "Céleste started on the emulator"
+if ! grep -q "android engine OK" logcat.txt; then
+  echo "::error::the engine did not run (see the lines above and logcat.txt)"
+  exit 1
+fi
+echo "Céleste's engine ran on the emulator"

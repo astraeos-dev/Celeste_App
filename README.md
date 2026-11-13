@@ -602,6 +602,12 @@ launch, SmartScreen shows "Windows protected your PC" (*More info*, then *Run an
 - [ ] **Android app** (5.0) — the same code as the desktop, on Google Play. The plan:
   [docs/ANDROID.md](docs/ANDROID.md)
 
+### On the web
+
+- [ ] **Céleste in a browser** — the ways to do it (Qt for WebAssembly, Python in the page with Pyodide, a JavaScript
+  engine, pages computed in advance) and the order proposed, the Ganymède website first:
+  [docs/WEB.md](docs/WEB.md)
+
 ## Code signing policy
 
 Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by

@@ -583,6 +583,8 @@ launch, SmartScreen shows "Windows protected your PC" (*More info*, then *Run an
   place, with assembly, use and astronomy sheets in four languages
 - [x] **Workshop 2** (4.12) — the complete planispheric astrolabe and the nocturnal; the window's own place, zone
   and date
+- [x] **A planisphere like those of the shops** (4.23) — the star wheel with the dates on its rim, in a holder
+  folded in two: the window of the horizon with the directions around it, the night's hours along its rounded edge
 - [ ] **Workshop 3** — the horary quadrant, a declining wall dial and a noon mark. The design:
   [docs/INSTRUMENTS.md](docs/INSTRUMENTS.md)
 

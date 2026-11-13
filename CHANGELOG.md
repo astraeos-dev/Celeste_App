@@ -7,6 +7,13 @@ Write for them: short sentences, as dashes, no bold or code (the window of versi
 markup as it is), about 800 characters at most (the window cuts the rest, GitHub does not). See the wiki page
 "Publier une version".
 
+## 4.23
+
+- Workshop: the rotating chart becomes a real planisphere, like those of the shops: a star wheel with the dates on
+  its rim, turning in a holder folded in two whose window is your horizon, with the directions around it, the hours
+  of the night along its rounded edge facing the dates, and how to use it printed on the front.
+- The fold, the glue strips and the pin are marked, and the assembly sheet follows the new pieces.
+
 ## 4.22
 
 - On a phone, the sky map follows the phone: tap the compass, hold the phone up to the sky, and the map turns and

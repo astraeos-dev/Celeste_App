@@ -20,7 +20,7 @@ Ordered from the simplest to make to the most demanding.
 
 | # | Instrument | What Céleste computes for the place | Parts | Level |
 |---|---|---|---|---|
-| 1 | **Planisphere** (star wheel) | Stars to magnitude 4.5 and the 88 figures, projected for the latitude; the horizon window; the date and hour rings, with the longitude's offset from the time zone | Star disc, mask, pin | Easy |
+| 1 | **Planisphere** (star wheel) | Stars to magnitude 4.5 and the 88 figures, projected for the latitude; the horizon window; the date ring and the night's hours, with the longitude's offset from the time zone | Star wheel, holder folded in two, pin, glue | Easy |
 | 2 | **Equatorial sundial** | Dial tilted to the latitude, hour lines every 15°; a table of the corrections (equation of time, longitude, summer time) to read the legal time | Dial (two faces: summer and winter), gnomon, stand | Easy |
 | 3 | **Horizontal sundial** | Hour lines `tan H' = sin φ · tan H` for the latitude, shifted by the longitude; gnomon angle = latitude; optional date lines (solstices, equinoxes) | Dial, triangular gnomon | Easy |
 | 4 | **Nocturnal** | Reading the time at night from Polaris and the pointers of the Big Dipper (or Kochab): date ring and hour ring for the longitude | Two discs, rule, eyehole | Medium |
@@ -79,11 +79,16 @@ Workshop 3 comes after the first steps of the Android port (4.13 and 4.14).
 Letter page) and writes the explanation sheets from the `workshop` texts of `locales/`. The window, in `ui/observe.py`
 (`show_workshop`), takes the place, the time zone and the date of the side panel.
 
-- **Planisphere** — `planisphere(lat, lon, std_offset, year, r_edge, stars, figures)`: azimuthal equidistant
-  projection from the visible pole, to 8° beyond the horizon of the meridian; stars to magnitude 4.5, the 88 figures,
-  the ecliptic and the equator; a date ring giving the local sidereal time at 0:00 standard time of each day of the
-  year; the mask's window (horizon, 30° and 60°, zenith, directions) and its hour ring at the sidereal rate. Two
-  pages and the sheets; the southern sky is the mirror image (east on the right).
+- **Planisphere** — `planisphere(lat, lon, std_offset, year, r_edge, stars, figures, margin)`: azimuthal
+  equidistant projection from the visible pole, to `margin` degrees beyond the horizon of the meridian; stars to
+  magnitude 4.5, the 88 figures, the ecliptic and the equator; a date ring giving the local sidereal time at 0:00
+  standard time of each day of the year; the window of the horizon and the directions around it; the hours at the
+  sidereal rate. Since 4.23 the pieces are those of the planispheres of the shops (and of in-the-sky.org): the star
+  wheel with the date ring on its rim; a holder folded in two, its front with the window, the directions, the night's
+  hours (17 h to 7 h) along its rounded edge facing the dates, the title and the steps; its back with the tab of the
+  pin and the glue strips (`workshop.planisphere_holder_outline`). The chart reaches 24° past the horizon, under the
+  holder, so that the window ends well inside the hours. Two pages and the sheets; the southern sky is the mirror
+  image (east on the right).
 - **Equatorial sundial** — `equatorial_dial(lat, lon, std_offset)`: the dial at 90° − |φ|, hours 15° apart shifted
   by the longitude's offset from the time zone; the upper face (lit when the Sun is on the side of the visible pole)
   and the lower face, mirror images, then two wedges.

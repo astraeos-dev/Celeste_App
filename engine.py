@@ -47,6 +47,10 @@ v4.3:
   • Sedna among MINOR_PLANETS; MINOR_PLANET_NUMBERS, the Minor Planet
     Center's numbers ("(136199) Eris")
 
+v4.23:
+  • unchanged: the Workshop's planisphere becomes a star wheel in a holder
+    folded in two (workshop.py), on the same geometry (instruments.py)
+
 v4.22:
   • unchanged: the sky map that follows the phone turns the drawn map
     (charts.turn_sky, orientation.py, geomag.py)

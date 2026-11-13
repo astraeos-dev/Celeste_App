@@ -330,3 +330,44 @@ def test_workshop_2_pdfs(tmp_path, kind, site):
     assert not [txt for txt in texts if txt.startswith("[")]
     assert len(pages.figures) >= (6 if kind == "astrolabe" else 3)
     assert workshop.print_instrument(kind, str(tmp_path / "x.pdf"), place, options={"size": 120}) == len(pages.figures)
+
+
+# ── The planisphere in its holder (4.23) ─────────────────────────────────────
+
+@pytest.mark.parametrize("site", [CHERBOURG, SYDNEY], ids=["north", "south"])
+@pytest.mark.parametrize("paper", list(workshop.PAPERS))
+def test_planisphere_holder(site, paper):
+    """As the planispheres of the shops: the night's hours on the holder's rounded edge, the wheel's
+    dates just past it; the window well inside, room left for the hours and the directions; the
+    wheel clear of the sides, of the fold and of the glue; everything on the page."""
+    import charts
+    lat, lon, off = site
+    r_chart, r_wheel = workshop._planisphere_sizes(paper)
+    geo = instruments.planisphere(lat, lon, off, 2026, r_chart, [], charts.constellation_figures(),
+                                  margin=workshop.PLANISPHERE_MARGIN)
+    x, y, frame = workshop.planisphere_holder_outline(r_chart, r_wheel)
+    first, last = workshop.PLANISPHERE_NIGHT
+    for hours in (24 - first, last):                       # from midnight to the first and the last hour
+        assert math.radians(hours * 15 * instruments.SIDEREAL_RATE) < frame["span"] - math.radians(5)
+    assert np.hypot(*geo["horizon"]).max() <= r_chart - 8.0     # the window, then the S, then the hours
+    assert r_wheel < frame["side"] - 2 and r_wheel < frame["fold"] - 1
+    low = frame["fold"] - (frame["fold"] - frame["shoulder"]) + 2.0  # the glue strips' end, from the pole
+    assert math.sqrt(r_wheel ** 2 - low ** 2) < frame["side"] - 6.0
+    assert x.max() == pytest.approx(frame["side"]) and y.max() == pytest.approx(frame["pin"] + 10.0)
+    assert y.min() == pytest.approx(-r_chart, abs=0.01)
+    width, height = workshop.PAPERS[paper]
+    zone = ZoneInfo("Europe/Paris") if lat > 0 else ZoneInfo("Australia/Sydney")
+    place = workshop.Place("", lat, lon, zone, datetime(2026, 11, 12, 20))
+    page = workshop.instrument_pages("planisphere", place, paper).figures[1].axes[0]
+    outline = max(page.lines, key=lambda line: len(line.get_xdata()))
+    assert 20 < min(outline.get_ydata()) and max(outline.get_ydata()) < height - 18
+    assert 10 < min(outline.get_xdata()) and max(outline.get_xdata()) < width - 10
+    texts = [txt.get_text() for txt in page.texts]
+    assert "0h" in texts and f"{first}h" in texts and f"{last}h" in texts and "12h" not in texts
+
+
+def test_planisphere_holder_low_latitude():
+    """Near the tropics the chart stops short of the other pole."""
+    place = workshop.Place("", 12.0, -61.7, ZoneInfo("America/Grenada"), datetime(2026, 11, 12, 20))
+    pages = workshop.instrument_pages("planisphere", place)
+    assert len(pages.figures) >= 3

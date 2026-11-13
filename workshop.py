@@ -3,8 +3,8 @@ workshop.py — The Workshop: instruments to print, cut out and assemble
 ======================================================================
 PDF files at true scale of instruments computed for the place:
 
-- planisphere (star wheel): the star disc with its date ring, the mask with
-  the window of the horizon and the hour ring;
+- planisphere: the star wheel with the dates on its rim, the holder folded in
+  two whose window is the horizon, the night's hours along its rounded edge;
 - equatorial sundial: the summer and winter faces, the wedge of the stand;
 - horizontal sundial: the dial with its hour lines and date lines, the
   triangular gnomon with its nodus;
@@ -175,6 +175,23 @@ def _cut(ax, x, y):
 
 
 # ── Planisphere ───────────────────────────────────────────────────────────────
+#
+# As the planispheres of the shops (and of in-the-sky.org): a star wheel whose
+# rim carries the dates, turning in a holder folded in two; the front's window
+# is the horizon of the latitude, with the directions around it, and its
+# rounded edge carries the hours of the night, facing the dates; the wheel is
+# pinned at the pole to the back.
+
+_SHADE = "#e6e6e6"
+PLANISPHERE_MARGIN = 24.0       # degrees of sky past the horizon, under the holder: room for the hours
+PLANISPHERE_NIGHT = (17, 7)     # the hours along the holder's edge, evening to morning
+
+
+def _planisphere_sizes(paper):
+    """Radii (mm) of the star chart and of the wheel (the chart and its ring of dates)."""
+    chart = 66.0 if PAPERS[paper][1] >= 290 else 62.0
+    return chart, chart + (13.0 if chart > 64 else 12.0)
+
 
 def _bright_stars():
     from star_catalog import CATALOG
@@ -183,102 +200,164 @@ def _bright_stars():
 
 def _build_planisphere(place, paper):
     import charts
-    width, height = PAPERS[paper]
-    cx, cy, r_edge = width / 2, height / 2 + 6, 72.0
-    geo = instruments.planisphere(place.lat, place.lon, place.std_offset, place.when.year, r_edge,
-                                  _bright_stars(), charts.constellation_figures())
+    r_chart, r_wheel = _planisphere_sizes(paper)
+    margin = min(PLANISPHERE_MARGIN, abs(place.lat) - 2.0)          # the chart stops short of the other pole
+    geo = instruments.planisphere(place.lat, place.lon, place.std_offset, place.when.year, r_chart,
+                                  _bright_stars(), charts.constellation_figures(), margin=margin)
     pages = _Pages(paper, f"Céleste — {t('workshop.planisphere')} — {place.describe()}")
-    s = 1.0 if place.lat >= 0 else -1.0
+    _planisphere_wheel(pages, geo, place, r_chart, r_wheel)
+    _planisphere_holder(pages, geo, place, r_chart, r_wheel)
+    pages.text_pages(t("workshop.planisphere"), _planisphere_texts(place, geo))
+    return pages
 
-    # 1. the star disc
+
+def _planisphere_wheel(pages, geo, place, r_chart, r_wheel):
+    """The star wheel: the stars, the figures, the ecliptic; the dates on its rim."""
     fig, ax = pages.new(t("workshop.planisphere_disc"))
-    _circle(ax, cx, cy, r_edge, linewidth=0.4, color=_GREY)
-    _circle(ax, cx, cy, r_edge + 5.5, linewidth=0.4, color=_GREY)
+    cx, cy = pages.width / 2, pages.height / 2 + 6
+    s = 1.0 if place.lat >= 0 else -1.0
+    a = np.linspace(0, 2 * np.pi, 721)
+    ax.fill(np.concatenate([cx + r_wheel * np.cos(a), cx + r_chart * np.cos(a[::-1])]),
+            np.concatenate([cy + r_wheel * np.sin(a), cy + r_chart * np.sin(a[::-1])]), color=_SHADE, linewidth=0)
+    _circle(ax, cx, cy, r_chart, linewidth=0.4)
+    for dec in (60, 30, 0, -30, -60):                               # declination circles
+        r = float(instruments.planisphere_radius(dec, place.lat, r_chart, geo["dec_edge"]))
+        if 0 < r < r_chart - 1:
+            _circle(ax, cx, cy, r, linewidth=0.25, color=_LIGHT)
     for (x1, y1), (x2, y2) in geo["lines"]:
-        ax.plot([cx + x1, cx + x2], [cy + y1, cy + y2], color=_LIGHT, linewidth=0.35)
+        ax.plot([cx + x1, cx + x2], [cy + y1, cy + y2], color=_LIGHT, linewidth=0.4)
     for name, x, y, mag in geo["stars"]:
-        size = max(0.25, (4.8 - mag) * 0.85)
-        ax.plot(cx + x, cy + y, "o", color=_INK, markersize=size, markeredgewidth=0)
+        ax.plot(cx + x, cy + y, "o", color=_INK, markersize=max(0.3, (5.0 - mag) * 0.9), markeredgewidth=0)
         if mag < 1.6 and not name[0].isdigit() and " " not in name[:2]:
-            ax.text(cx + x + 1.2, cy + y + 0.6, name, fontsize=4.6, color=_GREY)
+            ax.text(cx + x + 1.2, cy + y + 0.6, name, fontsize=4.8, color=_INK)
     for key, x, y in geo["names"]:
-        ax.text(cx + x, cy + y, t(f"constellations.{key}").upper(), fontsize=4.0, color=_GREY,
-                ha="center", va="center")
+        if math.hypot(x, y) < r_chart - 4:
+            ax.text(cx + x, cy + y, t(f"constellations.{key}").upper(), fontsize=3.9, color=_GREY,
+                    ha="center", va="center")
     ex, ey = geo["ecliptic"]
     ax.plot(cx + ex, cy + ey, color=_GREY, linewidth=0.5, linestyle=(0, (4, 2)))
     qx, qy = geo["equator"]
     ax.plot(cx + qx, cy + qy, color=_GREY, linewidth=0.4, linestyle=(0, (1, 1.5)))
-    # right ascension ring
-    for hour, _a in geo["ra_ticks"]:
-        for minute in range(0, 60, 10):
-            ra = hour + minute / 60
-            a = math.radians(ra * 15)
-            inner = r_edge + (0 if minute == 0 else 2.5)
-            p = [(-s * r * math.sin(a), -r * math.cos(a)) for r in (inner, r_edge + 5.5)]
-            ax.plot([cx + p[0][0], cx + p[1][0]], [cy + p[0][1], cy + p[1][1]], color=_INK, linewidth=0.3)
-        a = math.radians((hour + 0.5) * 15)
-        ax.text(cx - s * (r_edge + 2.8) * math.sin(a), cy - (r_edge + 2.8) * math.cos(a), f"{hour}h",
-                fontsize=4.4, ha="center", va="center", rotation=math.degrees(-s * a) + 180)
-    # date ring
-    r0, r1 = r_edge + 5.5, r_edge + 19.0
-    _circle(ax, cx, cy, r0 + 6.5, linewidth=0.3)
-    for month, day, lst in geo["date_ticks"]:
-        a = math.radians(lst * 15)
-        length = 6.5 if day == 1 else 3.5 if day % 5 == 0 else 1.8
-        p = [(-s * r * math.sin(a), -r * math.cos(a)) for r in (r0, r0 + length)]
+    for hour in range(24):                                          # right ascension, inside the edge
+        ang = math.radians(hour * 15)
+        x, y = -s * (r_chart - 2.6) * math.sin(ang), -(r_chart - 2.6) * math.cos(ang)
+        ax.text(cx + x, cy + y, f"{hour}h", fontsize=3.8, color=_GREY, ha="center", va="center",
+                rotation=math.degrees(-s * ang) + 180)
+    ring = r_wheel - r_chart
+    for month, day, lst in geo["date_ticks"]:                       # the dates, on the rim
+        ang = math.radians(lst * 15)
+        length = ring if day == 1 else 3.6 if day % 5 == 0 else 1.8
+        p = [(-s * r * math.sin(ang), -r * math.cos(ang)) for r in (r_chart, r_chart + length)]
         ax.plot([cx + p[0][0], cx + p[1][0]], [cy + p[0][1], cy + p[1][1]], color=_INK,
-                linewidth=0.5 if day == 1 else 0.3)
+                linewidth=0.6 if day == 1 else 0.35)
         if day % 5 == 0 and day < 31:
-            q = (-s * (r0 + 5.0) * math.sin(a), -(r0 + 5.0) * math.cos(a))
-            ax.text(cx + q[0], cy + q[1], str(day), fontsize=3.6, ha="center", va="center",
-                    rotation=math.degrees(-s * a) + 180)
-        if day == 15:
-            q = (-s * (r0 + 10.0) * math.sin(a), -(r0 + 10.0) * math.cos(a))
+            q = (-s * (r_chart + 5.2) * math.sin(ang), -(r_chart + 5.2) * math.cos(ang))
+            ax.text(cx + q[0], cy + q[1], str(day), fontsize=4.2, ha="center", va="center",
+                    rotation=math.degrees(-s * ang) + 180)
+        if day == 16:
+            q = (-s * (r_chart + ring * 0.74) * math.sin(ang), -(r_chart + ring * 0.74) * math.cos(ang))
             ax.text(cx + q[0], cy + q[1], t(f"workshop.month_{month}"), fontsize=6.2, ha="center",
-                    va="center", rotation=math.degrees(-s * a) + 180, fontweight=600)
-    _cut(ax, cx + r1 * np.cos(np.linspace(0, 2 * np.pi, 721)), cy + r1 * np.sin(np.linspace(0, 2 * np.pi, 721)))
+                    va="center", rotation=math.degrees(-s * ang) + 180, fontweight=600)
+    _cut(ax, cx + r_wheel * np.cos(a), cy + r_wheel * np.sin(a))
     _circle(ax, cx, cy, 1.0, linewidth=0.6)
-    ax.text(cx, cy - r1 - 4, t("workshop.planisphere_disc_hint"), fontsize=6.5, ha="center", va="top", color=_GREY)
-
-    # 2. the mask
-    fig, ax = pages.new(t("workshop.planisphere_mask"))
-    r_mask = r_edge + 5.5
-    _cut(ax, cx + r_mask * np.cos(np.linspace(0, 2 * np.pi, 721)), cy + r_mask * np.sin(np.linspace(0, 2 * np.pi, 721)))
-    hx, hy = geo["horizon"]
-    _cut(ax, cx + hx, cy + hy)
-    ax.fill(cx + hx, cy + hy, color="#f2f2f2", zorder=0)
-    for alt, (x, y) in geo["almucantars"].items():
-        ax.plot(cx + x, cy + y, color=_LIGHT, linewidth=0.4, linestyle=(0, (3, 2)))
-    for az, x, y in geo["cardinals"]:
-        key = ("n", "ne", "e", "se", "s", "sw", "w", "nw")[az // 45]
-        ax.text(cx + x * 0.93, cy + y * 0.93, t(f"skymap.cardinal_{key}"), fontsize=7 if az % 90 == 0 else 5,
-                fontweight=600 if az % 90 == 0 else 400, ha="center", va="center")
-    zx, zy = geo["zenith"]
-    ax.plot(cx + zx, cy + zy, "+", color=_INK, markersize=6, markeredgewidth=0.6)
-    for hour, ux, uy in geo["hours"]:
-        p = [(ux * r, uy * r) for r in (r_mask - 3.2, r_mask)]
-        ax.plot([cx + p[0][0], cx + p[1][0]], [cy + p[0][1], cy + p[1][1]], color=_INK, linewidth=0.6)
-        a = math.atan2(ux, -uy)
-        ax.text(cx + ux * (r_mask - 6), cy + uy * (r_mask - 6), str(hour), fontsize=6, ha="center", va="center",
-                rotation=-math.degrees(a) + 180, fontweight=600 if hour % 6 == 0 else 400)
-        for quarter in (0.25, 0.5, 0.75):
-            b = math.radians(-(hour + quarter) * 15 * instruments.SIDEREAL_RATE)
-            vx, vy = -s * math.sin(b), -math.cos(b)
-            ax.plot([cx + vx * (r_mask - (1.8 if quarter == 0.5 else 1.0)), cx + vx * r_mask],
-                    [cy + vy * (r_mask - (1.8 if quarter == 0.5 else 1.0)), cy + vy * r_mask],
-                    color=_INK, linewidth=0.3)
-    _circle(ax, cx, cy, 1.0, linewidth=0.6)
-    top = cy + r_mask - 14
-    for i, line in enumerate((place.describe(),
-                              tf("workshop.planisphere_mask_time", zone=_offset_text(place.std_offset)),
-                              t("workshop.planisphere_mask_summer") if place.has_dst else "")):
-        ax.text(cx, top - 4 * i, line, fontsize=6, ha="center", va="top", color=_GREY)
-    ax.text(cx, cy - r_mask - 4, t("workshop.planisphere_mask_hint"), fontsize=6.5, ha="center", va="top",
+    ax.plot(cx, cy, "+", color=_INK, markersize=5, markeredgewidth=0.5)
+    ax.text(cx, cy - r_wheel - 4, t("workshop.planisphere_disc_hint"), fontsize=6.5, ha="center", va="top",
             color=_GREY)
 
-    # 3. explanations
-    pages.text_pages(t("workshop.planisphere"), _planisphere_texts(place, geo))
-    return pages
+
+def planisphere_holder_outline(r_chart, r_wheel, night=PLANISPHERE_NIGHT):
+    """
+    The holder's outline, unfolded, in mm with the front's pole at (0, 0) and
+    the fold above it: the front's rounded edge (the arc of the night's hours,
+    with a little room past the first and the last), its shoulders and sides,
+    then the back up to the tab of the pin. Returns the outline's (x, y), the
+    heights of the fold, of the pin and of the sides' lower end, the
+    half-width and the arc's half-angle (radians from straight down).
+    """
+    fold = r_wheel + 2.0                                            # the wheel clears the fold...
+    side = r_wheel + 3.0                                            # ...and the sides
+    tab = 10.0
+    reach = max(night[1], 24 - night[0]) * 15 * instruments.SIDEREAL_RATE
+    span = math.radians(reach + 11.0)
+    end_y = -r_chart * math.cos(span)                               # the arc's ends, above the pole
+    shoulder = end_y + 14.0
+    pin = 2 * fold                                                  # the front's pole, folded over
+    back_low = pin - 22.0
+    arc = np.linspace(span, -span, 361)                             # right to left, through the bottom
+    top = np.linspace(np.pi, 0.0, 181)                              # the tab, left to right over the top
+    x = np.concatenate([[side, side], r_chart * np.sin(arc), [-side, -side], tab * np.cos(top), [side, side]])
+    y = np.concatenate([[fold, shoulder], -r_chart * np.cos(arc), [shoulder, back_low], pin + tab * np.sin(top),
+                        [back_low, fold]])
+    return x, y, {"fold": fold, "pin": pin, "shoulder": shoulder, "side": side, "span": span}
+
+
+def _planisphere_holder(pages, geo, place, r_chart, r_wheel):
+    """The holder, to fold: the front with the window, the directions, the hours, the steps; the back with the pin."""
+    fig, ax = pages.new(t("workshop.planisphere_mask"))
+    s = 1.0 if place.lat >= 0 else -1.0
+    from matplotlib.patches import Rectangle
+    x, y, frame = planisphere_holder_outline(r_chart, r_wheel)
+    fold, pin, side, shoulder = frame["fold"], frame["pin"], frame["side"], frame["shoulder"]
+    cx = pages.width / 2
+    cy = pages.height - 24.0 - (pin + 10.0)                         # the pole of the front; the tab under the title
+    _cut(ax, cx + x, cy + y)
+    ax.plot([cx - side, cx + side], [cy + fold, cy + fold], color=_INK, linewidth=0.5, linestyle=(0, (3, 2)))
+    ax.text(cx, cy + fold + 1.0, t("workshop.planisphere_fold"), fontsize=5.5, ha="center", va="bottom",
+            color=_GREY)
+    # the window: the horizon of the latitude, cut out
+    hx, hy = geo["horizon"]
+    ax.fill(cx + hx, cy + hy, color=_SHADE, zorder=0)
+    _cut(ax, cx + hx, cy + hy)
+    for az, px, py in geo["cardinals"]:
+        key = ("n", "ne", "e", "se", "s", "sw", "w", "nw")[az // 45]
+        ax.text(cx + px, cy + py, t(f"skymap.cardinal_{key}"), fontsize=8 if az % 90 == 0 else 5.5,
+                fontweight=600 if az % 90 == 0 else 400, ha="center", va="center")
+    # the night's hours along the rounded edge, facing the wheel's dates
+    first, last = PLANISPHERE_NIGHT
+    for hour in list(range(first, 24)) + list(range(0, last + 1)):
+        for quarter in (0.0, 0.25, 0.5, 0.75):
+            if hour == last and quarter:
+                break
+            b = math.radians(-(hour + quarter) * 15 * instruments.SIDEREAL_RATE)
+            vx, vy = -s * math.sin(b), -math.cos(b)
+            inner = r_chart - (2.4 if quarter == 0 else 1.5 if quarter == 0.5 else 0.9)
+            ax.plot([cx + vx * inner, cx + vx * r_chart], [cy + vy * inner, cy + vy * r_chart], color=_INK,
+                    linewidth=0.7 if quarter == 0 else 0.35)
+        b = math.radians(-hour * 15 * instruments.SIDEREAL_RATE)
+        vx, vy = -s * math.sin(b), -math.cos(b)
+        ax.text(cx + vx * (r_chart - 4.8), cy + vy * (r_chart - 4.8), f"{hour}h", fontsize=6,
+                ha="center", va="center", rotation=-math.degrees(math.atan2(vx, -vy)),
+                fontweight=600 if hour == 0 else 400)
+    # on the front, between the window and the fold: the title, the place, the steps (as many
+    # lines as fit above the window: near the pole the window comes up close to the fold)
+    ns = t("skymap.cardinal_n") if place.lat >= 0 else t("skymap.cardinal_s")
+    top = cy + fold - 5.0
+    ax.text(cx, top, tf("workshop.planisphere_title", lat=f"{_num(abs(place.lat), 1)}° {ns}"), fontsize=10.5,
+            fontweight=700, ha="center", va="top")
+    ax.text(cx, top - 5.5, f"{place.describe()} · {tf('workshop.planisphere_mask_time', zone=_offset_text(place.std_offset))}",
+            fontsize=5.6, ha="center", va="top", color=_GREY)
+    lines = [t("workshop.planisphere_step_1"), t("workshop.planisphere_step_2"), t("workshop.planisphere_step_3")]
+    if place.has_dst:
+        lines.append(t("workshop.planisphere_mask_summer"))
+    window_top = cy + float(np.max(hy)) + 5.0                       # the window and the letter above it
+    y_line = top - 10.5
+    for line in lines:
+        if y_line - 2.6 < window_top:
+            break
+        ax.text(cx - side + 9, y_line, line, fontsize=5.9, ha="left", va="top")
+        y_line -= 3.9
+    # on the back: the glue strips along its sides, the pin's cross, how to cut and fold
+    strip_top = cy + fold + (fold - shoulder) - 2.0
+    for edge in (-1, 1):
+        x0 = cx + edge * side - (6.0 if edge > 0 else 0.0)
+        ax.add_patch(Rectangle((x0, cy + fold + 2.0), 6.0, strip_top - (cy + fold + 2.0), color=_SHADE,
+                               linewidth=0))
+        ax.text(x0 + 3.0, (cy + fold + strip_top) / 2, t("workshop.planisphere_glue"), fontsize=5, rotation=90,
+                ha="center", va="center", color=_GREY)
+    ax.plot(cx, cy + pin, "+", color=_INK, markersize=8, markeredgewidth=0.7)
+    ax.text(cx, cy + pin - 4.0, t("workshop.planisphere_pin"), fontsize=5.5, ha="center", va="top", color=_GREY)
+    ax.text(cx, cy + fold + (pin - fold) * 0.45, "\n".join(textwrap.wrap(t("workshop.planisphere_mask_hint"), 60)),
+            fontsize=6.5, ha="center", va="center", color=_GREY, linespacing=1.5)
 
 
 def _planisphere_texts(place, geo):

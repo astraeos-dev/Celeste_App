@@ -290,6 +290,18 @@ class AstroApp(TonightSpace, SkySpace, BodiesSpace, NeoSpace, CalendarSpace, Obs
         while width > 24 and self.tabs.minimumSizeHint().width() > available:
             width -= 1
             apply(width)
+        self._fit_page_bars(available)
+
+    def _fit_page_bars(self, available):
+        """Compact layout: the second rows of tabs (the pages of a space) fit the width too,
+        their tabs' side padding narrowed when they need it."""
+        for space in self._space_tabs:
+            bar = space.tabBar()
+            bar.setStyleSheet("")
+            padding = 6
+            while self._compact and padding > 2 and bar.sizeHint().width() > available:
+                padding -= 1
+                bar.setStyleSheet(f"QTabBar::tab {{ padding-left: {padding}px; padding-right: {padding}px; }}")
 
     def resizeEvent(self, event):
         super().resizeEvent(event)

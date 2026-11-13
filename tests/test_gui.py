@@ -2468,7 +2468,10 @@ class TestSkyTimeBar:
     def test_moving_the_bar_ends_the_real_time(self, window, qapp):
         window.btn_live.setChecked(True)
         slider = self._sky(window, qapp)
-        slider.setValue(slider.value() + 60)
+        # the bar spans the night of the clock's time: in the morning it ends at the present
+        # (the night under way), so it moves back; else forward
+        step = 60 if slider.value() + 60 <= slider.maximum() else -60
+        slider.setValue(slider.value() + step)
         assert not window.live_mode and not window.btn_live.isChecked()
 
     def test_a_hidden_animation_stops(self, window, qapp):

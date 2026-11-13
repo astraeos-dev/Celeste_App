@@ -7,6 +7,9 @@ A mixin of the main window (gui.AstroApp): its methods use the window's state
 from ui import common
 from ui.common import *  # noqa: F401,F403
 
+import month_sheet
+from config import APP_RELEASE
+
 
 class CalendarSpace:
     # ── Tab 7: events ─────────────────────────────────────────────────────────
@@ -18,29 +21,32 @@ class CalendarSpace:
         lay.setContentsMargins(0, 16, 0, 0)
         lay.setSpacing(16)
 
-        bar = QHBoxLayout()
-        bar.setSpacing(8)
         btn_cal = _button(t("astro_calendar.button"), "calendar", "secondaire")
         btn_cal.setToolTip(t("astro_calendar.button_tip"))
         btn_cal.clicked.connect(lambda _c=False: self.show_calendar())
-        bar.addWidget(btn_cal)
         btn_ecl = _button(t("events.search_eclipses"), "search")
+        btn_ecl.setToolTip(t("events.search_eclipses"))
         btn_ecl.clicked.connect(self._search_eclipses_gui)
         btn_conj = _button(t("events.search_conjunctions"), "search")
+        btn_conj.setToolTip(t("events.search_conjunctions"))
         btn_conj.clicked.connect(self._search_conjunctions_gui)
         btn_sat = _button(t("satellites.search"), "search")
         btn_sat.setToolTip(t("satellites.search_tip"))
         btn_sat.clicked.connect(self._search_satellites_gui)
-        bar.addWidget(btn_ecl)
-        bar.addWidget(btn_conj)
-        bar.addWidget(btn_sat)
-        bar.addStretch()
         self._btn_ics = _button(t("events.export_ics"), "export")
         self._btn_ics.setToolTip(t("events.export_tip"))
         self._btn_ics.setEnabled(False)
         self._btn_ics.clicked.connect(self._export_ics)
-        bar.addWidget(self._btn_ics)
-        lay.addLayout(bar)
+        # one row; on a phone two columns, the labels without their "(12 months)"
+        self._evt_bar_buttons = [btn_cal, btn_ecl, btn_conj, btn_sat, self._btn_ics]
+        for button in self._evt_bar_buttons:
+            button.setProperty("fullText", button.text())
+        self._evt_bar = QGridLayout()
+        self._evt_bar.setHorizontalSpacing(8)
+        self._evt_bar.setVerticalSpacing(8)
+        lay.addLayout(self._evt_bar)
+        self._compact_hooks.append(self._events_bar_compact)
+        self._events_bar_compact(False)
         options = QHBoxLayout()
         self._sat_visual = QCheckBox(t("satellites.visual"))
         self._sat_visual.setToolTip(t("satellites.visual_tip"))
@@ -589,6 +595,150 @@ class CalendarSpace:
         vis = ev.get("visibility")
         return not (self._evt_filters["visible"].isChecked() and vis is not None and vis["period"] is None)
 
+    def _events_bar_compact(self, compact):
+        """The buttons of the Calendar space: one row, the export on the right; on a
+        phone, two columns with short labels (their tooltips keep the details)."""
+        grid, buttons = self._evt_bar, self._evt_bar_buttons
+        for column in range(len(buttons) + 1):
+            grid.setColumnStretch(column, 0)
+        for n, button in enumerate(buttons):
+            grid.removeWidget(button)
+            full = button.property("fullText")
+            button.setText(re.sub(r"\s*\([^)]*\)$", "", full) if compact else full)
+            if compact:
+                grid.addWidget(button, n // 2, n % 2)
+            else:
+                grid.addWidget(button, 0, n if n < len(buttons) - 1 else len(buttons))
+        if compact:
+            grid.setColumnStretch(0, 1)
+            grid.setColumnStretch(1, 1)
+        else:
+            grid.setColumnStretch(len(buttons) - 1, 1)          # the room before the export button
+
+    # ── The month's sheet to print (month_sheet.py) ───────────────────────
+
+    def _month_sheet_dialog(self):
+        """The month to print (the calculation's by default), then where to save it."""
+        local = self._local(self._edit_datetime())
+        dlg = QDialog(self)
+        dlg.setWindowTitle(t("month_sheet.dialog_title"))
+        dlg.setMinimumWidth(380)
+        lay = QVBoxLayout(dlg)
+        lay.setSpacing(12)
+        month = QDateEdit(QDate(local.year, local.month, 1))
+        month.setDisplayFormat("MM/yyyy")
+        month.setCalendarPopup(True)
+        month.setMinimumDate(QDate(EPHEMERIS_YEARS[0], 1, 1))
+        month.setMaximumDate(QDate(EPHEMERIS_YEARS[1], 12, 1))
+        lay.addWidget(InputField(t("month_sheet.month"), month, hint=t("month_sheet.month_hint")))
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
+        lay.addWidget(buttons)
+
+        def save():
+            chosen = month.date()
+            dlg.accept()
+            self._save_month_sheet(chosen.year(), chosen.month())
+
+        buttons.accepted.connect(save)
+        buttons.rejected.connect(dlg.reject)
+        dlg.month, dlg.save = month, save
+        self._month_sheet_dlg = dlg
+        dlg.open()
+        return dlg
+
+    def _save_month_sheet(self, year, month, path=None):
+        """Asks where to save, computes the month in the background, writes the PDF."""
+        if self._dte is None:
+            return
+        if path is None:
+            path, _ = QFileDialog.getSaveFileName(self, t("month_sheet.dialog_title"),
+                                                  tf("month_sheet.file_name", year=year, month=f"{month:02d}"),
+                                                  "PDF (*.pdf)")
+            if not path:
+                return
+        lat, lon, elev, zone = self._lat, self._lon, self._elevation(), self._zone
+        self.statusBar().showMessage(t("month_sheet.computing"))
+
+        def failed(exc):
+            self.statusBar().clearMessage()
+            common.QMessageBox.warning(self, t("month_sheet.dialog_title"), tf("month_sheet.error", error=exc))
+
+        def done(sheet):
+            try:
+                self._write_month_sheet(path, sheet)
+            except (OSError, ValueError, RuntimeError) as exc:
+                failed(exc)
+                return
+            self.statusBar().showMessage(tf("month_sheet.saved", path=path), 8000)
+
+        common._run_in_background(lambda: month_sheet.collect(year, month, lat, lon, elev, zone), done, failed)
+
+    def _write_month_sheet(self, path, sheet):
+        """The page in the colours of the Jour theme (dark ink on white paper), whatever the window's."""
+        theme = Config.THEME
+        Config.apply_theme("jour")
+        try:
+            month_sheet.save(path, sheet, self._month_sheet_texts(sheet))
+        finally:
+            Config.apply_theme(theme)
+
+    def _month_sheet_texts(self, sheet):
+        """The words of the page, in the interface language: its titles, the phases, the
+        planets of the 15th (as in Tonight), the events (as in the calendar)."""
+        clock, local = self._fmt_clock, self._local
+
+        def day(when):
+            return f"{local(when):%d/%m}"
+
+        def near(when):                                     # to five minutes: "around"
+            minutes = round((local(when) - datetime(2000, 1, 1)).total_seconds() / 300.0) * 5
+            return clock(datetime(2000, 1, 1) + timedelta(minutes=minutes))
+
+        phases, events = [], []
+        for item in sheet["events"]:
+            when = local(item["date"] + timedelta(seconds=30))
+            if item["category"] == "phases":
+                phases.append(tf("month_sheet.phase_line", phase=t(f"phases.{item['kind']}"),
+                                 date=f"{when:%d/%m}", time=clock(when)))
+            else:
+                events.append((f"{when:%d/%m} {clock(when)}", self._calendar_title(item)))
+        planets = []
+        for planet in sheet["night"]["planets"]:
+            seen = self._visibility_text(planet)
+            mag = tf("events.magnitude", value=_num(planet["mag"], 1))
+            planets.append(f"{_planet_name(planet['name'])} · {seen[:1].lower()}{seen[1:]} · "
+                           f"{mag[:1].lower()}{mag[1:]}")
+        if not planets:
+            planets.append(t("month_sheet.no_planet"))
+        shown = {p["name"] for p in sheet["night"]["planets"]}
+        hidden = [_planet_name(name) for name in _PLANETS if name not in shown]
+        if hidden:
+            planets.append(tf("month_sheet.hidden", names=", ".join(hidden)))
+        coords = f"{_fmt_lat(sheet['lat'])}, {_fmt_lon(sheet['lon'])}"
+        first, last = sheet["same_sky"]
+        month_name = t(f"workshop.month_{sheet['month']}")
+        return {
+            "kicker": t("month_sheet.kicker"),
+            "title": f"{month_name} {sheet['year']}",
+            "subtitle": tf("month_sheet.subtitle", place=self.location_name or coords, coords=coords,
+                           zone=getattr(sheet["zone"], "key", "UTC")),
+            "map_labels": {"title": "", "sun": t("chart.sun"), "moon": t("chart.moon"),
+                           "horizon": t("skymap.horizon"),
+                           "cardinals": [t(f"skymap.cardinal_{c}") for c in ("n", "ne", "e", "se", "s", "sw", "w", "nw")],
+                           "planets": {n: _planet_name(n) for n in _PLANETS + MINOR_PLANETS + COMETS}},
+            "map_caption": tf("month_sheet.map_caption", date=day(sheet["map_time"]),
+                              time=clock(local(sheet["map_time"])), mag=_num(month_sheet.MAP_MAG),
+                              first=day(first), first_time=near(first), last=day(last), last_time=near(last)),
+            "moon_title": t("month_sheet.moon"),
+            "phases": phases,
+            "planets_title": tf("month_sheet.planets", date=day(sheet["map_time"])),
+            "planets": planets,
+            "events_title": t("month_sheet.events"),
+            "events": events,
+            "no_events": t("month_sheet.no_events"),
+            "footer": tf("month_sheet.footer", version=APP_RELEASE, date=f"{datetime.now():%d/%m/%Y}"),
+        }
+
     # ── Astronomical calendar ─────────────────────────────────────────────
 
     _CAL_SYMBOLS = {"phases": "Moon", "eclipses": "Sun", "planets": "conjunction", "minor": "conjunction",
@@ -694,9 +844,13 @@ class CalendarSpace:
         prev_btn = _icon_button("previous", t("astro_calendar.previous"), compact=True)
         next_btn = _icon_button("next", t("astro_calendar.next"), compact=True)
         month_label = _label("", "sous-titre")
+        sheet_btn = _button(t("month_sheet.button"), "export", "discret", compact=True)
+        sheet_btn.setToolTip(t("month_sheet.button_tip"))
+        sheet_btn.clicked.connect(lambda _c=False: self._save_month_sheet(*cal["month"]))
         nav.addWidget(prev_btn)
         nav.addWidget(month_label)
         nav.addWidget(next_btn)
+        nav.addWidget(sheet_btn)
         nav.addStretch()
         status = _label("", "legende", wrap=True)
         nav.addWidget(status, stretch=1)

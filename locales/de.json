@@ -1317,5 +1317,27 @@
   "variables": {
     "algol_minimum": "Algol-Minimum",
     "algol_details": "Algol in {alt}° Höhe ({dir}), auf ±{uncertainty} min genau: er sinkt von 2,1 auf 3,4 mag und kehrt in etwa zehn Stunden zurück"
+  },
+  "month_sheet": {
+    "button": "Monatsblatt",
+    "button_tip": "Das Monatsblatt zum Ausdrucken (PDF) für Ihren Ort: die Sternkarte des Monats, der Mond Tag für Tag, die Planeten und die Ereignisse",
+    "dialog_title": "Monatsblatt",
+    "month": "Monat",
+    "month_hint": "Die Seite des gewählten Monats, für den Ort der Seitenleiste",
+    "file_name": "himmel-{year}-{month}.pdf",
+    "computing": "Das Monatsblatt wird berechnet…",
+    "saved": "Blatt gespeichert: {path}",
+    "error": "Das Blatt konnte nicht gespeichert werden: {error}",
+    "kicker": "Der Himmel des Monats",
+    "subtitle": "{place} · {coords} · Ortszeit ({zone})",
+    "map_caption": "Der Himmel am {date} um {time}, Sterne bis zur Größe {mag}; derselbe Himmel am {first} gegen {first_time} und am {last} gegen {last_time}. Halten Sie die Karte über den Kopf, Norden nach Norden.",
+    "moon": "Der Mond",
+    "phase_line": "{phase} · {date} um {time}",
+    "planets": "Die Planeten am {date}",
+    "no_planet": "In dieser Nacht ist kein Planet gut sichtbar.",
+    "hidden": "Kaum oder nicht sichtbar: {names}",
+    "events": "Die Ereignisse des Monats",
+    "no_events": "Kein besonderes Ereignis in diesem Monat.",
+    "footer": "Céleste {version} · Ephemeride JPL DE440 · Blatt vom {date}"
   }
 }

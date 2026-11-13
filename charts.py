@@ -39,7 +39,8 @@ from matplotlib.ticker import FuncFormatter, MultipleLocator
 
 from config import Config, FONT_SANS, mix
 from star_catalog import CATALOG
-from engine import COMETS, EPHEMERIS_YEARS, AstroEngine, _HORIZON_CORRECTION_SUN, messier_catalog
+from engine import (COMETS, EPHEMERIS_YEARS, MINOR_PLANETS, PLANETS, AstroEngine, _HORIZON_CORRECTION_SUN,
+                    messier_catalog)
 
 # Astronomical symbols (Astraeos Symboles). Matplotlib never draws emoji, so
 # they go without the U+FE0E selector here.
@@ -540,6 +541,56 @@ def star_marker_size(mag):
     return diameter * diameter
 
 
+def sky_state(dte, lat, lon, elevation_m=0.0):
+    """
+    The sky at *dte* (UT) seen from the place: the Sun, the Moon, the
+    planets, the minor planets and the comets within their tables, the 110
+    Messier objects, with their positions — for the window's calculation, the
+    sky map's time bar and the monthly sheet (month_sheet.py).
+
+    Returns:
+        dict: dte; sun, moon (name, ra, dec, alt, az, dist; the Sun's eot, the
+        Moon's illum, phase, age); planets, minor_planets (name, ra, dec, dist,
+        alt, az, elong, east, mag, minor, comet); comets (names); deep_sky
+        (the Messier catalogue with alt, az).
+    """
+    tc = AstroEngine.julian_century_j2000(dte)
+    s_l, r_sun = AstroEngine.sun_position(tc)
+    s_ra, s_dec = AstroEngine.ecliptic_to_equatorial(s_l, 0, tc)
+    s_alt, s_az = AstroEngine.horizontal(tc, lat, lon, "sun", elevation_m)
+
+    m_l, m_b, m_p = AstroEngine.moon_position(tc)
+    m_ra, m_dec = AstroEngine.ecliptic_to_equatorial(m_l, m_b, tc)
+    m_alt, m_az = AstroEngine.horizontal(tc, lat, lon, "moon", elevation_m, refraction=True)
+    illum, age = AstroEngine.moon_phase(tc)
+
+    sun = {"name": "Sun", "ra": s_ra, "dec": s_dec, "alt": s_alt, "az": s_az, "dist": r_sun,
+           "eot": AstroEngine.equation_of_time(tc)}
+    moon = {"name": "Moon", "ra": m_ra, "dec": m_dec, "alt": m_alt, "az": m_az, "illum": illum,
+            "phase": AstroEngine.mod360(m_l - s_l), "dist": 6378.14 / math.sin(math.radians(m_p)),
+            "age": age}
+
+    planets, minor_planets = [], []
+    comets = AstroEngine.comets_at(tc)                          # within their tables (2025–2031)
+    bodies = PLANETS + MINOR_PLANETS + comets
+    magnitudes = AstroEngine.observations(tc, bodies)
+    for name in bodies:
+        ra, dec, dist = AstroEngine.planet_position(tc, name)
+        alt, az = AstroEngine.horizontal(tc, lat, lon, name, elevation_m)
+        minor = name not in PLANETS
+        (minor_planets if minor else planets).append({
+            "name": name, "ra": ra, "dec": dec, "dist": dist, "alt": alt, "az": az,
+            "elong": AstroEngine.angular_separation(ra, dec, s_ra, s_dec),
+            "east": (ra - s_ra) % 24 < 12, "mag": magnitudes[name]["mag"], "minor": minor,
+            "comet": name in COMETS,
+        })
+
+    alts, azs = AstroEngine.deep_sky_horizontal(tc, lat, lon, elevation_m)
+    deep_sky = [{**obj, "alt": float(alt), "az": float(az)} for obj, alt, az in zip(messier_catalog(), alts, azs)]
+    return {"dte": dte, "sun": sun, "moon": moon, "planets": planets, "minor_planets": minor_planets,
+            "comets": comets, "deep_sky": deep_sky}
+
+
 @functools.lru_cache(maxsize=1)
 def _sky_points():
     """
@@ -721,7 +772,7 @@ def _overlaps(a, b):
 _LABEL_PLACES = ((6, 3, "left"), (6, -14, "left"), (-6, 3, "right"), (-6, -14, "right"))
 
 
-def draw_sky_map(fig, scene, labels, highlight=None):
+def draw_sky_map(fig, scene, labels, highlight=None, ax=None):
     """
     Draws the sky map.
 
@@ -732,14 +783,18 @@ def draw_sky_map(fig, scene, labels, highlight=None):
             clockwise) and planets ({"Venus": "Vénus", ...}).
         highlight (dict | None): the object found by name, circled in gold:
             x, y, label, and wide (True for a constellation).
+        ax: the axes to draw in (the monthly sheet, month_sheet.py): the
+            figure is then neither cleared nor titled.
 
     Returns:
         tuple: (axes, tooltip annotation)
     """
-    fig.clear()
-    fig.set_layout_engine("none")
-    fig.patch.set_facecolor(Config.CIEL_100)
-    ax = fig.add_axes((0.02, 0.02, 0.96, 0.89))
+    whole = ax is None
+    if whole:
+        fig.clear()
+        fig.set_layout_engine("none")
+        fig.patch.set_facecolor(Config.CIEL_100)
+        ax = fig.add_axes((0.02, 0.02, 0.96, 0.89))
     ax.set_aspect("equal")
     ax.set_xlim(-1.17, 1.17)
     ax.set_ylim(-1.17, 1.17)
@@ -871,8 +926,9 @@ def draw_sky_map(fig, scene, labels, highlight=None):
         _body_label(ax, highlight["x"], highlight["y"] + radius, highlight["label"],
                     Config.OR, size=SIZE_LEGENDE, weight=600, dx=0, dy=4, ha="center")
 
-    fig.text(0.03, 0.97, labels["title"], ha="left", va="top", fontsize=SIZE_SOUS_TITRE,
-             fontweight=600, color=Config.ENCRE)
+    if whole:
+        fig.text(0.03, 0.97, labels["title"], ha="left", va="top", fontsize=SIZE_SOUS_TITRE,
+                 fontweight=600, color=Config.ENCRE)
     return ax, _tooltip(ax)
 
 

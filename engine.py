@@ -47,6 +47,10 @@ v4.3:
   • Sedna among MINOR_PLANETS; MINOR_PLANET_NUMBERS, the Minor Planet
     Center's numbers ("(136199) Eris")
 
+v4.19:
+  • unchanged: the month's sheet to print (month_sheet.py) builds on it;
+    the sky at an instant is charts.sky_state()
+
 v4.18:
   • horizontal_tracks(): several bodies over many instants, the observer
     computed once; stars_apparent() and turned_horizontal(): the stars'

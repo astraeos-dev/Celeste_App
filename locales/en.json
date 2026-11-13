@@ -1317,5 +1317,27 @@
   "variables": {
     "algol_minimum": "Minimum of Algol",
     "algol_details": "Algol {alt}° high ({dir}), to ±{uncertainty} min: it fades from magnitude 2.1 to 3.4 and back in about ten hours"
+  },
+  "month_sheet": {
+    "button": "Month's sheet",
+    "button_tip": "The month's sheet to print (PDF) for your place: the month's sky map, the Moon day by day, the planets and the events",
+    "dialog_title": "Month's sheet",
+    "month": "Month",
+    "month_hint": "The page of the chosen month, for the place of the side panel",
+    "file_name": "sky-{year}-{month}.pdf",
+    "computing": "Computing the month's sheet…",
+    "saved": "Sheet saved: {path}",
+    "error": "The sheet could not be saved: {error}",
+    "kicker": "The sky of the month",
+    "subtitle": "{place} · {coords} · local times ({zone})",
+    "map_caption": "The sky on {date} at {time}, stars down to magnitude {mag}; the same sky on {first} around {first_time} and on {last} around {last_time}. Hold the map above your head, north to the north.",
+    "moon": "The Moon",
+    "phase_line": "{phase} · {date} at {time}",
+    "planets": "The planets on {date}",
+    "no_planet": "No planet well placed that night.",
+    "hidden": "Hard to see or hidden: {names}",
+    "events": "The month's events",
+    "no_events": "No remarkable event this month.",
+    "footer": "Céleste {version} · JPL DE440 ephemeris · sheet of {date}"
   }
 }

@@ -1317,5 +1317,27 @@
   "variables": {
     "algol_minimum": "Mínimo de Algol",
     "algol_details": "Algol a {alt}° de altura ({dir}), con ±{uncertainty} min de margen: pasa de la magnitud 2,1 a 3,4 y vuelve en unas diez horas"
+  },
+  "month_sheet": {
+    "button": "Ficha del mes",
+    "button_tip": "La ficha del mes para imprimir (PDF) para su lugar: el mapa del cielo del mes, la Luna día a día, los planetas y los eventos",
+    "dialog_title": "Ficha del mes",
+    "month": "Mes",
+    "month_hint": "La página del mes elegido, para el lugar del panel lateral",
+    "file_name": "cielo-{year}-{month}.pdf",
+    "computing": "Calculando la ficha del mes…",
+    "saved": "Ficha guardada: {path}",
+    "error": "No se pudo guardar la ficha: {error}",
+    "kicker": "El cielo del mes",
+    "subtitle": "{place} · {coords} · horas locales ({zone})",
+    "map_caption": "El cielo el {date} a las {time}, estrellas hasta la magnitud {mag}; el mismo cielo el {first} hacia las {first_time} y el {last} hacia las {last_time}. Sostenga el mapa sobre su cabeza, con el norte hacia el norte.",
+    "moon": "La Luna",
+    "phase_line": "{phase} · {date} a las {time}",
+    "planets": "Los planetas el {date}",
+    "no_planet": "Ningún planeta bien situado esa noche.",
+    "hidden": "Poco o nada visibles: {names}",
+    "events": "Los eventos del mes",
+    "no_events": "Ningún evento destacado este mes.",
+    "footer": "Céleste {version} · efemérides JPL DE440 · ficha del {date}"
   }
 }

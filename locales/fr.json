@@ -1317,5 +1317,27 @@
   "variables": {
     "algol_minimum": "Minimum d'Algol",
     "algol_details": "Algol à {alt}° de hauteur ({dir}), à ±{uncertainty} min près : elle passe de la magnitude 2,1 à 3,4 et revient en une dizaine d'heures"
+  },
+  "month_sheet": {
+    "button": "Fiche du mois",
+    "button_tip": "Fiche du mois à imprimer (PDF) pour votre lieu : la carte du ciel du mois, la Lune jour par jour, les planètes et les évènements",
+    "dialog_title": "Fiche du mois",
+    "month": "Mois",
+    "month_hint": "La page du mois choisi, pour le lieu du panneau latéral",
+    "file_name": "ciel-{year}-{month}.pdf",
+    "computing": "Calcul de la fiche du mois…",
+    "saved": "Fiche enregistrée : {path}",
+    "error": "La fiche n'a pas pu être enregistrée : {error}",
+    "kicker": "Le ciel du mois",
+    "subtitle": "{place} · {coords} · heures locales ({zone})",
+    "map_caption": "Le ciel le {date} à {time}, étoiles jusqu'à la magnitude {mag} ; le même ciel le {first} vers {first_time} et le {last} vers {last_time}. Tenez la carte au-dessus de votre tête, le nord vers le nord.",
+    "moon": "La Lune",
+    "phase_line": "{phase} · {date} à {time}",
+    "planets": "Les planètes le {date}",
+    "no_planet": "Aucune planète bien visible cette nuit-là.",
+    "hidden": "Peu ou pas visibles : {names}",
+    "events": "Les évènements du mois",
+    "no_events": "Pas d'évènement remarquable ce mois-ci.",
+    "footer": "Céleste {version} · éphéméride JPL DE440 · fiche du {date}"
   }
 }

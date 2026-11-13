@@ -2173,6 +2173,36 @@ def test_astronomical_calendar(window, qapp, tmp_path, monkeypatch):
     assert any("Minimum d'Algol" in c.lines.text() for c in window._cal_widgets["cells"])
 
 
+def test_month_sheet(window, qapp, tmp_path, monkeypatch):
+    """v4.19: the month's sheet to print: the calculation's month by default, the PDF written
+    in the colours of the Jour theme, the window's theme kept."""
+    import gui
+    import month_sheet
+    from config import Config
+    monkeypatch.setattr(gui.common, "_run_in_background", lambda func, done, err: done(func()))
+    dlg = window._month_sheet_dialog()
+    assert (dlg.month.date().year(), dlg.month.date().month()) == (2026, 11)
+    target = tmp_path / "ciel.pdf"
+    monkeypatch.setattr(gui.QFileDialog, "getSaveFileName", lambda *a, **k: (str(target), ""))
+    seen, real_save = {}, month_sheet.save
+
+    def spy(path, sheet, texts):
+        seen["theme"], seen["texts"] = Config.THEME, texts
+        real_save(path, sheet, texts)
+
+    monkeypatch.setattr(month_sheet, "save", spy)
+    dlg.save()
+    assert target.read_bytes().startswith(b"%PDF")
+    assert seen["theme"] == "jour" and Config.THEME == "nuit"
+    texts = seen["texts"]
+    assert texts["title"] == "Novembre 2026" and len(texts["phases"]) == 4
+    assert any(title == "Minimum d'Algol" for _when, title in texts["events"])
+    assert "vers" in texts["map_caption"] and "Fiche enregistrée" in window.statusBar().currentMessage()
+    window._sheet_btn.click()                                        # the button of the Tonight card
+    assert window._month_sheet_dlg.isVisible()
+    window._month_sheet_dlg.reject()
+
+
 def test_algol_minimum_tonight(window, qapp):
     """v4.18: Tonight names the minimum of Algol of the night when it can be watched."""
     window._set_datetime(datetime(2026, 11, 9, 21, 0))
@@ -2232,6 +2262,15 @@ class TestCompactLayout:
         assert slider.mapTo(window, slider.rect().topLeft()).y() > window.canvas_sky.mapTo(window, window.canvas_sky.rect().bottomLeft()).y()
         self._phone(window, qapp, 1350, 820)
         assert window._find_entry.width() == 220 and window._mag_slider.width() == 240
+
+    def test_calendar_buttons_in_two_columns(self, window, qapp):
+        """The Calendar space's buttons: two columns of short labels on a phone, nothing clipped."""
+        self._phone(window, qapp)
+        buttons = window._evt_bar_buttons
+        assert all("(" not in b.text() for b in buttons)
+        assert len({window._evt_bar.getItemPosition(window._evt_bar.indexOf(b))[1] for b in buttons}) == 2
+        self._phone(window, qapp, 1350, 820)
+        assert buttons[1].text() == "Éclipses (12 mois)" and buttons[-1].text() == "Exporter (.ics)"
 
     def test_drawer(self, window, qapp):
         self._phone(window, qapp)

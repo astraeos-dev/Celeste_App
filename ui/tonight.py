@@ -47,6 +47,10 @@ class TonightSpace:
         week_btn.clicked.connect(lambda _=False: self.show_week_quality())
         self._week_btn = week_btn
         head.addWidget(week_btn)
+        sheet_btn = _icon_button("export", t("month_sheet.button_tip"), compact=True)   # month_sheet.py
+        sheet_btn.clicked.connect(lambda _=False: self._month_sheet_dialog())
+        self._sheet_btn = sheet_btn
+        head.addWidget(sheet_btn)
         outer.addLayout(head)
         # the quality of the night: its rating, the hours, the sky of the place
         self._quality_label = _label("", "corps", wrap=True)

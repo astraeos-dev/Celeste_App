@@ -133,6 +133,9 @@ The interface is translated into French, English, Spanish and German.
   per step
 - **Deep sky** — the 110 Messier objects on the sky map (atlas symbols, card on click) and the finest of the night in
   "Tonight"
+- **Month's sheet** — from the Tonight card or the month shown in the astronomical calendar: one A4 page to print for
+  the place (PDF, dark ink on white): the sky map on the 15th at 22:00 and when the same sky shows at the start and
+  the end of the month, the Moon day by day, the planets, the month's events
 - **Variable stars** — the minima of Algol you can watch from your place (the star at least 15° high in a dark sky),
   in "Tonight" and in the calendar, to within half an hour: an ephemeris fitted to the CCD minima of the BAV's
   Lichtenknecker Database, the light time across the Earth's orbit included
@@ -309,6 +312,7 @@ Celeste_App/
 ├── journal.py           # Observation log: entries in ~/.celeste/journal.json, CSV export
 ├── night_quality.py     # Quality of the night: darkness, Moon, clouds (Open-Meteo), Bortle class
 ├── variables.py         # Variable stars: the minima of Algol seen from the place
+├── month_sheet.py       # The month's sheet to print: sky map, Moon, planets, events (PDF)
 ├── planner.py           # Night planner: targets of the night under the observer's constraints
 ├── mpc.py               # Comet elements of the Minor Planet Center (~/.celeste/CometEls.txt)
 ├── instruments.py       # Geometry of the instruments to make: planisphere, sundials, astrolabe (no Qt)
@@ -513,6 +517,7 @@ launch, SmartScreen shows "Windows protected your PC" (*More info*, then *Run an
 - [x] **Interactive sky map** — full card of a star on click
 - [x] **Search on the sky map** — a star, a planet, a Messier object or a constellation by its name
 - [x] **Animated sky map** — the night on a time bar, played with ▶
+- [x] **Month's sheet** — the sky of the month on one page to print
 - [x] **Astræos design** — Nuit, Jour and Observation themes without restarting, IBM Plex fonts, vector icons
 
 ### Ease of use

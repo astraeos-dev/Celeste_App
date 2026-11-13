@@ -7,6 +7,13 @@ Write for them: short sentences, as dashes, no bold or code (the window of versi
 markup as it is), about 800 characters at most (the window cuts the rest, GitHub does not). See the wiki page
 "Publier une version".
 
+## 4.19
+
+- New month's sheet: one A4 page to print for your place, from the Tonight card or the month shown in the calendar,
+  with the sky map of the month (and when it shows), the Moon day by day and its phases, the planets and the
+  month's events, the minima of Algol included.
+- On a phone, the Calendar space's buttons fit in two columns.
+
 ## 4.18
 
 - Sky map: a time bar under the map runs through the night, from sunset to sunrise; press play to watch the sky

@@ -963,48 +963,9 @@ class AstroApp(TonightSpace, SkySpace, BodiesSpace, CalendarSpace, ObserveSpace,
         return ok
 
     def _sky_state(self, dte, lat, lon, elev):
-        """
-        The sky at *dte* (UT) seen from the place: the Sun, the Moon, the
-        planets, the minor planets and the comets within their tables, the 110
-        Messier objects, with their positions — for the calculation, and for
-        each step of the sky map's time bar.
-        """
-        tc = AstroEngine.julian_century_j2000(dte)
-        s_l, r_sun  = AstroEngine.sun_position(tc)
-        s_ra, s_dec = AstroEngine.ecliptic_to_equatorial(s_l, 0, tc)
-        s_alt, s_az = AstroEngine.horizontal(tc, lat, lon, "sun", elev)
-
-        m_l, m_b, m_p = AstroEngine.moon_position(tc)
-        m_ra, m_dec   = AstroEngine.ecliptic_to_equatorial(m_l, m_b, tc)
-        m_alt_c, m_az = AstroEngine.horizontal(tc, lat, lon, "moon", elev, refraction=True)
-        illum, age = AstroEngine.moon_phase(tc)
-
-        sun = {"name": "Sun", "ra": s_ra, "dec": s_dec, "alt": s_alt, "az": s_az, "dist": r_sun,
-               "eot": AstroEngine.equation_of_time(tc)}
-        moon = {"name": "Moon", "ra": m_ra, "dec": m_dec, "alt": m_alt_c, "az": m_az, "illum": illum,
-                "phase": AstroEngine.mod360(m_l - s_l), "dist": 6378.14 / math.sin(math.radians(m_p)),
-                "age": age}
-
-        planets, minor_planets = [], []
-        comets = AstroEngine.comets_at(tc)                          # within their tables (2025–2031)
-        bodies = _PLANETS + MINOR_PLANETS + comets
-        magnitudes = AstroEngine.observations(tc, bodies)
-        for name in bodies:
-            ra, dec, dist = AstroEngine.planet_position(tc, name)
-            alt, az = AstroEngine.horizontal(tc, lat, lon, name, elev)
-            minor = name not in _PLANETS
-            (minor_planets if minor else planets).append({
-                "name": name, "ra": ra, "dec": dec, "dist": dist, "alt": alt, "az": az,
-                "elong": AstroEngine.angular_separation(ra, dec, s_ra, s_dec),
-                "east": (ra - s_ra) % 24 < 12, "mag": magnitudes[name]["mag"], "minor": minor,
-                "comet": name in COMETS,
-            })
-
-        alts, azs = AstroEngine.deep_sky_horizontal(tc, lat, lon, elev)
-        deep_sky = [{**obj, "alt": float(alt), "az": float(az)}
-                    for obj, alt, az in zip(messier_catalog(), alts, azs)]
-        return {"dte": dte, "sun": sun, "moon": moon, "planets": planets, "minor_planets": minor_planets,
-                "comets": comets, "deep_sky": deep_sky}
+        """The sky at *dte* (UT) seen from the place (charts.sky_state): for the
+        calculation and for each step of the sky map's time bar."""
+        return charts.sky_state(dte, lat, lon, elev)
 
     def _sky_scene_for(self, sky, dte, lat, lon, quick=False):
         """The sky map's scene of a sky state (_sky_state): the stars down to the

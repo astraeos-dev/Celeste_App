@@ -5,7 +5,10 @@
 set -u
 apk="$1"
 package="$2"
-adb install -r "$apk" || { echo "::error::adb install failed"; exit 1; }
+# -g: the runtime permissions (the location) granted at install. Otherwise Android's question,
+# asked at the first start (4.22), waits for an answer nobody gives here, and while it is shown
+# Qt stops the app's timers: the line looked for below would never come
+adb install -r -g "$apk" || { echo "::error::adb install failed"; exit 1; }
 adb logcat -c
 adb shell monkey -p "$package" -c android.intent.category.LAUNCHER 1
 # the engine's line comes once the ephemeris is downloaded (32 MB): up to 5 minutes

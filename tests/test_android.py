@@ -75,3 +75,5 @@ def test_the_emulator_check_knows_the_start_lines():
         source = f.read()
     for line in ("ephemeris FAILED", "the event loop ended", "android window OK"):
         assert line in source and line in script, line
+    # the location granted at install: Android's question would stop the app's timers (4.22)
+    assert "adb install -r -g " in script

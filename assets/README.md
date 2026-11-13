@@ -1,13 +1,14 @@
 # Assets of the interface
 
-## Astræos logo
+## Céleste's logo
 
-SVG files of the Logos group of the Astræos design system, copied unchanged:
+The C of Céleste, open like an orbit, and its star, drawn for Céleste in the language of the Astræos design system
+(the letter in its ink, the star in its gold) by `scripts/make_logo.py`, which writes:
 
 | File | Use in Céleste |
 |---|---|
-| `astraeos-icone.svg` | Icon of the window and the taskbar |
-| `astraeos-symbole-nuit.svg` | Symbol of the header; `icons.py` replaces, when drawing it, the ink `#e8ecf2` and the star `#f2b84b` with the `encre` and `or` colours of the active theme |
+| `celeste-icone.svg` | Icon of the window, the taskbar, the installer (`scripts/build_exe.py`) and the Android launcher (`android/make_images.py`) |
+| `celeste-symbole.svg` | Symbol of the header; `icons.py` replaces, when drawing it, the ink `#e8ecf2` and the star `#f2b84b` with the `encre` and `or` colours of the active theme |
 
 Rules of the design system: the star stays `or` and in its place, never a shadow, outline, gradient or distortion;
 the symbol is at least 20 px high.

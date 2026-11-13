@@ -1,8 +1,9 @@
 """
 android/make_images.py — The pictures of the Android build
 ==========================================================
-Draws, from the design system's SVG files (assets/), into the folder given:
-- icon.png: the launcher icon, the Astræos symbol on its Nuit tile (512 px);
+Draws, from Céleste's SVG files (assets/, scripts/make_logo.py), into the
+folder given:
+- icon.png: the launcher icon, Céleste's symbol on its Nuit tile (512 px);
 - logo.png: the symbol alone in the Nuit theme's colours, for the window.
 
 Run by the Android workflow with the desktop PySide6, before
@@ -36,12 +37,12 @@ def render(svg_text, width, height, path):
 def main(out):
     app = QGuiApplication.instance() or QGuiApplication([])  # noqa: F841 (needed to paint)
     os.makedirs(out, exist_ok=True)
-    with open(os.path.join(ROOT, "assets", "astraeos-icone.svg"), encoding="utf-8") as f:
+    with open(os.path.join(ROOT, "assets", "celeste-icone.svg"), encoding="utf-8") as f:
         render(f.read(), 512, 512, os.path.join(out, "icon.png"))
     import icons
     from config import Config
     Config.apply_theme("nuit")
-    with open(os.path.join(ROOT, "assets", "astraeos-symbole-nuit.svg"), encoding="utf-8") as f:
+    with open(os.path.join(ROOT, "assets", "celeste-symbole.svg"), encoding="utf-8") as f:
         svg = f.read().replace(icons._FILE_ENCRE, Config.ENCRE).replace(icons._FILE_OR, Config.OR)
     box = QSvgRenderer(QByteArray(svg.encode("utf-8"))).viewBoxF()
     height = 192

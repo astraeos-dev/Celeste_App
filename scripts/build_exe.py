@@ -4,7 +4,7 @@ scripts/build_exe.py — Builds Céleste.exe for Windows
 1. puts the JPL DE440 ephemeris in ~/.celeste (copied from data/, or
    downloaded) for the check of step 4: it is not in the application, which
    downloads it at its first launch;
-2. draws the icon (build/icons/celeste.ico) from assets/astraeos-icone.svg, and
+2. draws the icon (build/icons/celeste.ico) from assets/celeste-icone.svg, and
    copies it to assets/celeste.ico for the window and the taskbar;
 3. runs PyInstaller with celeste.spec, and checks that the ephemeris is not in;
 4. checks that the built application starts (--self-test);
@@ -55,7 +55,7 @@ def check_no_ephemeris():
 
 
 def make_icons():
-    """Windows icon (.ico) drawn from the design system's SVG."""
+    """Windows icon (.ico) drawn from Céleste's SVG (scripts/make_logo.py)."""
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PIL import Image
     from qt.QtCore import Qt
@@ -69,7 +69,7 @@ def make_icons():
     image = QImage(1024, 1024, QImage.Format.Format_ARGB32)
     image.fill(Qt.GlobalColor.transparent)
     painter = QPainter(image)
-    QSvgRenderer(os.path.join(ROOT, "assets", "astraeos-icone.svg")).render(painter)
+    QSvgRenderer(os.path.join(ROOT, "assets", "celeste-icone.svg")).render(painter)
     painter.end()
     image.save(png)
     icon = Image.open(png)

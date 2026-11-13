@@ -146,10 +146,10 @@ def _asset(name):
 
 def symbol_pixmap(height, encre, star):
     """
-    The Astræos symbol (the æ and its star) at *height* pixels, ink in
-    *encre* and star in *star* (the theme's encre and or).
+    Céleste's symbol (the C open like an orbit and its star, scripts/make_logo.py)
+    at *height* pixels, ink in *encre* and star in *star* (the theme's encre and or).
     """
-    svg = _asset("astraeos-symbole-nuit.svg").replace(_FILE_ENCRE, encre).replace(_FILE_OR, star)
+    svg = _asset("celeste-symbole.svg").replace(_FILE_ENCRE, encre).replace(_FILE_OR, star)
     renderer = QSvgRenderer(QByteArray(svg.encode("utf-8")))
     box = renderer.viewBoxF()
     return _render(svg, height * box.width() / box.height(), height)
@@ -160,7 +160,7 @@ APP_ICON_SIZES = (16, 20, 24, 32, 40, 48, 64, 128, 256)
 
 def app_icon():
     """
-    Application icon: the Astræos symbol on its Nuit tile.
+    Application icon: Céleste's symbol on its Nuit tile.
 
     Drawn from the SVG at every size Windows asks for (the taskbar takes 24,
     32 or 40 pixels by the screen's scale), plus the .ico of the built
@@ -168,7 +168,7 @@ def app_icon():
     scripts/build_exe.py): the taskbar then shows the same picture as the
     installer and the Start menu.
     """
-    svg = _asset("astraeos-icone.svg")
+    svg = _asset("celeste-icone.svg")
     result = QIcon()
     ico = os.path.join(_ASSETS, "celeste.ico")
     if os.path.isfile(ico):

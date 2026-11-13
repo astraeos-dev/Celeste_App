@@ -14,6 +14,7 @@ markup as it is), about 800 characters at most (the window cuts the rest, GitHub
   to see them tonight from your place.
 - On the sky map they show as a red four-pointed star with their name, and the search finds them.
 - Tonight tells you when a bright one is up.
+- Céleste has a logo of its own: the C of Céleste, open like an orbit, and its star.
 
 ## 4.20
 

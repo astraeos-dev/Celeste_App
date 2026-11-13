@@ -286,6 +286,8 @@ The interface and the charts follow the Astræos design system:
   `or`, `lune`, `signal-ok`, `signal-alerte`), defined once in `config.py` and shared by Qt and matplotlib.
 - **Typography** — IBM Plex Sans for the text, IBM Plex Mono for the figures, Astraeos Symboles for the astronomical
   symbols (☉ ☽ ♀ ♂ ♃ ♄ ⊕ ♈ ☌ ☍). The fonts are provided in `fonts/`, for the same rendering on every machine.
+- **Logo** — the C of Céleste, open like an orbit, and its star: the letter in `encre`, the star in `or`, drawn by
+  `scripts/make_logo.py` (`assets/celeste-icone.svg`, `assets/celeste-symbole.svg`).
 - **Components** — buttons (primary, secondary, quiet, danger), input fields with label, unit and error message, data
   cards, status badges, gauge, tabs and theme selector.
 - **Rules** — no emoji (Material Design Icons instead); a single gold area per screen, the Calculate button;
@@ -317,7 +319,7 @@ Celeste_App/
 ├── charts.py            # matplotlib charts — paths, sky map, Solar System
 ├── utils.py             # Utilities — HMS/DMS formats, phase names
 ├── config.py            # Astræos design — colours of the Nuit, Jour and Observation themes, spacing, text styles
-├── icons.py             # Material Design icons (SVG) and the Astræos symbol in the theme's colours
+├── icons.py             # Material Design icons (SVG) and Céleste's logo in the theme's colours
 ├── i18n.py              # Internationalisation — translations by key, with fallback
 ├── updater.py           # Updates: latest GitHub Release, checked download, installation
 ├── settings.py          # Persistent preferences (~/.celeste/settings.json)
@@ -341,7 +343,7 @@ Celeste_App/
 ├── favorites_default.json # Preloaded places (36 cities, their names in each language), until a favourite is saved
 ├── locales/             # Translations (fr.json is the reference)
 ├── fonts/               # IBM Plex Sans, IBM Plex Mono and Astraeos Symboles fonts (OFL licence)
-├── assets/              # Astræos symbol and icon (SVG), land, minor planets, comets, cities, Messier objects
+├── assets/              # Céleste's logo and icon (SVG), land, minor planets, comets, cities, Messier objects
 ├── android/             # The Android build's entry point (pyside6-android-deploy)
 ├── scripts/             # Application build, star catalogue, data tables, release notes
 ├── celeste.spec         # PyInstaller recipe of Celeste.exe (Windows)
@@ -485,7 +487,7 @@ pip install pyinstaller
 python scripts/build_exe.py
 ```
 
-The script puts the ephemeris in `~/.celeste` for the start-up check, draws the icon from `assets/astraeos-icone.svg`,
+The script puts the ephemeris in `~/.celeste` for the start-up check, draws the icon from `assets/celeste-icone.svg`,
 runs PyInstaller (`celeste.spec`), checks that the ephemeris is not in the application and that the application starts
 (`--self-test`), and creates the archive in `dist/`. When [Inno Setup 6](https://jrsoftware.org/isinfo.php) is
 installed, it also builds the installer (`installer/celeste.iss`, with Céleste's icon). Neither is signed: at the first

@@ -7,6 +7,15 @@ Write for them: short sentences, as dashes, no bold or code (the window of versi
 markup as it is), about 800 characters at most (the window cuts the rest, GitHub does not). See the wiki page
 "Publier une version".
 
+## 4.22
+
+- On a phone, the sky map follows the phone: tap the compass, hold the phone up to the sky, and the map turns and
+  moves to show the stars behind it, the sky above them up on the screen, a ring where the phone points. North is
+  the true north: Céleste corrects the compass by the magnetic declination of your place (World Magnetic Model
+  2025).
+- On a phone, Céleste finds your place by the phone's GPS when it starts, after asking your permission; refused,
+  the place stays as it is.
+
 ## 4.21
 
 - New page in Sky, novae and supernovae: the new stars of the moment bright enough for your telescope, from David

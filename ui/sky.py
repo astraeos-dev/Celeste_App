@@ -6,14 +6,22 @@ A mixin of the main window (gui.AstroApp): its methods use the window's state
 """
 import numpy as np
 
+import geomag
+import orientation
 from qt.QtCore import QObject
-from ui import common, touch
+from ui import common, phone, touch
 from ui.common import *  # noqa: F401,F403
 
 
 SKY_HALF = 1.17          # half the width of the whole map (charts.draw_sky_map)
 SKY_ZOOM_STEP = 1.25     # a notch of the wheel, a click of the buttons
 SKY_ZOOM_MAX = 12.0
+
+# The map that follows the phone (v4.22)
+SKY_FOLLOW_ZOOM = 2.5    # the zoom it starts at from the whole sky: about 90° across
+SKY_FOLLOW_MS = 100      # how often the sensor is read
+SKY_FOLLOW_STEP = 0.3    # degrees: a smaller move of the phone does not redraw the map at once...
+SKY_FOLLOW_SETTLE = 5    # ...but once it has been still for five readings, the map settles where it points
 
 # The time bar under the map (v4.18): the night from sunset to sunrise
 SKY_STEP_MIN = 5                          # a step of the bar, minutes
@@ -120,6 +128,10 @@ class SkySpace:
         self._sky_zoom_lbl = _label("", "donnee")
         self._sky_zoom_lbl.setMinimumWidth(40)
         tools_row.addWidget(self._sky_zoom_lbl)
+        # the map that follows the phone: where there is a rotation sensor (a phone)
+        self._sky_follow_btn = _icon_button("compass", t("skymap.follow_tip"), compact=True, checkable=True)
+        self._sky_follow_btn.toggled.connect(self._set_sky_follow)
+        tools_row.addWidget(self._sky_follow_btn)
         tools_row.addStretch()
         bar.addLayout(tools_row, stretch=1)
         # find a star, a planet, a Messier object or a constellation by its name
@@ -161,7 +173,16 @@ class SkySpace:
             self.canvas_sky.installEventFilter(self._sky_touch)
         if not hasattr(self, "_sky_zoom"):                 # kept through the rebuilds
             self._sky_zoom, self._sky_center = 1.0, (0.0, 0.0)
+            self._sky_turn, self._sky_follow, self._sky_aim = 0.0, False, None
+            self._sky_steady = orientation.Steady()
+            self._sky_follow_timer = QTimer(self)
+            self._sky_follow_timer.timeout.connect(self._sky_follow_tick)
+        self._sky_follow_btn.setVisible(self._sky_phone().available())
+        self._sky_follow_btn.blockSignals(True)
+        self._sky_follow_btn.setChecked(self._sky_follow)
+        self._sky_follow_btn.blockSignals(False)
         self._sky_drag = None
+        self._sky_reticle = None
         self._show_sky_zoom()
         self._sky_page = page
         self._add_page(page, t("tabs.skymap"))
@@ -440,6 +461,12 @@ class SkySpace:
         self._sky_ax, tip = charts.draw_sky_map(self.fig_sky, self._sky_scene, labels, highlight)
         for text in self._sky_ax.texts:                    # zoomed in: no label outside the map
             text.set_clip_on(True)
+        # where the phone looks, when the map follows it; then the map turned with the phone
+        self._sky_reticle, = self._sky_ax.plot([], [], marker="o", markersize=24, markerfacecolor="none",
+                                               markeredgecolor=Config.LUNE, markeredgewidth=1.6,
+                                               linestyle="none", zorder=12)
+        charts.turn_sky(self._sky_ax, self._sky_turn)
+        self._place_sky_reticle()
         self._apply_sky_view()
         self._show_find_result()
         self._sky_tip.attach(tip)
@@ -681,7 +708,8 @@ class SkySpace:
     def _sky_object_at(self, event):
         if event.inaxes is not self._sky_ax or event.xdata is None:
             return None
-        return charts.hit_test(self._sky_objects, event.xdata, event.ydata, radius=0.06 / self._sky_zoom)
+        x, y = charts.turned_xy(event.xdata, event.ydata, -self._sky_turn)     # the map may be turned
+        return charts.hit_test(self._sky_objects, x, y, radius=0.06 / self._sky_zoom)
 
     # ── Zoom and move on the sky map ──────────────────────────────────────────
 
@@ -729,7 +757,116 @@ class SkySpace:
         self._sky_set_view(zoom, (px + (cx - px) * ratio, py + (cy - py) * ratio))
 
     def _sky_reset_view(self):
+        self._set_sky_follow(False)
         self._sky_set_view(1.0, (0.0, 0.0))
+
+    # ── The map that follows the phone (v4.22) ────────────────────────────────
+    #    Held up to the sky, the phone's rotation sensor turns and moves the
+    #    zoomed map so that it shows the part of the sky behind the phone, the
+    #    sky above it up on the screen; a ring marks where the phone points.
+
+    def _sky_phone(self):
+        """The phone's rotation sensor (ui/phone.py), made once."""
+        if getattr(self, "_phone_aim", None) is None:
+            self._phone_aim = phone.PhoneAim(self)
+        return self._phone_aim
+
+    def _set_sky_follow(self, on):
+        """The map follows the phone (*on*), or comes back still, north up."""
+        on = bool(on) and self._sky_phone().available()
+        button = getattr(self, "_sky_follow_btn", None)
+        if button is not None and button.isChecked() != on:
+            button.blockSignals(True)
+            button.setChecked(on)
+            button.blockSignals(False)
+        if on == self._sky_follow:
+            return
+        self._sky_follow = on
+        if on:
+            self._sky_steady.reset()
+            self._sky_aim, self._sky_follow_silent = None, 0
+            self._sky_smoothed, self._sky_follow_still = None, 0
+            self._sky_declination = self._place_declination()
+            self._sky_phone().start()
+            self._sky_follow_timer.start(SKY_FOLLOW_MS)
+            self._sky_set_view(max(self._sky_zoom, SKY_FOLLOW_ZOOM), self._sky_center)
+            self.statusBar().showMessage(tf("skymap.follow_on", declination=self._wind_declination()), 8000)
+            return
+        self._sky_follow_timer.stop()
+        self._sky_phone().stop()
+        center = charts.turned_xy(*self._sky_center, -self._sky_turn)      # the same sky in view, north up
+        self._sky_turn, self._sky_aim = 0.0, None
+        if self._sky_ax is not None:
+            charts.turn_sky(self._sky_ax, 0.0)
+            self._place_sky_reticle()
+        self._sky_set_view(self._sky_zoom, center)
+
+    def _place_declination(self):
+        """The magnetic declination of the place now (geomag.py), degrees east."""
+        try:
+            return geomag.declination(self._lat, self._lon, self._elevation(), datetime.now(timezone.utc))
+        except (OSError, ValueError, KeyError, TypeError):
+            return 0.0
+
+    def _wind_declination(self):
+        """The declination as it is said: 2.1° E, 11.0° W (in the interface's letters)."""
+        value = getattr(self, "_sky_declination", 0.0)
+        return f"{_num(abs(value), 1)}° {t('skymap.cardinal_e') if value >= 0 else t('skymap.cardinal_w')}"
+
+    def _sky_follow_tick(self):
+        """A reading of the sensor: the map turned and moved when the phone moved enough."""
+        sensor = self._sky_phone()
+        if not self._sky_follow:
+            return
+        if not self._sky_page.isVisible():                 # another page: the sensor rests
+            sensor.stop()
+            return
+        sensor.start()
+        reading = sensor.reading()
+        if reading is None:
+            self._sky_follow_silent += 1
+            if self._sky_follow_silent == 3000 // SKY_FOLLOW_MS:         # three seconds without a word
+                self.statusBar().showMessage(t("skymap.follow_silent"), 8000)
+            return
+        self._sky_follow_silent = 0
+        back, up = orientation.directions(*reading, turns=phone.screen_turns(self.screen()))
+        aim = orientation.aim(*self._sky_steady.add(back, up), declination=self._sky_declination)
+        previous, self._sky_smoothed = self._sky_smoothed, aim
+        still = previous is not None and self._aim_moved(previous, aim) < 0.01
+        self._sky_follow_still = self._sky_follow_still + 1 if still else 0
+        if self._sky_aim is not None:
+            moved = self._aim_moved(self._sky_aim, aim)
+            settling = self._sky_follow_still >= SKY_FOLLOW_SETTLE and moved >= 0.02
+            if moved < SKY_FOLLOW_STEP and not settling:      # a hand's tremor: no redraw
+                return
+        self._show_sky_aim(*aim)
+
+    @staticmethod
+    def _aim_moved(a, b):
+        """How far apart two aims (altitude, azimuth, turn) are on the sky and on the screen, degrees."""
+        def apart(x, y):
+            return abs((x - y + 180.0) % 360.0 - 180.0)
+        return max(abs(a[0] - b[0]), apart(a[1], b[1]) * math.cos(math.radians(b[0])), apart(a[2], b[2]))
+
+    def _show_sky_aim(self, alt, az, turn):
+        """The map turned by *turn* and centred where the phone looks (*alt*, *az*), the ring there."""
+        self._sky_aim = (alt, az, turn)
+        self._sky_turn = turn
+        if self._sky_ax is not None:
+            charts.turn_sky(self._sky_ax, turn)
+            self._place_sky_reticle()
+        self._sky_set_view(self._sky_zoom, charts.turned_xy(*charts.sky_xy(alt, az), turn))
+
+    def _place_sky_reticle(self):
+        ring = self._sky_reticle
+        if ring is None:
+            return
+        if self._sky_follow and self._sky_aim is not None:
+            x, y = charts.sky_xy(*self._sky_aim[:2])
+            ring.set_data([x], [y])
+            ring.set_visible(True)
+        else:
+            ring.set_visible(False)
 
     def _on_sky_scroll(self, event):
         if event.inaxes is not self._sky_ax or event.xdata is None:
@@ -751,7 +888,7 @@ class SkySpace:
         if not moved and math.hypot(event.x - x0, event.y - y0) < 5:
             return
         self._sky_drag = (x0, y0, center, True)
-        if self._sky_zoom == 1.0 or self._sky_ax is None:
+        if self._sky_zoom == 1.0 or self._sky_ax is None or self._sky_follow:   # following: the phone moves it
             return
         inverse = self._sky_ax.transData.inverted()
         (ax0, ay0), (ax1, ay1) = inverse.transform([(x0, y0), (event.x, event.y)])
@@ -792,7 +929,8 @@ class SkySpace:
             line += f"  ·  {t('detail.mag')} {self._tr_mag_text(obj)}"
         tip.set_text(f"{title}\n{line}")
         tip.xy = (obj["x"], obj["y"])
-        right = obj["x"] > 0.35
+        shown_x = charts.turned_xy(obj["x"], obj["y"], self._sky_turn)[0]      # where it is on the screen
+        right = (shown_x - self._sky_center[0]) * self._sky_zoom > 0.35
         tip.set_position((-14 if right else 14, 12))
         tip.set_horizontalalignment("right" if right else "left")
         tip.set_visible(True)

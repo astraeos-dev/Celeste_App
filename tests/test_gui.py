@@ -17,11 +17,13 @@ Run with:  pytest tests/test_gui.py -v
 
 import io
 import json
+import math
 import re
 import os
 import sys
 from datetime import datetime, timedelta
 
+import numpy as np
 import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -941,11 +943,28 @@ class TestGeolocation:
         """Cherbourg given by the device's service, named by OpenStreetMap."""
         import gui
         monkeypatch.setattr(gui.common, "QGeoPositionInfoSource", _FakeSource((49.6386, -1.6164)))
-        monkeypatch.setattr(gui.common, "_place_name", lambda lat, lon: "Cherbourg-en-Cotentin")
+        monkeypatch.setattr(gui.common, "_place_name", lambda lat, lon, online=True: "Cherbourg-en-Cotentin")
         window.geolocate()
         assert window.entry_lat.text().replace(",", ".") == "49.6386"
         assert window.location_name == "Cherbourg-en-Cotentin"
         assert "±25 m" in window.statusBar().currentMessage()
+
+    def test_the_point_sent_to_be_named(self, window, monkeypatch):
+        """Asked for (the button): OpenStreetMap names the town from the point to the hundredth of a
+        degree; at startup (a phone does it each time), the list on the computer names it, nothing is sent."""
+        import gui
+        monkeypatch.setattr(gui.common, "QGeoPositionInfoSource", _FakeSource((49.6386, -1.6164)))
+        sent = []
+
+        def answer(request, timeout):
+            sent.append(request.full_url)
+            return _FakeResponse(json.dumps({"address": {"city": "Cherbourg-en-Cotentin"}}).encode())
+        monkeypatch.setattr(gui.common.urllib.request, "urlopen", answer)
+        window.geolocate(interactive=True)
+        assert len(sent) == 1 and "lat=49.64&lon=-1.62" in sent[0]
+        assert window.location_name == "Cherbourg-en-Cotentin"
+        window.geolocate(interactive=False)
+        assert len(sent) == 1 and window.location_name == "Cherbourg"
 
     def test_ip_address_only_as_a_fallback(self, window, monkeypatch):
         """Silent service: position of the IP address, announced as approximate."""
@@ -1063,7 +1082,7 @@ class TestGeolocation:
         import gui
         monkeypatch.setattr(gui.common, "QGeoPositionInfoSource",
                             _FakeSource(None, error=4, last=(49.6386, -1.6164)))
-        monkeypatch.setattr(gui.common, "_place_name", lambda lat, lon: "Cherbourg-en-Cotentin")
+        monkeypatch.setattr(gui.common, "_place_name", lambda lat, lon, online=True: "Cherbourg-en-Cotentin")
         monkeypatch.setattr(gui.urllib.request, "urlopen", lambda *a, **k: pytest.fail("adresse IP"))
         window.geolocate()
         assert window.location_name == "Cherbourg-en-Cotentin"
@@ -2389,6 +2408,209 @@ class TestSkyMapZoom:
         window._on_sky_release(MouseEvent("button_release_event", window.canvas_sky, x + 60, y, button=1))
         assert window._sky_center[0] < 0                     # dragged right: the view moved left
         assert window._sky_drag is None
+
+
+class _FakeAim:
+    """A phone's rotation sensor (ui/phone.PhoneAim) held by the test: *angles* are Qt's x, y, z."""
+
+    def __init__(self):
+        self.angles, self.running = None, False
+
+    def available(self):
+        return True
+
+    def start(self):
+        self.running = True
+
+    def stop(self):
+        self.running = False
+
+    def active(self):
+        return self.running
+
+    def reading(self):
+        return self.angles
+
+
+def _held(alt, az):
+    """Qt's angles of a phone held upright then tilted, its back at (*alt*, magnetic *az*), not tilted sideways."""
+    return 90.0 + alt, 0.0, -az
+
+
+class TestFollowThePhone:
+    """Ciel › Carte du ciel: the map turned and moved by the phone's rotation sensor (v4.22)."""
+
+    @staticmethod
+    def _sky(window, qapp):
+        window._phone_aim = _FakeAim()
+        window.show_page(window._sky_page)
+        _pump(qapp, 3)
+        window.canvas_sky.draw()
+        return window._sky_ax
+
+    @staticmethod
+    def _aim_at(window, alt, az):
+        window._phone_aim.angles = _held(alt, az)
+        for _ in range(40):                              # four seconds held still: the map settles
+            window._sky_follow_tick()
+
+    def test_no_sensor_on_a_desktop(self, window):
+        assert window._sky_follow_btn.isHidden()
+        window._set_sky_follow(True)
+        assert not window._sky_follow and not window._sky_follow_btn.isChecked()
+
+    def test_the_map_turns_to_the_sky_behind_the_phone(self, window, qapp):
+        import charts
+        ax = self._sky(window, qapp)
+        window._sky_follow_btn.setChecked(True)          # the button
+        assert window._sky_follow and window._phone_aim.running and window._sky_zoom == 2.5
+        assert "déclinaison magnétique" in window.statusBar().currentMessage()
+        decl = window._sky_declination
+        assert -1.0 < decl < 3.0                          # Cherbourg: about 1° east
+        self._aim_at(window, 30, 120)                     # 30° up, toward the south-east (magnetic)
+        alt, az, turn = window._sky_aim
+        assert alt == pytest.approx(30, abs=0.01) and az == pytest.approx(120 + decl, abs=0.01)
+        assert turn == pytest.approx(60 - decl, abs=0.01) and window._sky_turn == turn
+        # the view centred where the phone looks, that point straight below the zenith on the screen
+        cx, cy = charts.turned_xy(*charts.sky_xy(alt, az), turn)
+        assert cx == pytest.approx(0, abs=1e-6) and cy == pytest.approx(-60 / 90, abs=1e-6)
+        assert np.mean(ax.get_xlim()) == pytest.approx(cx) and np.mean(ax.get_ylim()) == pytest.approx(cy)
+        ring = window._sky_reticle
+        assert ring.get_visible() and (ring.get_xdata()[0], ring.get_ydata()[0]) == pytest.approx(
+            charts.sky_xy(alt, az))
+        # a star there is drawn at its turned place, and a tap on it opens its card
+        shown = []
+        window._show_object_detail = shown.append
+        star = min(window._sky_scene["stars"], key=lambda s: math.hypot(s["x"] - charts.sky_xy(alt, az)[0],
+                                                                         s["y"] - charts.sky_xy(alt, az)[1]))
+        x, y = ax.transData.transform(charts.turned_xy(star["x"], star["y"], turn))
+        window._on_sky_press(MouseEvent("button_press_event", window.canvas_sky, x, y, button=1))
+        window._on_sky_release(MouseEvent("button_release_event", window.canvas_sky, x, y, button=1))
+        assert shown and shown[0]["name"] == star["name"]
+
+    def test_small_moves_do_not_redraw(self, window, qapp):
+        self._sky(window, qapp)
+        window._set_sky_follow(True)
+        self._aim_at(window, 45, 200)
+        before = window._sky_aim
+        assert before[0] == pytest.approx(45, abs=0.02)   # settled where the phone points
+        drawn = []
+        window._show_sky_aim = lambda *aim: drawn.append(aim)
+        window._phone_aim.angles = _held(45.1, 200.1)    # a hand's tremor, and back
+        window._sky_follow_tick()
+        window._phone_aim.angles = _held(45, 200)
+        for _ in range(20):
+            window._sky_follow_tick()
+        assert drawn == []
+        del window._show_sky_aim
+        self._aim_at(window, 50, 210)                    # moved: the map follows, then settles
+        assert window._sky_aim[0] == pytest.approx(50, abs=0.02)
+
+    def test_back_to_north_up(self, window, qapp):
+        import charts
+        ax = self._sky(window, qapp)
+        window._set_sky_follow(True)
+        self._aim_at(window, 40, 0)                      # facing north: the map upside down
+        assert window._sky_turn == pytest.approx(180 - window._sky_declination, abs=0.01)
+        window._set_sky_follow(False)
+        assert not window._phone_aim.running and window._sky_turn == 0 and not window._sky_reticle.get_visible()
+        # the same sky in view, now north up: the north, 40° up
+        x, y = charts.sky_xy(40, window._sky_declination)
+        assert np.mean(ax.get_xlim()) == pytest.approx(x, abs=1e-6)
+        assert np.mean(ax.get_ylim()) == pytest.approx(y, abs=1e-6)
+        assert not window._sky_follow_btn.isChecked()
+
+    def test_the_finger_does_not_move_a_followed_map(self, window, qapp):
+        ax = self._sky(window, qapp)
+        window._set_sky_follow(True)
+        self._aim_at(window, 20, 90)
+        center = window._sky_center
+        x, y = ax.transData.transform(center)
+        window._on_sky_press(MouseEvent("button_press_event", window.canvas_sky, x, y, button=1))
+        window._on_sky_hover(MouseEvent("motion_notify_event", window.canvas_sky, x + 80, y, button=1))
+        window._on_sky_release(MouseEvent("button_release_event", window.canvas_sky, x + 80, y, button=1))
+        assert window._sky_center == center
+
+    def test_the_sensor_rests_on_another_page(self, window, qapp):
+        self._sky(window, qapp)
+        window._set_sky_follow(True)
+        window.show_page(window._traj_page)
+        _pump(qapp)
+        window._sky_follow_tick()
+        assert not window._phone_aim.running and window._sky_follow
+        window.show_page(window._sky_page)
+        _pump(qapp)
+        window._sky_follow_tick()
+        assert window._phone_aim.running
+
+    def test_kept_through_a_new_drawing(self, window, qapp):
+        self._sky(window, qapp)
+        window._set_sky_follow(True)
+        self._aim_at(window, 25, 300)
+        window._dirty.add("sky")
+        window._draw_visible_chart()                      # a new calculation, a frame of the time bar
+        assert window._sky_reticle.get_visible()
+        assert window._sky_ax._celeste_turn.to_values() != (1, 0, 0, 1, 0, 0)    # still turned
+
+    def test_reset_stops_following(self, window, qapp):
+        self._sky(window, qapp)
+        window._set_sky_follow(True)
+        self._aim_at(window, 60, 45)
+        window._sky_reset_view()
+        assert not window._sky_follow and window._sky_turn == 0 and window._sky_zoom == 1.0
+
+
+class TestPhoneLocation:
+    """Android asks the person before Céleste reads the phone's position (v4.22)."""
+
+    class _App:
+        def __init__(self, status, answer=None):
+            self.status, self.answer, self.asked = status, answer, 0
+
+        def checkPermission(self, _permission):
+            return self.status
+
+        def requestPermission(self, _permission, _context, callback):
+            self.asked += 1
+            self.status = self.answer
+            callback()
+
+    def test_the_permission(self, monkeypatch):
+        import mobile
+        from qt.QtCore import Qt
+        from ui import phone
+        said = []
+        go_on, refused = (lambda: said.append("yes")), (lambda: said.append("no"))
+        assert phone.location_allowed(None, go_on, refused)                         # a desktop: nothing to ask
+        monkeypatch.setattr(mobile, "is_android", lambda: True)
+        status = Qt.PermissionStatus
+        assert phone.location_allowed(None, go_on, refused, app=self._App(status.Granted))
+        app = self._App(status.Undetermined, answer=status.Granted)
+        assert not phone.location_allowed(None, go_on, refused, app=app)           # asked, then yes
+        assert app.asked == 1 and said == ["yes"]
+        app = self._App(status.Undetermined, answer=status.Denied)
+        assert not phone.location_allowed(None, go_on, refused, app=app)
+        assert said == ["yes", "no"]
+        app = self._App(status.Denied)                                              # Android asks no more
+        assert not phone.location_allowed(None, go_on, refused, app=app)
+        assert app.asked == 0 and said == ["yes", "no", "no"]
+
+    def test_refused_no_address_lookup(self, window, monkeypatch):
+        import gui
+        from ui import phone
+
+        def no_lookup():
+            raise AssertionError("the IP address looked up although the person said no")
+        monkeypatch.setattr(gui, "_ip_location", no_lookup)
+        monkeypatch.setattr(phone, "location_allowed", lambda _ctx, _go_on, refused, app=None: refused() or False)
+        lat = window.entry_lat.text()
+        window.geolocate(interactive=False)                                         # at launch: a word below
+        assert "permission" in window.statusBar().currentMessage()
+        window.geolocate(interactive=True)                                          # the button: a window
+        box = window._geo_dialog
+        assert "permission" in box.text() and "Android" in box.informativeText()
+        box.close()
+        assert window.entry_lat.text() == lat and window._geo_source is None
 
 
 class TestSkyTimeBar:

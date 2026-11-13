@@ -323,7 +323,10 @@
     "time_pause": "Pause",
     "time_tip": "Durch die Nacht gehen, von Sonnenuntergang bis Sonnenaufgang: nur die Karte ändert die Uhrzeit",
     "time_reset": "Zurück zur Uhrzeit der Berechnung",
-    "time_label_tip": "Ortszeit, am {date} ({ut} UT)"
+    "time_label_tip": "Ortszeit, am {date} ({ut} UT)",
+    "follow_tip": "Dem Telefon folgen: die Karte zeigt den Himmel dahinter (Kompass)",
+    "follow_on": "Die Karte folgt dem Telefon: halten Sie es zum Himmel. Geografisch Nord (Missweisung {declination}).",
+    "follow_silent": "Der Lagesensor antwortet nicht: die Karte kann dem Telefon nicht folgen."
   },
   "detail": {
     "title": "Steckbrief — {name}",
@@ -898,7 +901,9 @@
     "geoloc_reason_unknown": "Der Ortungsdienst hat einen Fehler gemeldet.",
     "geoloc_open_settings": "Ortungseinstellungen öffnen",
     "geoloc_choose_map": "Auf der Karte wählen",
-    "geoloc_no_answer": "Weder der Ortungsdienst noch die IP-Adressdienste haben geantwortet."
+    "geoloc_no_answer": "Weder der Ortungsdienst noch die IP-Adressdienste haben geantwortet.",
+    "geoloc_refused": "Céleste darf den Standort des Telefons nicht lesen: der Ort bleibt unverändert.",
+    "geoloc_reason_refused": "Zum Erlauben: Android-Einstellungen › Apps › Céleste › Berechtigungen › Standort. Oder wählen Sie den Ort auf der Karte."
   },
   "settings": {
     "time_format": "Zeitformat",

@@ -297,10 +297,11 @@ def _version_text():
     return tf("app.beta", version=APP_VERSION, n=APP_BETA) if APP_BETA else APP_VERSION
 
 
-def _place_name(lat, lon):
-    """Name of the town of a point (OpenStreetMap Nominatim); without an answer, the
-    nearest city of the offline list (within 25 km), else ""."""
-    name = _nominatim_name(lat, lon)
+def _place_name(lat, lon, online=True):
+    """Name of the town of a point (OpenStreetMap Nominatim, when *online*: the person
+    asked for it); without an answer, the nearest city of the offline list (within
+    25 km), else ""."""
+    name = _nominatim_name(lat, lon) if online else ""
     if name:
         return name
     near = places.nearest(lat, lon)
@@ -308,9 +309,10 @@ def _place_name(lat, lon):
 
 
 def _nominatim_name(lat, lon):
-    """Name of the town of a point (OpenStreetMap Nominatim); "" without an answer."""
+    """Name of the town of a point (OpenStreetMap Nominatim); "" without an answer. The
+    point is sent to the hundredth of a degree (about a kilometre): enough for a town."""
     url = ("https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=10"
-           f"&lat={lat:.5f}&lon={lon:.5f}&accept-language={get_lang()}")
+           f"&lat={lat:.2f}&lon={lon:.2f}&accept-language={get_lang()}")
     try:
         req = urllib.request.Request(url, headers={
             "User-Agent": f"Celeste/{APP_VERSION} (+https://github.com/astraeos-dev/Celeste_App)"})

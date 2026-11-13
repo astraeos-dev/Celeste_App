@@ -32,9 +32,11 @@ from datetime import timedelta
 
 import matplotlib
 from matplotlib import font_manager
-from matplotlib.collections import LineCollection
+from matplotlib.collections import Collection, LineCollection
 from matplotlib.colors import to_rgba
 from matplotlib.patches import Circle, Patch
+from matplotlib.text import Annotation
+from matplotlib.transforms import Affine2D
 from matplotlib.ticker import FuncFormatter, MultipleLocator
 
 from config import Config, FONT_SANS, mix
@@ -968,6 +970,46 @@ def draw_sky_map(fig, scene, labels, highlight=None, ax=None):
         fig.text(0.03, 0.97, labels["title"], ha="left", va="top", fontsize=SIZE_SOUS_TITRE,
                  fontweight=600, color=Config.ENCRE)
     return ax, _tooltip(ax)
+
+
+def turn_sky(ax, degrees):
+    """
+    Turns what is drawn in the sky map's axes by *degrees* counterclockwise
+    about the zenith (the map that follows the phone): every artist drawn in
+    data coordinates, the labels kept upright at their turned places, a
+    slanted label (the horizon's) kept along its circle. The first call gives
+    the artists the turn; the next ones only change its angle, so turning the
+    map redraws it without building it again. Returns the turn (Affine2D).
+    """
+    turn = getattr(ax, "_celeste_turn", None)
+    if turn is None:
+        turn = Affine2D()
+        turned = turn + ax.transData
+        for artist in ax.get_children():
+            if isinstance(artist, Annotation):
+                if isinstance(artist.xycoords, str) and artist.xycoords == "data":
+                    artist.xycoords = turned
+                    if artist.get_annotation_clip() is None:        # still hidden when its point is out of view
+                        artist.set_annotation_clip(True)
+                continue
+            if isinstance(artist, Collection) and artist.get_offset_transform() is ax.transData:
+                artist.set_offset_transform(turned)
+            if artist.get_transform() is ax.transData:
+                artist.set_transform(turned)
+        ax._celeste_turn = turn
+        ax._celeste_slanted = [(text, text.get_rotation()) for text in ax.texts
+                               if not isinstance(text, Annotation) and text.get_rotation()]
+    turn.clear().rotate_deg(degrees)
+    for text, slant in ax._celeste_slanted:
+        text.set_rotation((slant + degrees + 90.0) % 180.0 - 90.0)        # along the circle, never upside down
+    return turn
+
+
+def turned_xy(x, y, degrees):
+    """A point of the sky map turned by *degrees* counterclockwise about the zenith."""
+    a = math.radians(degrees)
+    c, s = math.cos(a), math.sin(a)
+    return c * x - s * y, s * x + c * y
 
 
 # Symbols of the deep-sky objects (types of engine.MESSIER_TYPES), as in sky

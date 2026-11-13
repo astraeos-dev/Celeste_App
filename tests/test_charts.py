@@ -205,6 +205,38 @@ class TestSkyScene:
         assert len(figures) == 1 and len(figures[0].get_segments()) == len(scene["lines"])
         assert len(ax.lines) < 30                              # grid, planets: no line per segment
 
+    def test_turned_map(self):
+        """The map that follows the phone (4.22): every mark at its turned place, the labels upright."""
+        from matplotlib.collections import PathCollection
+        from matplotlib.text import Annotation
+        jd, sun, moon, planets = _bodies()
+        scene = charts.sky_scene(jd, LAT, LON, 6.0, sun, moon, planets)
+        fig = Figure(figsize=(6, 6))
+        ax, tip = charts.draw_sky_map(fig, scene, _sky_labels())
+        star = scene["stars"][0]
+        stars = [c for c in ax.collections if isinstance(c, PathCollection)][-1]
+        labels = [a for a in ax.texts if isinstance(a, Annotation) and a is not tip]
+        slanted = [a for a in ax.texts if not isinstance(a, Annotation) and a.get_rotation()]
+        assert labels and len(slanted) == 1                                   # the horizon's label
+        before = {id(a): ax.transData.transform(a.xy) for a in labels}
+        charts.turn_sky(ax, 90)
+        fig.canvas.draw()                                                     # draws, turned
+        where = stars.get_offset_transform().transform((star["x"], star["y"]))
+        assert where == pytest.approx(ax.transData.transform(charts.turned_xy(star["x"], star["y"], 90)))
+        for a in labels:
+            assert a.xycoords.transform(a.xy) == pytest.approx(
+                ax.transData.transform(charts.turned_xy(*a.xy, 90)))
+            assert a.get_rotation() == 0
+            assert a.get_annotation_clip()              # hidden, as before, when its point is out of view
+        assert tip.get_annotation_clip() is False       # the tooltip: never hidden
+        assert slanted[0].get_rotation() == pytest.approx(68)                 # -22° + 90°
+        assert tip.xycoords is not None and not isinstance(tip.xycoords, str)  # the tooltip follows
+        charts.turn_sky(ax, 0)                                                # back: only the angle changes
+        for a in labels:
+            assert a.xycoords.transform(a.xy) == pytest.approx(before[id(a)])
+        assert charts.turned_xy(1.0, 0.0, 90) == pytest.approx((0.0, 1.0))
+        assert charts.turned_xy(*charts.turned_xy(0.3, -0.7, 33), -33) == pytest.approx((0.3, -0.7))
+
     def test_hit_test(self):
         objs = [{"x": 0.0, "y": 0.0, "name": "a"}, {"x": 0.5, "y": 0.5, "name": "b"}]
         assert charts.hit_test(objs, 0.01, 0.01)["name"] == "a"

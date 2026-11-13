@@ -171,7 +171,7 @@ def report_android(window):
     print(f"Céleste {APP_RELEASE} android window OK: {len(window.visible_stars)} stars, "
           f"{window.tabs.count()} spaces, compact {window.is_compact()}, touch {touch.touch_mode()}, "
           f"fits {fits} (window {window.minimumSizeHint().width()} of {screen.width()} px), "
-          f"dialog fits {dialog_fits}", flush=True)
+          f"dialog fits {dialog_fits}, rotation sensor {window._sky_phone().available()}", flush=True)
 
 
 if __name__ == "__main__":

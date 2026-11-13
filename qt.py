@@ -30,7 +30,9 @@ if API is None:
 
 os.environ.setdefault("QT_API", API.lower())          # matplotlib's backend_qtagg
 
-_MODULES = ("QtCore", "QtGui", "QtWidgets", "QtSvg", "QtNetwork", "QtPositioning")
+# QtSensors: the sky map that follows a phone (ui/phone.py); a desktop build
+# leaves it out, and the map's follow button then stays hidden
+_MODULES = ("QtCore", "QtGui", "QtWidgets", "QtSvg", "QtNetwork", "QtPositioning", "QtSensors")
 for _module in _MODULES:
     try:
         _loaded = importlib.import_module(f"{API}.{_module}")

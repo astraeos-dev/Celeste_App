@@ -60,14 +60,18 @@ The interface is translated into French, English, Spanish and German.
 - **Geolocation** — position of the device from the system's location service (GPS, Wi-Fi), name of the town from
   OpenStreetMap; otherwise its last known position, then the approximate position of the IP address (ip-api.com),
   flagged as such: a window then says why (access denied by Windows, service turned off, timeout) and opens the
-  location settings
+  location settings. On a phone (4.22), the GPS at startup, once Android's permission is given; refused, no position
+  is looked for, not even by the IP address
 - **24-hour paths** — altitude curves over a background coloured by the time of day (day, twilights, night), over the
   local day (local time below, UT above), tooltip on hover
 - **Polar sky map** — zoom up to ×12 (wheel on the pointer, buttons; drag to move around), zenith at the centre, north up and east on the left as in the sky, 8,404 stars down to magnitude 6.5
   (Yale Bright Star Catalogue, brought to the
   date: proper motion, precession, nutation, aberration) sized by magnitude, the figures of the 88 constellations, planets; tooltip on hover
   and detailed card on click (constellation, magnitude, coordinates); a time bar under the map runs through the night,
-  sunset to sunrise, and ▶ plays it (the sky turns ten minutes a frame; the calculation keeps its date)
+  sunset to sunrise, and ▶ plays it (the sky turns ten minutes a frame; the calculation keeps its date). On a phone
+  (4.22), the compass button makes the map follow the phone held up to the sky: turned and moved to the sky behind it,
+  the sky above it up on the screen, a ring where the phone points, the true north from the magnetic one (World
+  Magnetic Model 2025)
 - **Planets** — Mercury, Venus, Mars, Jupiter, Saturn, Uranus and Neptune: coordinates, altitude and azimuth,
   distance, elongation, magnitude, times of rise, culmination and set (name dimmed below the horizon); all the bodies
   or one group, "Visible only", sort by clicking a header
@@ -315,6 +319,7 @@ Celeste_App/
 ├── gui.py               # View + controller — the main window (side panel, place, date, calculation)
 ├── ui/                  # One module per space: tonight, sky, transients_tab, bodies, neo_tab, calendar_tab,
 │                        #   observe, occultations_tab, journal_tab, settings_tab; touch.py: the finger on a touch screen;
+│                        #   phone.py: the phone's location permission and rotation sensor;
 │                        #   common.py: Astræos components, formats, shared widgets
 ├── charts.py            # matplotlib charts — paths, sky map, Solar System
 ├── utils.py             # Utilities — HMS/DMS formats, phase names
@@ -333,6 +338,8 @@ Celeste_App/
 ├── neo.py               # Near-Earth asteroids: close approaches (CNEOS), positions from JPL Horizons
 ├── occultations.py      # Stars hidden by asteroids: IOTA predictions, the band seen from the place
 ├── transients.py        # Recent novae and supernovae: the two lists, merged; when to see them tonight
+├── orientation.py       # Where the phone looks, from its rotation sensor, and how the sky map turns with it
+├── geomag.py            # The magnetic declination of the place (World Magnetic Model 2025)
 ├── planner.py           # Night planner: targets of the night under the observer's constraints
 ├── mpc.py               # Comet elements of the Minor Planet Center (~/.celeste/CometEls.txt)
 ├── instruments.py       # Geometry of the instruments to make: planisphere, sundials, astrolabe (no Qt)
@@ -456,6 +463,9 @@ only the chart of the shown tab is redrawn; the others are when they are opened.
   computed with **Occult** (David Herald) from Gaia DR3 and the JPL orbits — the asteroid occultations
 - **David Bishop**, *Latest Supernovae* (rochesterastronomy.org), list of the active objects — the supernovae and the
   novae of other galaxies; **Koji Mukai**, *List of Recent Galactic Novae* (NASA Goddard) — the galactic novae
+- **A. Chulliat et al.**, *The US/UK World Magnetic Model for 2025–2030*, NOAA NCEI and British Geological Survey
+  (public domain) — the magnetic declination by which the sky map that follows the phone corrects its compass; checked
+  against the model's 100 test values
 
 ---
 
@@ -563,7 +573,7 @@ launch, SmartScreen shows "Windows protected your PC" (*More info*, then *Run an
 ### Engineering and quality
 
 - [x] **Unit tests** — pytest on the engine, the charts, the interface (off screen), the themes, the updates,
-  `utils.py` and `i18n.py` (26 files, ~970 cases)
+  `utils.py` and `i18n.py` (28 files, ~1,110 cases)
 - [x] **Windows executable** — standalone `Celeste.exe` (PyInstaller), ephemeris downloaded at the first launch
 
 ### Workshop: instruments to make
@@ -584,8 +594,11 @@ launch, SmartScreen shows "Windows protected your PC" (*More info*, then *Run an
   Actions (`android/`)
 - [x] **Compact layout** (4.15) — the same Qt interface below 900 pixels of width: drawer, bottom bar, touch targets;
   on a touch screen (4.19, `ui/touch.py`): scrolling with the finger, windows over the whole screen, Back, pinch to zoom
-- [ ] **Android app** (5.0) — the same code as the desktop, with the phone's location and a sky map following the
-  phone. The plan: [docs/ANDROID.md](docs/ANDROID.md)
+- [x] **The phone's place and a sky map following the phone** (4.22) — the GPS once Android allows it
+  (`ui/phone.py`); the rotation sensor turns and moves the sky map (`orientation.py`), north corrected by the
+  magnetic declination (`geomag.py`, World Magnetic Model 2025)
+- [ ] **Android app** (5.0) — the same code as the desktop, on Google Play. The plan:
+  [docs/ANDROID.md](docs/ANDROID.md)
 
 ## Code signing policy
 
@@ -613,10 +626,11 @@ observation log in `~/.celeste` on your computer. It connects to the following s
 | asteroidoccultation.com | when you open the occultations page: the year's IOTA predictions (once a month at most) | an ordinary download request |
 | rochesterastronomy.org, asd.gsfc.nasa.gov | when you open the novae and supernovae page: the two lists (twice a day at most) | an ordinary download request |
 | Open-Meteo (api.open-meteo.com) | only when you turn on the cloud forecast (cloud button of Tonight), at most once an hour | the place's latitude and longitude |
-| OpenStreetMap (tile.openstreetmap.org, nominatim.openstreetmap.org) | only when you open the place map | the area of the map shown; the point you pick, to name it |
+| OpenStreetMap (tile.openstreetmap.org, nominatim.openstreetmap.org) | only when you open the place map, or ask for your position (the button) | the area of the map shown; the point you pick or your position, to the hundredth of a degree (about a kilometre), to name the town |
 | ipwho.is, ipapi.co, ip-api.com | only when you ask for your position and the system cannot give it | your IP address, which they turn into an approximate place |
 
-Every request goes straight to these services: Céleste sends nothing to its authors.
+Every request goes straight to these services: Céleste sends nothing to its authors. On a phone, the position Céleste
+finds at startup (with Android's permission) stays on the phone: the town is named from the list of cities it carries.
 
 ---
 

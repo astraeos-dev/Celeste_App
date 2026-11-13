@@ -323,7 +323,10 @@
     "time_pause": "Pausa",
     "time_tip": "Recorrer la noche, de la puesta a la salida del Sol: solo el mapa cambia de hora",
     "time_reset": "Volver a la hora del cálculo",
-    "time_label_tip": "Hora local del lugar, el {date} ({ut} UT)"
+    "time_label_tip": "Hora local del lugar, el {date} ({ut} UT)",
+    "follow_tip": "Seguir el teléfono: el mapa muestra el cielo detrás de él (brújula)",
+    "follow_on": "El mapa sigue al teléfono: sosténgalo frente al cielo. Norte verdadero (declinación magnética {declination}).",
+    "follow_silent": "El sensor de orientación no responde: el mapa no puede seguir al teléfono."
   },
   "detail": {
     "title": "Ficha — {name}",
@@ -898,7 +901,9 @@
     "geoloc_reason_unknown": "El servicio de ubicación indicó un error.",
     "geoloc_open_settings": "Abrir la configuración de ubicación",
     "geoloc_choose_map": "Elegir en el mapa",
-    "geoloc_no_answer": "Ni el servicio de ubicación ni los servicios de dirección IP respondieron."
+    "geoloc_no_answer": "Ni el servicio de ubicación ni los servicios de dirección IP respondieron.",
+    "geoloc_refused": "Céleste no tiene permiso para leer la posición del teléfono: el lugar no cambia.",
+    "geoloc_reason_refused": "Para concederlo: Ajustes de Android › Aplicaciones › Céleste › Permisos › Ubicación. O elija el lugar en el mapa."
   },
   "settings": {
     "time_format": "Formato de hora",

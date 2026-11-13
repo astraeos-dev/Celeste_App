@@ -23,6 +23,8 @@ Public API
 import json
 import os
 
+import mobile
+
 # Folder of the user's data, shared with the ephemeris (engine.py)
 USER_DIR = os.environ.get("CELESTE_DATA") or os.path.join(os.path.expanduser("~"), ".celeste")
 
@@ -44,7 +46,7 @@ _DEFAULTS = {
     "default_lon":    -1.6167,      # default longitude
     "default_tz":     "auto",       # IANA time zone (Europe/Paris…) or auto (from the place)
     "default_elevation": 0,         # observer's elevation, m
-    "auto_geoloc":    False,        # geolocation at launch
+    "auto_geoloc":    mobile.is_android(),   # geolocation at launch: on a phone, its own place
 
     # Units
     "temp_unit":      "C",          # C | F

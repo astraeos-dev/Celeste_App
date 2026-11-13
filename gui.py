@@ -32,7 +32,7 @@ The calculations come from engine.py, the charts from charts.py, the colours
 from config.py (Astræos tokens), the icons and the logo from icons.py.
 """
 
-from ui import common
+from ui import common, phone
 from ui.common import *  # noqa: F401,F403
 from ui.tonight import TonightSpace
 from ui.sky import SkySpace
@@ -830,6 +830,10 @@ class AstroApp(TonightSpace, SkySpace, TransientSpace, BodiesSpace, NeoSpace, Ca
         """
         if self._geo_source is not None:                     # a request is under way
             return
+        # Android asks the person first (ui/phone.py); their answer comes back here
+        if not phone.location_allowed(self, lambda: self.geolocate(interactive),
+                                      lambda: self._location_refused(interactive)):
+            return
         self._geo_interactive = interactive
         source = common.QGeoPositionInfoSource.createDefaultSource(self)
         if source is None:
@@ -859,7 +863,8 @@ class AstroApp(TonightSpace, SkySpace, TransientSpace, BodiesSpace, NeoSpace, Ca
             self._geolocate_by_ip("invalid")
             return
         lat, lon = coord.latitude(), coord.longitude()
-        name = common._place_name(lat, lon)
+        # named by OpenStreetMap only when asked for: at startup, from the list on the computer
+        name = common._place_name(lat, lon, online=getattr(self, "_geo_interactive", True))
         self._set_place(lat, lon, name, _zone_at(round(lat, 3), round(lon, 3)))
         accuracy = info.attribute(QGeoPositionInfo.Attribute.HorizontalAccuracy)
         precision = f" (±{_num(accuracy)} m)" if accuracy == accuracy and accuracy > 0 else ""
@@ -907,6 +912,14 @@ class AstroApp(TonightSpace, SkySpace, TransientSpace, BodiesSpace, NeoSpace, Ca
         self.combo_fav.setCurrentIndex(-1)
         self.calculate()
 
+    def _location_refused(self, interactive):
+        """The person refused Céleste the location (Android): no position, and no
+        address lookup in its place either; the place stays as it is."""
+        if interactive:
+            self._explain_geolocation("refused", None, None)
+        else:
+            self.statusBar().showMessage(t("errors.geoloc_refused"), 10000)
+
     def _geolocate_by_ip(self, reason=None):
         """Fallback: position of the IP address, often the internet provider's;
         *reason*: why the device's service did not answer. Without an answer, the map."""
@@ -928,7 +941,7 @@ class AstroApp(TonightSpace, SkySpace, TransientSpace, BodiesSpace, NeoSpace, Ca
         """Window (non-modal): position of the IP (or none), why, the map to pick the place
         on, and the system settings to open."""
         text = (tf("errors.geoloc_ip_short", city=city, country=country) if city is not None
-                else t("errors.geoloc_no_answer"))
+                else t("errors.geoloc_refused") if reason == "refused" else t("errors.geoloc_no_answer"))
         box = common.QMessageBox(common.QMessageBox.Icon.Information, t("errors.geoloc_title"), text, parent=self)
         box.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         box.setInformativeText(t(f"errors.geoloc_reason_{reason}"))

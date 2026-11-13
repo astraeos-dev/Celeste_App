@@ -53,6 +53,15 @@ database (messier.seds.org); M102 is taken to be NGC 5866.
 `LICENSE-d3-celestial.txt`. The French, Spanish and German names of the constellations in `locales/` come from the
 same files; the English interface uses the Latin names of the IAU.
 
+## World Magnetic Model
+
+`wmm2025.cof`: the coefficients of the **World Magnetic Model 2025** (WMM2025, valid 2025.0–2030.0), the file
+`WMM2025.COF` of `WMM2025COF.zip` as NOAA's National Centers for Environmental Information publish it
+(ncei.noaa.gov/products/world-magnetic-model), unchanged. A work of the US government with the British Geological
+Survey, in the public domain. `geomag.py` computes from it the magnetic declination of the place, by which the sky
+map that follows the phone turns the compass to the true north; `tests/data/wmm2025_test_values.txt` is the model's
+own file of test values from the same archive.
+
 ## Deep-sky catalogue of the night planner
 
 `deep_sky.csv.gz`: every object of **OpenNGC** that is not a star (12,822: NGC, IC and OpenNGC's addendum), with

@@ -47,6 +47,10 @@ v4.3:
   • Sedna among MINOR_PLANETS; MINOR_PLANET_NUMBERS, the Minor Planet
     Center's numbers ("(136199) Eris")
 
+v4.22:
+  • unchanged: the sky map that follows the phone turns the drawn map
+    (charts.turn_sky, orientation.py, geomag.py)
+
 v4.21:
   • unchanged: the recent novae and supernovae (transients.py) are placed
     with stars_horizontal() and named with constellation_at()

@@ -13,4 +13,4 @@ had no Qt6Android.jar and did not compile (5.0 alpha). The Android workflow
 puts this file next to qt.py; it is never imported. Its modules are qt.py's
 (tests/test_android.py).
 """
-from PySide6 import QtCore, QtGui, QtNetwork, QtPositioning, QtSvg, QtWidgets  # noqa: F401
+from PySide6 import QtCore, QtGui, QtNetwork, QtPositioning, QtSensors, QtSvg, QtWidgets  # noqa: F401

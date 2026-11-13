@@ -157,6 +157,10 @@ The interface is translated into French, English, Spanish and German.
   recent galactic novae: latest magnitude (or peak), type, host galaxy, discovery, distance from the redshift, and
   when each is highest in a dark sky tonight from the place; drawn on the sky map (a red four-pointed star) and found
   by its search; the bright ones in "Tonight"
+- **Constellation charts** — in Sky: each of the 88 constellations on its own chart, as in the sky atlases: its
+  official outline (IAU), its figure, its stars to magnitude 6.5 with their Greek letters, its clusters, nebulae and
+  galaxies, its neighbours; its area, the month it is highest at 10 pm, whether it rises from the place, its brightest
+  stars and finest objects; a sheet to print (PDF, A4)
 - **Satellite passes** — International Space Station, Tiangong and Hubble over 10 days: time of appearance, highest
   point, entry into the Earth's shadow; CelesTrak orbits (AMSAT as a fallback) refreshed every two days
 - **Visibility from here** — for each event, the night to see it (evening, morning or all night), with the altitude,
@@ -317,8 +321,9 @@ Celeste_App/
 ├── engine.py            # Model — pure astronomical calculations (AstroEngine)
 ├── qt.py                # The Qt binding: PySide6 (PyQt6 as a fallback)
 ├── gui.py               # View + controller — the main window (side panel, place, date, calculation)
-├── ui/                  # One module per space: tonight, sky, transients_tab, bodies, neo_tab, calendar_tab,
-│                        #   observe, occultations_tab, journal_tab, settings_tab; touch.py: the finger on a touch screen;
+├── ui/                  # One module per space: tonight, sky, transients_tab, constellations_tab, bodies, neo_tab,
+│                        #   calendar_tab, observe, occultations_tab, journal_tab, settings_tab; touch.py: the finger on
+│                        #   a touch screen;
 │                        #   phone.py: the phone's location permission and rotation sensor;
 │                        #   common.py: Astræos components, formats, shared widgets
 ├── charts.py            # matplotlib charts — paths, sky map, Solar System
@@ -338,6 +343,7 @@ Celeste_App/
 ├── neo.py               # Near-Earth asteroids: close approaches (CNEOS), positions from JPL Horizons
 ├── occultations.py      # Stars hidden by asteroids: IOTA predictions, the band seen from the place
 ├── transients.py        # Recent novae and supernovae: the two lists, merged; when to see them tonight
+├── constellation_chart.py # The chart of a constellation: IAU outline, figure, stars, deep sky; its sheet (PDF)
 ├── orientation.py       # Where the phone looks, from its rotation sensor, and how the sky map turns with it
 ├── geomag.py            # The magnetic declination of the place (World Magnetic Model 2025)
 ├── planner.py           # Night planner: targets of the night under the observer's constraints
@@ -449,7 +455,8 @@ only the chart of the shown tab is redrawn; the others are when they are opened.
   activity, solar longitude at the peak, radiant, velocity, ZHR
 - **GeoNames** (www.geonames.org), cities of more than 15,000 inhabitants, CC BY 4.0 licence — place search
 - **OpenNGC** (M. Verga, CC BY-SA 4.0 licence) and the **SEDS** Messier database — Messier objects
-- **d3-celestial** (O. Frohn, BSD 3-Clause licence) — figures of the 88 constellations and their names
+- **d3-celestial** (O. Frohn, BSD 3-Clause licence) — figures of the 88 constellations and their names; their
+  boundaries (E. Delporte, *Délimitation scientifique des constellations*, IAU, 1930, brought to J2000)
 - **CelesTrak** and **AMSAT** — orbital elements (TLE) of the space stations and of Hubble
 - **JPL Small-Body Database** — magnitude parameters M1, K1 of the comets; **JPL Horizons** — their positions
 - **E. Bowell et al.** (1989), *Application of photometric models to asteroids*, Asteroids II — H, G magnitudes of
@@ -557,6 +564,7 @@ launch, SmartScreen shows "Windows protected your PC" (*More info*, then *Run an
 - [x] **Search on the sky map** — a star, a planet, a Messier object or a constellation by its name
 - [x] **Animated sky map** — the night on a time bar, played with ▶
 - [x] **Month's sheet** — the sky of the month on one page to print
+- [x] **Constellation charts** (4.24) — a chart for each of the 88, as in the sky atlases, and its sheet to print
 - [x] **Astræos design** — Nuit, Jour and Observation themes without restarting, IBM Plex fonts, vector icons
 
 ### Ease of use

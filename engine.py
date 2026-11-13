@@ -47,6 +47,10 @@ v4.3:
   • Sedna among MINOR_PLANETS; MINOR_PLANET_NUMBERS, the Minor Planet
     Center's numbers ("(136199) Eris")
 
+v4.24:
+  • unchanged: the constellation charts (constellation_chart.py) draw the
+    IAU outlines with star_catalog's stars and planner's deep-sky objects
+
 v4.23:
   • unchanged: the Workshop's planisphere becomes a star wheel in a holder
     folded in two (workshop.py), on the same geometry (instruments.py)

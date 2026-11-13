@@ -53,6 +53,12 @@ database (messier.seds.org); M102 is taken to be NGC 5866.
 `LICENSE-d3-celestial.txt`. The French, Spanish and German names of the constellations in `locales/` come from the
 same files; the English interface uses the Latin names of the IAU.
 
+`constellation_bounds.json`: the official boundaries of the 88 constellations (E. Delporte for the IAU, 1930, brought
+to J2000 and cut into lines of right ascension and declination), taken by `scripts/make_constellations.py --bounds`
+from d3-celestial's `data/constellations.bounds.json` (same author, same licence): for each constellation its
+outlines (two for Serpens), as right ascensions in hours and declinations in degrees. The constellation charts of Sky
+draw them.
+
 ## World Magnetic Model
 
 `wmm2025.cof`: the coefficients of the **World Magnetic Model 2025** (WMM2025, valid 2025.0–2030.0), the file

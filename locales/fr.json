@@ -138,7 +138,9 @@
     "journal": "Journal",
     "neo": "Géocroiseurs",
     "occultations": "Occultations",
-    "transients": "Novae et supernovae"
+    "transients": "Novae et supernovae",
+    "transients_short": "Novae",
+    "constellations": "Constellations"
   },
   "spaces": {
     "tonight": "Ce soir",
@@ -1504,5 +1506,19 @@
     "detail_peak": "Éclat maximal",
     "detail_found": "Découverte",
     "mly": "{value} millions d'années-lumière"
+  },
+  "constellation_chart": {
+    "choose": "Constellation",
+    "pdf": "Fiche PDF",
+    "pdf_tip": "Enregistrer la carte et les données de cette constellation sur une page A4 à imprimer",
+    "hint": "Contour officiel en tirets, figure, étoiles jusqu'à la magnitude 6,5 avec leurs lettres grecques, objets du ciel profond en bleu, constellations voisines en gris. L'est est à gauche, comme dans le ciel.",
+    "facts": "{key} · {area} degrés carrés · au plus haut à 22 h en {month} · {visibility}",
+    "visible_all": "entièrement visible depuis votre lieu",
+    "visible_part": "en partie visible depuis votre lieu",
+    "visible_none": "jamais visible depuis votre lieu",
+    "stars": "Étoiles les plus brillantes",
+    "objects": "Objets remarquables",
+    "saved": "Fiche enregistrée : {path}",
+    "save_title": "Enregistrer la fiche de la constellation"
   }
 }

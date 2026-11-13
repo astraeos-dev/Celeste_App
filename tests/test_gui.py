@@ -1474,6 +1474,18 @@ class TestSolarSystemTab:
         for space in window._space_tabs:
             assert space.tabBar().sizeHint().width() <= window.tabs.width()
 
+    def test_a_short_title_when_the_row_is_full(self, window, qapp):
+        """On a phone, the Sky's four pages: the Novae page under its short title, the full one in its
+        tooltip; back to the full title on a computer's window."""
+        space = next(s for s in window._space_tabs if s.indexOf(window._transients_page) >= 0)
+        index = space.indexOf(window._transients_page)
+        window.resize(window.minimumWidth(), window.minimumHeight())
+        _pump(qapp, 3)
+        assert space.tabText(index) == "Novae" and space.tabToolTip(index) == "Novae et supernovae"
+        window.resize(1350, 820)
+        _pump(qapp, 3)
+        assert space.tabText(index) == "Novae et supernovae" and space.tabToolTip(index) == ""
+
 
 # ──────────────────────────────────────────────────────────────────────
 # Night planner, the Targets tab (v4.10, after uptonight)
@@ -3199,3 +3211,60 @@ class TestTransients:
         lines = [text for text, _tone in window._tonight_lines()]
         assert any(line.startswith("★︎ V488 Sge (Nova), magnitude max 7,1, au plus haut à") for line in lines), lines
 
+
+
+# ──────────────────────────────────────────────────────────────────────
+# The constellation charts (v4.24)
+# ──────────────────────────────────────────────────────────────────────
+
+class TestConstellations:
+    """Ciel › Constellations: the chart of the one chosen, its facts, its sheet."""
+
+    @staticmethod
+    def _page(window, qapp):
+        window.show_page(window._constellation_page)
+        _pump(qapp, 3)
+        return window._co_combo
+
+    def test_orion_by_default(self, window, qapp):
+        combo = self._page(window, qapp)
+        assert combo.count() == 88 and combo.currentData() == "Ori"
+        assert window.fig_co.axes and window._co_scene["key"] == "Ori"
+        facts = window._co_facts.text()
+        assert "Orion" in facts and "594 degrés carrés" in facts and "janvier" in facts and "Rigel" in facts
+
+    def test_alphabetical_without_accents(self, window, qapp):
+        combo = self._page(window, qapp)
+        names = [combo.itemText(i) for i in range(combo.count())]
+        assert names.index("Écu de Sobieski (Sct)") < names.index("Eridan (Eri)") < names.index("Flèche (Sge)")
+
+    def test_another_one_is_kept(self, window, qapp):
+        import settings as prefs
+        combo = self._page(window, qapp)
+        combo.setCurrentIndex(combo.findData("Cru"))
+        _pump(qapp)
+        assert window._co_scene["key"] == "Cru" and prefs.get("constellation") == "Cru"
+        assert "jamais visible depuis votre lieu" in window._co_facts.text()      # from Cherbourg
+
+    def test_on_a_phone(self, window, qapp):
+        """The chart as tall as the phone is wide, the page scrolling to the facts; the labels measured
+        again at the phone's size, none on another."""
+        combo = self._page(window, qapp)
+        combo.setCurrentIndex(combo.findData("Vir"))
+        window.resize(360, 740)
+        _pump(qapp, 5)
+        canvas = window.canvas_co
+        assert canvas.height() >= 300 and abs(canvas.height() - canvas.width()) <= 2       # square
+        assert window._constellation_page.verticalScrollBar().maximum() > 0
+        ax = window.fig_co.axes[0]
+        shown = [t.get_window_extent() for t in ax._celeste_labels if t.get_visible()]
+        assert shown and not any(a.overlaps(b) for i, a in enumerate(shown) for b in shown[i + 1:])
+        window.resize(1350, 820)
+        _pump(qapp, 5)
+        assert canvas.minimumHeight() == 0 and canvas.height() > 400
+
+    def test_the_sheet(self, window, qapp, tmp_path):
+        self._page(window, qapp)
+        path = window._save_constellation_sheet(str(tmp_path / "orion.pdf"))
+        assert path and open(path, "rb").read(5) == b"%PDF-"
+        assert "orion.pdf" in window.statusBar().currentMessage()

@@ -138,7 +138,9 @@
     "journal": "Logbuch",
     "neo": "Vorbeiflüge",
     "occultations": "Sternbedeckungen",
-    "transients": "Novae & Supernovae"
+    "transients": "Novae & Supernovae",
+    "transients_short": "Novae",
+    "constellations": "Sternbilder"
   },
   "spaces": {
     "tonight": "Heute Nacht",
@@ -1504,5 +1506,19 @@
     "detail_peak": "Maximum",
     "detail_found": "Entdeckt",
     "mly": "{value} Millionen Lichtjahre"
+  },
+  "constellation_chart": {
+    "choose": "Sternbild",
+    "pdf": "PDF-Blatt",
+    "pdf_tip": "Karte und Daten dieses Sternbilds auf einer A4-Seite zum Drucken speichern",
+    "hint": "Offizielle Grenze gestrichelt, Figur, Sterne bis Größe 6,5 mit ihren griechischen Buchstaben, Deep-Sky-Objekte in Blau, Nachbarsternbilder in Grau. Osten ist links, wie am Himmel.",
+    "facts": "{key} · {area} Quadratgrad · um 22 Uhr am höchsten im {month} · {visibility}",
+    "visible_all": "von Ihrem Ort ganz sichtbar",
+    "visible_part": "von Ihrem Ort teilweise sichtbar",
+    "visible_none": "von Ihrem Ort nie sichtbar",
+    "stars": "Hellste Sterne",
+    "objects": "Bemerkenswerte Objekte",
+    "saved": "Blatt gespeichert: {path}",
+    "save_title": "Blatt des Sternbilds speichern"
   }
 }

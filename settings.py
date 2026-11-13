@@ -56,6 +56,7 @@ _DEFAULTS = {
     "live_interval":  2000,         # ms between real-time refreshes
     "mag_limit":      6.0,          # limiting magnitude of the stars
     "show_messier":   True,         # sky map: the Messier objects
+    "constellation":  "Ori",        # Sky › Constellations: the one shown (IAU abbreviation)
 
     # Coordinates
     "angle_format":   "dms",        # dms (dd° mm′ ss″) | dm (dd° mm,mm′) | dd (dd,ddddd°)

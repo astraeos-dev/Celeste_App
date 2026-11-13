@@ -138,7 +138,9 @@
     "journal": "Diario",
     "neo": "Geocruzadores",
     "occultations": "Ocultaciones",
-    "transients": "Novas y supernovas"
+    "transients": "Novas y supernovas",
+    "transients_short": "Novas",
+    "constellations": "Constelaciones"
   },
   "spaces": {
     "tonight": "Esta noche",
@@ -1504,5 +1506,19 @@
     "detail_peak": "Máximo",
     "detail_found": "Descubierta",
     "mly": "{value} millones de años luz"
+  },
+  "constellation_chart": {
+    "choose": "Constelación",
+    "pdf": "Ficha PDF",
+    "pdf_tip": "Guardar el mapa y los datos de esta constelación en una página A4 para imprimir",
+    "hint": "Contorno oficial a trazos, figura, estrellas hasta la magnitud 6,5 con sus letras griegas, objetos de cielo profundo en azul, constelaciones vecinas en gris. El este está a la izquierda, como en el cielo.",
+    "facts": "{key} · {area} grados cuadrados · en lo más alto a las 22 h en {month} · {visibility}",
+    "visible_all": "visible por completo desde su lugar",
+    "visible_part": "visible en parte desde su lugar",
+    "visible_none": "nunca visible desde su lugar",
+    "stars": "Estrellas más brillantes",
+    "objects": "Objetos destacados",
+    "saved": "Ficha guardada: {path}",
+    "save_title": "Guardar la ficha de la constelación"
   }
 }

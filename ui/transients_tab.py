@@ -98,7 +98,7 @@ class TransientSpace:
         self._compact_hooks.append(self._tr_compact)
         self._tr_shown, self._tr_seen, self._tr_key, self._tr_busy = [], [], None, False
         self._transients_page = page
-        self._add_page(page, t("tabs.transients"))
+        self._add_page(page, t("tabs.transients"), short=t("tabs.transients_short"))
 
     def _tr_compact(self, compact):
         """On a phone: the buttons as icons, and two columns, the object with its magnitude,

@@ -37,6 +37,7 @@ from ui.common import *  # noqa: F401,F403
 from ui.tonight import TonightSpace
 from ui.sky import SkySpace
 from ui.transients_tab import TransientSpace
+from ui.constellations_tab import ConstellationSpace
 from ui.bodies import BodiesSpace
 from ui.neo_tab import NeoSpace
 from ui.calendar_tab import CalendarSpace
@@ -52,8 +53,8 @@ COMPACT_WIDTH = 900
 _TOUCH_SIZE = 48              # touch targets of the compact layout (Material: 48 dp)
 
 
-class AstroApp(TonightSpace, SkySpace, TransientSpace, BodiesSpace, NeoSpace, CalendarSpace, ObserveSpace,
-               OccultationSpace, JournalSpace, SettingsSpace, QMainWindow):
+class AstroApp(TonightSpace, SkySpace, TransientSpace, ConstellationSpace, BodiesSpace, NeoSpace, CalendarSpace,
+               ObserveSpace, OccultationSpace, JournalSpace, SettingsSpace, QMainWindow):
     """Main window of Céleste."""
 
     def __init__(self):
@@ -162,11 +163,13 @@ class AstroApp(TonightSpace, SkySpace, TransientSpace, BodiesSpace, NeoSpace, Ca
         self._reflow = []                 # rows of cards stacked in the compact layout
         self._compact_hooks = []          # what a page changes itself in the compact layout
         self._pages = []                  # every page, in the order of the spaces
+        self._short_titles = {}           # page -> (title, the shorter one for a phone's row of tabs)
         self._space_tabs = []             # the tab bars of the spaces with several pages
         # Five spaces (docs/ANDROID.md): Tonight, Sky, Bodies, Calendar, Observe
         for key, builders in (
                 ("tonight", (self._build_ephemeris_tab,)),
-                ("sky", (self._build_skymap_tab, self._build_trajectories_tab, self._build_transients_tab)),
+                ("sky", (self._build_skymap_tab, self._build_trajectories_tab, self._build_transients_tab,
+                         self._build_constellations_tab)),
                 ("bodies", (self._build_planets_tab, self._build_solar_system_tab,
                             self._build_coordinates_tab, self._build_neo_tab)),
                 ("calendar", (self._build_events_tab,)),
@@ -295,14 +298,26 @@ class AstroApp(TonightSpace, SkySpace, TransientSpace, BodiesSpace, NeoSpace, Ca
 
     def _fit_page_bars(self, available):
         """Compact layout: the second rows of tabs (the pages of a space) fit the width too,
-        their tabs' side padding narrowed when they need it."""
+        with the pages' short titles, then their tabs' side padding narrowed, when they need it."""
         for space in self._space_tabs:
             bar = space.tabBar()
             bar.setStyleSheet("")
+            self._title_pages(space, short=False)
+            if self._compact and bar.sizeHint().width() > available:
+                self._title_pages(space, short=True)
             padding = 6
             while self._compact and padding > 2 and bar.sizeHint().width() > available:
                 padding -= 1
                 bar.setStyleSheet(f"QTabBar::tab {{ padding-left: {padding}px; padding-right: {padding}px; }}")
+
+    def _title_pages(self, space, short):
+        """The tabs of a space's pages under their full titles, or their short ones (the full one
+        then in the tab's tooltip)."""
+        for index in range(space.count()):
+            titles = self._short_titles.get(space.widget(index))
+            if titles:
+                space.setTabText(index, titles[1] if short else titles[0])
+                space.setTabToolTip(index, titles[0] if short else "")
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -524,10 +539,13 @@ class AstroApp(TonightSpace, SkySpace, TransientSpace, BodiesSpace, NeoSpace, Ca
         self._apply_live_ui()
 
     # ──────────────────────────────────────────────────────────────────────────
-    def _add_page(self, page, title):
-        """A page of the space being built (_build_ui)."""
+    def _add_page(self, page, title, short=None):
+        """A page of the space being built (_build_ui); *short*, its title in a phone's row of tabs
+        when the full ones do not fit."""
         self._space_pages.append((page, title))
         self._pages.append(page)
+        if short and short != title:
+            self._short_titles[page] = (title, short)
 
     def _add_space(self, key, pages):
         """A space: its single page, or its pages under a second row of tabs."""
@@ -1072,7 +1090,7 @@ class AstroApp(TonightSpace, SkySpace, TransientSpace, BodiesSpace, NeoSpace, Ca
         self._update_planet_table()
         self._refresh_coordinates()
         self._update_status()
-        self._dirty = {"traj", "sky", "orrery"}
+        self._dirty = {"traj", "sky", "orrery", "constellation"}     # the constellation's facts: the place
         self._draw_visible_chart()
         self._refresh_visible_list()
         self._note_calculation(dte, lat, lon, elev)
@@ -1208,4 +1226,4 @@ class AstroApp(TonightSpace, SkySpace, TransientSpace, BodiesSpace, NeoSpace, Ca
             return
         self._dirty.discard(name)
         {"traj": self._draw_trajectory, "sky": self._draw_sky_map,
-         "orrery": self._draw_orrery}[name]()
+         "orrery": self._draw_orrery, "constellation": self._draw_constellation}[name]()

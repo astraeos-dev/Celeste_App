@@ -138,7 +138,9 @@
     "journal": "Log",
     "neo": "Close approaches",
     "occultations": "Occultations",
-    "transients": "Novae & supernovae"
+    "transients": "Novae & supernovae",
+    "transients_short": "Novae",
+    "constellations": "Constellations"
   },
   "spaces": {
     "tonight": "Tonight",
@@ -1504,5 +1506,19 @@
     "detail_peak": "Peak",
     "detail_found": "Found",
     "mly": "{value} million light-years"
+  },
+  "constellation_chart": {
+    "choose": "Constellation",
+    "pdf": "PDF sheet",
+    "pdf_tip": "Save the chart and the facts of this constellation on an A4 page to print",
+    "hint": "Official outline dashed, figure, stars to magnitude 6.5 with their Greek letters, deep-sky objects in blue, neighbouring constellations in grey. East is on the left, as in the sky.",
+    "facts": "{key} · {area} square degrees · highest at 10 pm in {month} · {visibility}",
+    "visible_all": "entirely visible from your place",
+    "visible_part": "partly visible from your place",
+    "visible_none": "never visible from your place",
+    "stars": "Brightest stars",
+    "objects": "Finest objects",
+    "saved": "Sheet saved: {path}",
+    "save_title": "Save the constellation's sheet"
   }
 }

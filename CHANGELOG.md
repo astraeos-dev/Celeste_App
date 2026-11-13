@@ -7,6 +7,14 @@ Write for them: short sentences, as dashes, no bold or code (the window of versi
 markup as it is), about 800 characters at most (the window cuts the rest, GitHub does not). See the wiki page
 "Publier une version".
 
+## 4.24
+
+- New page in Sky, Constellations: the chart of each of the 88 constellations, as in the sky atlases, with its
+  official outline, its figure, its stars and their Greek letters, its star clusters, nebulae and galaxies, and its
+  neighbours around it.
+- Under the chart: its area, the month it is highest at 10 pm, whether it rises from your place, its brightest stars
+  and its finest objects; and its sheet to print (PDF, A4).
+
 ## 4.23
 
 - Workshop: the rotating chart becomes a real planisphere, like those of the shops: a star wheel with the dates on

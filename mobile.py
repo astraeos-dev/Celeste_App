@@ -30,6 +30,15 @@ def data_dir():
     return os.path.join(base, "celeste")
 
 
+def log(message):
+    """
+    A line in the phone's system log (logcat), where the Android workflow
+    and a developer's adb look for how the start went: nothing on a desktop.
+    """
+    if is_android():
+        print(f"Céleste android: {message}", flush=True)
+
+
 def use_certificates():
     """
     Every default HTTPS context of Python (urllib) loads certifi's file and
@@ -43,7 +52,7 @@ def use_certificates():
         cafile = None
     cafile = cafile if cafile and os.path.isfile(cafile) else None
     capath = ANDROID_CA_DIR if os.path.isdir(ANDROID_CA_DIR) else None
-    print(f"Céleste android: CA certificates {cafile or '-'} · {capath or '-'}", flush=True)
+    log(f"CA certificates {cafile or '-'} · {capath or '-'}")
     if cafile is None and capath is None:
         return False
 

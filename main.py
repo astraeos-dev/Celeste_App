@@ -55,6 +55,7 @@ def ensure_ephemeris():
 
     def fail(exc):
         folder = os.path.dirname(engine.user_ephemeris_path())
+        mobile.log(f"ephemeris FAILED: {exc}")
         QMessageBox.critical(None, "Céleste", t("startup.ephemeris_error").format(error=exc, folder=folder))
         return False
 
@@ -81,6 +82,7 @@ def ensure_ephemeris():
             worker.join(0.05)
         dialog.close()
         if isinstance(state["error"], engine.DownloadCancelled):
+            mobile.log("ephemeris FAILED: the download was cancelled")
             return False
         if state["error"] is not None:
             return fail(state["error"])
@@ -88,6 +90,7 @@ def ensure_ephemeris():
         engine.load_ephemeris()
     except engine.EphemerisUnavailable as exc:
         return fail(exc)
+    mobile.log(f"ephemeris ready: {engine.ephemeris_path()}")
     return True
 
 
@@ -146,7 +149,9 @@ def main(argv=None):
     if ON_ANDROID:                   # the line the Android workflow looks for (logcat)
         QTimer.singleShot(1500, lambda: report_android(window))
 
-    return app.exec()
+    code = app.exec()
+    mobile.log(f"the event loop ended ({code})")
+    return code
 
 
 def report_android(window):

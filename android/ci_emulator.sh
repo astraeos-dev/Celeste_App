@@ -12,7 +12,7 @@ adb shell monkey -p "$package" -c android.intent.category.LAUNCHER 1
 for _ in $(seq 60); do
   sleep 5
   adb logcat -d > logcat.txt
-  if grep -qE "android (engine|window) (OK|FAILED)" logcat.txt; then
+  if grep -qE "android (engine|window) (OK|FAILED)|android: (ephemeris FAILED|the event loop ended)" logcat.txt; then
     break
   fi
 done
@@ -27,7 +27,7 @@ if [ -n "$pid" ]; then
   grep -E "^\S+ \S+ +$pid " logcat.txt | grep -v "extracting _python_bundle" | tail -250
 fi
 grep -E " F |DEBUG +:|libc +:|crash_dump|tombstone|Fatal signal|backtrace" logcat.txt | tail -80
-grep -E "android (self-test|engine|window)" logcat.txt
+grep -E "android (self-test|engine|window)|android: (ephemeris|the event loop)" logcat.txt
 # the lite app: its self-test line, then the engine's; the full app: the window's, which
 # also says whether the window and a form opened over it fit the phone's screen
 if grep -q "android window OK" logcat.txt; then
@@ -37,6 +37,12 @@ if grep -q "android window OK" logcat.txt; then
   fi
   echo "Céleste's window opened on the emulator"
   exit 0
+fi
+if grep -q "android: ephemeris FAILED" logcat.txt; then
+  echo "::error::Céleste could not have the JPL ephemeris: $(grep -m1 -o "ephemeris FAILED.*" logcat.txt)"
+  echo "--- the emulator's network"
+  adb shell "ping -c 1 -W 5 naif.jpl.nasa.gov" || true
+  exit 1
 fi
 if ! grep -q "android self-test OK" logcat.txt; then
   echo "::error::Céleste did not start (see the lines above and logcat.txt)"

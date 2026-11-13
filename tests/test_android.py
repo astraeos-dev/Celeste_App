@@ -51,3 +51,27 @@ def test_added_once():
     assert once[0].split(",").count("numpy") == 1
     assert deploy.extended(*once) == once
     assert deploy.extended(None, None)[1] == "android.permission.INTERNET"
+
+
+def test_the_start_is_told_to_the_system_log(monkeypatch, capsys):
+    """mobile.log() writes the lines the emulator check and adb look for; nothing on a desktop."""
+    sys.path.insert(0, ROOT)
+    import mobile
+    for name in ("ANDROID_PRIVATE", "ANDROID_ARGUMENT"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(mobile.sys, "platform", "linux")
+    mobile.log("ephemeris ready")
+    assert capsys.readouterr().out == ""
+    monkeypatch.setenv("ANDROID_PRIVATE", "/data/user/0/org.celeste.celeste/files")
+    mobile.log("ephemeris ready")
+    assert capsys.readouterr().out == "Céleste android: ephemeris ready\n"
+
+
+def test_the_emulator_check_knows_the_start_lines():
+    """android/ci_emulator.sh stops waiting on the lines main.py writes, and names a failure."""
+    with open(os.path.join(ROOT, "android", "ci_emulator.sh"), encoding="utf-8") as f:
+        script = f.read()
+    with open(os.path.join(ROOT, "main.py"), encoding="utf-8") as f:
+        source = f.read()
+    for line in ("ephemeris FAILED", "the event loop ended", "android window OK"):
+        assert line in source and line in script, line

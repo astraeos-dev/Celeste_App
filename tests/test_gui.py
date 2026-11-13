@@ -3144,7 +3144,8 @@ def novae_lists(window, qapp, monkeypatch):
 class TestTransients:
     def test_a_page_of_the_sky(self, window):
         sky = window.tabs.widget(1)
-        assert [sky.tabText(i) for i in range(sky.count())] == ["Carte du ciel", "Trajectoires", "Novae et supernovae"]
+        assert [sky.tabText(i) for i in range(sky.count())] == ["Carte du ciel", "Trajectoires", "Novae et supernovae",
+                                                                "Constellations"]
 
     def test_the_page(self, novae_lists, qapp):
         import settings as prefs

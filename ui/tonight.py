@@ -473,6 +473,24 @@ class TonightSpace:
                                                      uncertainty=variables.UNCERTAINTY_MIN,
                                                      alt=_num(minimum["alt"]), dir=self._wind(minimum["az"])),
                           None))
+        for approach in n.get("neo", ()):                     # notable asteroids passing by (neo.py)
+            ld = neo.lunar_distances(approach["distance_au"])
+            size = neo.size_m(approach)
+            lines.append((f"{SYMBOL['Earth']} " + tf("tonight.neo", name=approach["name"], time=clock(approach["date"]),
+                                                      ld=_num(ld, 1 if ld >= 1 else 2),
+                                                      size=tf("neo.size", min=_num(size[0]), max=_num(size[1]))
+                                                      if size else "—"), None))
+        for seen in n.get("occultations", ()):               # stars hidden by asteroids (occultations.py)
+            event = seen["event"]
+            asteroid = f"({event['number']}) {event['name']}" if event["number"] else event["name"]
+            if seen["inside"]:
+                text = tf("tonight.occultation_inside", time=clock(seen["date"]), asteroid=asteroid,
+                          mag=_num(event["star_mag"], 1), duration=_num(seen["duration"], 1))
+            else:
+                text = tf("tonight.occultation_outside", time=clock(seen["date"]), asteroid=asteroid,
+                          mag=_num(event["star_mag"], 1), edge=_num(seen["edge_km"]),
+                          side=self._wind(seen["direction"]))
+            lines.append((f"{SYMBOL['star']} " + text, None))
         if self._upcoming:
             items = []
             for ev in self._upcoming:

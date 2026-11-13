@@ -24,8 +24,8 @@ Layout:
   - Main area      : five spaces (ui/), with their pages under a second
                      row of tabs: Tonight (ephemeris) / Sky (sky map,
                      trajectories) / Bodies (planets, Solar System,
-                     coordinates) / Calendar (events) / Observe (targets),
-                     and Settings
+                     coordinates, near-Earth asteroids) / Calendar (events) /
+                     Observe (targets, occultations, log), and Settings
   - Status bar     : place, visible bodies, UT and local time
 
 The calculations come from engine.py, the charts from charts.py, the colours
@@ -37,8 +37,10 @@ from ui.common import *  # noqa: F401,F403
 from ui.tonight import TonightSpace
 from ui.sky import SkySpace
 from ui.bodies import BodiesSpace
+from ui.neo_tab import NeoSpace
 from ui.calendar_tab import CalendarSpace
 from ui.observe import ObserveSpace
+from ui.occultations_tab import OccultationSpace
 from ui.journal_tab import JournalSpace
 from ui.settings_tab import SettingsSpace
 
@@ -49,8 +51,8 @@ COMPACT_WIDTH = 900
 _TOUCH_SIZE = 48              # touch targets of the compact layout (Material: 48 dp)
 
 
-class AstroApp(TonightSpace, SkySpace, BodiesSpace, CalendarSpace, ObserveSpace, JournalSpace, SettingsSpace,
-               QMainWindow):
+class AstroApp(TonightSpace, SkySpace, BodiesSpace, NeoSpace, CalendarSpace, ObserveSpace, OccultationSpace,
+               JournalSpace, SettingsSpace, QMainWindow):
     """Main window of Céleste."""
 
     def __init__(self):
@@ -165,9 +167,9 @@ class AstroApp(TonightSpace, SkySpace, BodiesSpace, CalendarSpace, ObserveSpace,
                 ("tonight", (self._build_ephemeris_tab,)),
                 ("sky", (self._build_skymap_tab, self._build_trajectories_tab)),
                 ("bodies", (self._build_planets_tab, self._build_solar_system_tab,
-                            self._build_coordinates_tab)),
+                            self._build_coordinates_tab, self._build_neo_tab)),
                 ("calendar", (self._build_events_tab,)),
-                ("observe", (self._build_planner_tab, self._build_journal_tab))):
+                ("observe", (self._build_planner_tab, self._build_occultations_tab, self._build_journal_tab))):
             self._space_pages = []
             for build in builders:
                 build()
@@ -1041,6 +1043,7 @@ class AstroApp(TonightSpace, SkySpace, BodiesSpace, CalendarSpace, ObserveSpace,
         self._update_status()
         self._dirty = {"traj", "sky", "orrery"}
         self._draw_visible_chart()
+        self._refresh_visible_list()
         self._note_calculation(dte, lat, lon, elev)
 
     # ── History of the calculations ───────────────────────────────────────────
@@ -1152,6 +1155,16 @@ class AstroApp(TonightSpace, SkySpace, BodiesSpace, CalendarSpace, ObserveSpace,
         self._refresh_coordinates()
         if self.current_page() is getattr(self, "_planner_page", None):
             self._compute_plan()                          # only when the night or the place changed
+        self._refresh_visible_list()
+
+    def _refresh_visible_list(self):
+        """The asteroids' lists, downloaded and computed when their page is shown (only
+        when the place, the day or the choices changed)."""
+        page = self.current_page()
+        if page is getattr(self, "_neo_page", None):
+            self._refresh_neo()
+        elif page is getattr(self, "_occultations_page", None):
+            self._refresh_occultations()
 
     def _draw_visible_chart(self):
         """Draws the chart of the shown tab when it is out of date: in real time,

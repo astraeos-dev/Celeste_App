@@ -49,7 +49,9 @@ import charts  # noqa: E402
 import history  # noqa: E402
 import icons  # noqa: E402
 import mpc  # noqa: E402
+import neo  # noqa: E402
 import night_quality  # noqa: E402
+import occultations  # noqa: E402
 import planner  # noqa: E402
 import places  # noqa: E402
 import satellites  # noqa: E402
@@ -383,7 +385,8 @@ _TONIGHT_CACHE = {}
 def _tonight_and_upcoming(key, dte, lat, lon, elev, zone):
     """"Tonight" and the next three visible events (0.3 s), kept for the night and
     the place *key*: a change of theme or language does not compute them again."""
-    key = (*key, satellites.cache_stamp())                      # new orbits: new passes
+    km = _pref_float("occultation_km", occultations.MAX_KM)
+    key = (*key, satellites.cache_stamp(), neo.cache_stamp(), occultations.cache_stamp(), km)   # new data
     if key not in _TONIGHT_CACHE:
         if len(_TONIGHT_CACHE) >= 8:
             _TONIGHT_CACHE.pop(next(iter(_TONIGHT_CACHE)))
@@ -392,6 +395,12 @@ def _tonight_and_upcoming(key, dte, lat, lon, elev, zone):
         if elements and satellites.epoch_age_days(elements) <= satellites.STALE_DAYS:
             night["satellites"] = AstroEngine.satellite_passes(elements, night["start"], lat, lon, elev, 1)
         night["algol"] = variables.visible_minima(night["start"], night["end"], lat, lon, elev)
+        # the lists kept on disk (no network here): the asteroids' pages download them
+        night["neo"] = [a for a in neo.load() if night["start"] <= a["date"] < night["end"] and neo.notable(a)]
+        predictions = [e for year in occultations.years_between(night["start"], night["end"])
+                       for e in occultations.load(year)]
+        night["occultations"] = occultations.near(predictions, lat, lon, elev, night["start"], night["end"],
+                                                  max_km=km)
         _TONIGHT_CACHE[key] = (night, AstroEngine.upcoming_events(dte, lat, lon, elev, zone))
     return _TONIGHT_CACHE[key]
 
@@ -413,6 +422,15 @@ def _plural_key(base, n):
     """Key "_one" or "_many"; in French, 0 is singular."""
     one = n == 1 or (n == 0 and get_lang() == "fr")
     return f"{base}_{'one' if one else 'many'}"
+
+
+def _rich_lines(lines):
+    """Lines as rich text for a QLabel: the first in bold, the text escaped."""
+    import html
+    if not lines:
+        return ""
+    return "<br>".join([f"<b>{html.escape(lines[0], quote=False)}</b>"]
+                       + [html.escape(line, quote=False) for line in lines[1:]])
 
 
 def _ics_text(text):

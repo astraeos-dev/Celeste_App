@@ -13,6 +13,10 @@ iCalendar file (.ics):
   bright stars), the seasons and the Earth's perihelion and aphelion;
 - the peaks of the meteor showers;
 - the minima of Algol that can be watched from the place (variables.py);
+- the notable close approaches of near-Earth asteroids (neo.py: 140 m and
+  more, or nearer than the Moon), from the list kept on disk;
+- the stars hidden by asteroids whose band passes near the place
+  (occultations.py), from the IOTA predictions kept on disk;
 - the visible passes of the ISS, Tiangong and Hubble (the next 10 days only,
   from the orbits kept on disk: no download here).
 
@@ -21,18 +25,20 @@ No Qt: the interface (gui.py) runs collect() in the background.
 import math
 from datetime import timedelta
 
+import neo
+import occultations
 import variables
 from engine import AstroEngine
 
 # The categories, in the order of the interface's filters
 CATEGORIES = ("phases", "eclipses", "planets", "minor", "comets", "moon", "seasons", "meteors", "variables",
-              "satellites")
+              "neo", "occultations", "satellites")
 DEFAULT_DAYS = 365
 _PHASES = ("new_moon", "first_quarter", "full_moon", "last_quarter")
 
 
 def collect(start, end, lat=None, lon=None, elevation_m=0.0, tz=0, satellite_elements=None,
-            categories=CATEGORIES):
+            categories=CATEGORIES, occultation_km=occultations.MAX_KM):
     """
     The events between *start* and *end* (UT datetimes), sorted by date.
 
@@ -41,6 +47,7 @@ def collect(start, end, lat=None, lon=None, elevation_m=0.0, tz=0, satellite_ele
         tz: tzinfo of the place (the nights of the visibility).
         satellite_elements: {name: (line1, line2)} for the satellite passes, or None.
         categories: the categories to compute (the others are skipped, faster).
+        occultation_km: the occultations whose band passes this near the place.
 
     Returns:
         list[dict]: date (UT), end (UT or None), category (one of CATEGORIES),
@@ -82,6 +89,16 @@ def collect(start, end, lat=None, lon=None, elevation_m=0.0, tz=0, satellite_ele
         for minimum in variables.visible_minima(start, end, lat, lon, elevation_m):
             items.append({"date": minimum["date"], "end": None, "category": "variables",
                           "kind": "algol_minimum", "event": minimum})
+    if "neo" in wanted:
+        for approach in neo.load():                       # the list kept on disk: no download here
+            if neo.notable(approach):
+                items.append({"date": approach["date"], "end": None, "category": "neo", "kind": "approach",
+                              "event": approach})
+    if "occultations" in wanted and lat is not None:
+        predictions = [e for year in occultations.years_between(start, end) for e in occultations.load(year)]
+        for seen in occultations.near(predictions, lat, lon, elevation_m, start, end, max_km=occultation_km):
+            items.append({"date": seen["date"], "end": None, "category": "occultations", "kind": "occultation",
+                          "event": seen})
     if "satellites" in wanted and satellite_elements and lat is not None:
         span = min(days, 10)
         for p in AstroEngine.satellite_passes(satellite_elements, start, lat, lon, elevation_m, span):

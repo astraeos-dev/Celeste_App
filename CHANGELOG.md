@@ -7,6 +7,15 @@ Write for them: short sentences, as dashes, no bold or code (the window of versi
 markup as it is), about 800 characters at most (the window cuts the rest, GitHub does not). See the wiki page
 "Publier une version".
 
+## 4.20
+
+- New page in Bodies, near-Earth asteroids: those passing close to the Earth in the coming days, how near, how big
+  and how fast (CNEOS, NASA/JPL); for those you could catch in a telescope, their brightness and when to look from
+  your place.
+- New page in Observe, occultations: the stars hidden for a few seconds by an asteroid whose shadow passes near your
+  place (IOTA predictions), with where the band passes, how long the star disappears and the Moon.
+- Both in Tonight and in the calendar (two new filters).
+
 ## 4.19
 
 - New month's sheet: one A4 page to print for your place, from the Tonight card or the month shown in the calendar,

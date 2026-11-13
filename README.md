@@ -89,7 +89,7 @@ The interface is translated into French, English, Spanish and German.
   a legend whose lines show, hide or bring out each target; export as a text report, JSON or PNG
 - **Astronomical calendar** — in the Events tab: every event Céleste computes (Moon phases, eclipses,
   conjunctions, oppositions and elongations, minor planets, comets, the Moon's events, seasons, meteor showers,
-  minima of Algol, satellite passes) over a period, a year by default, in a month grid; filters by kind; the day's details; the
+  minima of Algol, near-Earth asteroids, occultations, satellite passes) over a period, a year by default, in a month grid; filters by kind; the day's details; the
   .ics export of what the filters let through
 - **Moons of the planets** — in the data windows: Jupiter's Galilean moons, and Phobos, Deimos, eight moons of
   Saturn, five of Uranus, Triton and Charon from JPL Horizons (2020 to 2040, within 0.1″), drawn as in a telescope
@@ -139,6 +139,15 @@ The interface is translated into French, English, Spanish and German.
 - **Variable stars** — the minima of Algol you can watch from your place (the star at least 15° high in a dark sky),
   in "Tonight" and in the calendar, to within half an hour: an ephemeris fitted to the CCD minima of the BAV's
   Lichtenknecker Database, the light time across the Earth's orbit included
+- **Near-Earth asteroids** — in Bodies: the close approaches within 0.05 au (19.5 lunar distances) listed by CNEOS
+  (NASA/JPL) for the coming days, with the distance, the size from the absolute magnitude and the speed; the notable
+  ones (140 m and more, or nearer than the Moon) in "Tonight" and the calendar; for those that could get brighter
+  than magnitude 16, their magnitude from JPL Horizons and when they are high in a dark sky from the place (Céleste
+  moves the geocentric positions to the place itself: the place is not sent)
+- **Asteroid occultations** — in Observe: the stars hidden for a few seconds by an asteroid whose shadow passes within
+  a chosen distance of the place in the coming months (IOTA predictions, made with Occult): where the band passes and
+  how wide it is on the ground, how long the star disappears, the star, the drop in brightness, the Moon; in
+  "Tonight" and the calendar; OccultWatcher Cloud for the updated paths
 - **Satellite passes** — International Space Station, Tiangong and Hubble over 10 days: time of appearance, highest
   point, entry into the Earth's shadow; CelesTrak orbits (AMSAT as a fallback) refreshed every two days
 - **Visibility from here** — for each event, the night to see it (evening, morning or all night), with the altitude,
@@ -297,7 +306,8 @@ Celeste_App/
 ├── engine.py            # Model — pure astronomical calculations (AstroEngine)
 ├── qt.py                # The Qt binding: PySide6 (PyQt6 as a fallback)
 ├── gui.py               # View + controller — the main window (side panel, place, date, calculation)
-├── ui/                  # One module per space: tonight, sky, bodies, calendar_tab, observe, settings_tab;
+├── ui/                  # One module per space: tonight, sky, bodies, neo_tab, calendar_tab, observe,
+│                        #   occultations_tab, journal_tab, settings_tab; touch.py: the finger on a touch screen;
 │                        #   common.py: Astræos components, formats, shared widgets
 ├── charts.py            # matplotlib charts — paths, sky map, Solar System
 ├── utils.py             # Utilities — HMS/DMS formats, phase names
@@ -313,6 +323,8 @@ Celeste_App/
 ├── night_quality.py     # Quality of the night: darkness, Moon, clouds (Open-Meteo), Bortle class
 ├── variables.py         # Variable stars: the minima of Algol seen from the place
 ├── month_sheet.py       # The month's sheet to print: sky map, Moon, planets, events (PDF)
+├── neo.py               # Near-Earth asteroids: close approaches (CNEOS), positions from JPL Horizons
+├── occultations.py      # Stars hidden by asteroids: IOTA predictions, the band seen from the place
 ├── planner.py           # Night planner: targets of the night under the observer's constraints
 ├── mpc.py               # Comet elements of the Minor Planet Center (~/.celeste/CometEls.txt)
 ├── instruments.py       # Geometry of the instruments to make: planisphere, sundials, astrolabe (no Qt)
@@ -430,6 +442,10 @@ only the chart of the shown tab is redrawn; the others are when they are opened.
 - **Lichtenknecker Database of the BAV** (Bundesdeutsche Arbeitsgemeinschaft für Veränderliche Sterne) — the minima of
   Algol the ephemeris is fitted to; **J. M. Kreiner** (2004), *Up-to-date linear elements of close binaries*, Acta
   Astron. 54, 207, and the BAV's elements of 2017 — its check
+- **CNEOS** (Center for Near-Earth Object Studies, NASA/JPL), *SBDB Close-Approach Data API* — the approaches of the
+  near-Earth asteroids; **JPL Horizons** — their positions and magnitudes around an approach
+- **International Occultation Timing Association** (IOTA): the predictions of Steve Preston (asteroidoccultation.com),
+  computed with **Occult** (David Herald) from Gaia DR3 and the JPL orbits — the asteroid occultations
 
 ---
 
@@ -507,6 +523,8 @@ launch, SmartScreen shows "Windows protected your PC" (*More info*, then *Run an
 - [x] **Satellites** — visible passes of the ISS, Tiangong and Hubble
 - [x] **Jupiter and Saturn** — the four Galilean moons, the tilt of the rings
 - [x] **Variable stars** — the minima of Algol
+- [x] **Near-Earth asteroids and occultations** — close approaches (CNEOS, JPL Horizons), stars hidden by asteroids
+  (IOTA predictions)
 
 ### Interface and visualisation
 
@@ -534,7 +552,7 @@ launch, SmartScreen shows "Windows protected your PC" (*More info*, then *Run an
 ### Engineering and quality
 
 - [x] **Unit tests** — pytest on the engine, the charts, the interface (off screen), the themes, the updates,
-  `utils.py` and `i18n.py` (16 files, ~790 cases)
+  `utils.py` and `i18n.py` (25 files, ~950 cases)
 - [x] **Windows executable** — standalone `Celeste.exe` (PyInstaller), ephemeris downloaded at the first launch
 
 ### Workshop: instruments to make
@@ -580,6 +598,8 @@ observation log in `~/.celeste` on your computer. It connects to the following s
 | NASA JPL (naif.jpl.nasa.gov) | first launch: the DE440 ephemeris | an ordinary download request |
 | GitHub (api.github.com, github.com) | at startup, to look for a new version (Settings › About; can be turned off) | an ordinary request with Céleste's version |
 | Minor Planet Center, CelesTrak, AMSAT | when the comets' or the satellites' orbits are out of date | an ordinary download request |
+| NASA JPL (ssd-api.jpl.nasa.gov, ssd.jpl.nasa.gov) | when you open the near-Earth asteroids page: the list of approaches (twice a day at most), and the positions of the few that could be bright (once a day) | the asteroid's name; not the place |
+| asteroidoccultation.com | when you open the occultations page: the year's IOTA predictions (once a month at most) | an ordinary download request |
 | Open-Meteo (api.open-meteo.com) | only when you turn on the cloud forecast (cloud button of Tonight), at most once an hour | the place's latitude and longitude |
 | OpenStreetMap (tile.openstreetmap.org, nominatim.openstreetmap.org) | only when you open the place map | the area of the map shown; the point you pick, to name it |
 | ipwho.is, ipapi.co, ip-api.com | only when you ask for your position and the system cannot give it | your IP address, which they turn into an approximate place |

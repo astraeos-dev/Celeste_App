@@ -8,6 +8,8 @@ from ui import common
 from ui.common import *  # noqa: F401,F403
 
 import month_sheet
+import neo
+import occultations
 from config import APP_RELEASE
 
 
@@ -743,7 +745,7 @@ class CalendarSpace:
 
     _CAL_SYMBOLS = {"phases": "Moon", "eclipses": "Sun", "planets": "conjunction", "minor": "conjunction",
                     "comets": "meteors", "moon": "Moon", "seasons": "Sun", "meteors": "meteors",
-                    "variables": "star", "satellites": "star"}
+                    "variables": "star", "neo": "Earth", "occultations": "star", "satellites": "star"}
 
     def _calendar_title(self, item):
         """Title of an event of the calendar, in the interface language."""
@@ -757,6 +759,13 @@ class CalendarSpace:
             return tf("astro_calendar.pass", name=_satellite_name(ev["name"], short=True))
         if cat == "variables":
             return t("variables.algol_minimum")
+        if cat == "neo":
+            ld = neo.lunar_distances(ev["distance_au"])
+            return tf("neo.calendar_title", name=ev["name"], ld=_num(ld, 1 if ld >= 1 else 2))
+        if cat == "occultations":
+            event = ev["event"]
+            asteroid = f"({event['number']}) {event['name']}" if event["number"] else event["name"]
+            return tf("occultations.calendar_title", asteroid=asteroid, mag=_num(event["star_mag"], 1))
         return self._event_title(ev, symbol=False)
 
     def _calendar_symbol(self, item):
@@ -781,6 +790,18 @@ class CalendarSpace:
         elif item["category"] == "variables":
             lines.append(tf("variables.algol_details", alt=_num(ev["alt"]), dir=self._wind(ev["az"]),
                             uncertainty=variables.UNCERTAINTY_MIN))
+        elif item["category"] == "neo":
+            size = neo.size_m(ev)
+            lines.append(tf("neo.calendar_details", km=_num(ev["distance_au"] * neo.AU_KM),
+                            size=tf("neo.size", min=_num(size[0]), max=_num(size[1])) if size else "—",
+                            speed=_num(ev["speed"], 1) if ev["speed"] else "—"))
+        elif item["category"] == "occultations":
+            if ev["inside"]:
+                lines.append(tf("occultations.calendar_inside", duration=_num(ev["duration"], 1),
+                                alt=_num(ev["alt"]), dir=self._wind(ev["az"])))
+            else:
+                lines.append(tf("occultations.calendar_outside", edge=_num(ev["edge_km"]),
+                                side=self._wind(ev["direction"]), alt=_num(ev["alt"]), dir=self._wind(ev["az"])))
         else:
             vis = ev.get("visibility")
             if vis is not None and item["category"] not in ("phases", "seasons"):
@@ -979,8 +1000,10 @@ class CalendarSpace:
             def failed(exc):
                 QApplication.restoreOverrideCursor()
                 status.setText(tf("events.search_error", detail=exc))
-            common._run_in_background(lambda: astro_calendar.collect(start_ut, end_ut, lat, lon, elev, zone, elements),
-                               done, failed)
+            km = _pref_float("occultation_km", occultations.MAX_KM)
+            common._run_in_background(lambda: astro_calendar.collect(start_ut, end_ut, lat, lon, elev, zone, elements,
+                                                                     occultation_km=km),
+                                      done, failed)
 
         prev_btn.clicked.connect(lambda _c=False: turn(-1))
         next_btn.clicked.connect(lambda _c=False: turn(1))

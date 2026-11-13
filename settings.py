@@ -77,6 +77,10 @@ _DEFAULTS = {
     "planner_custom": [],           # the user's own targets (planner.custom_target keywords)
     "planner_mpc":    True,         # every comet of the Minor Planet Center, not only Céleste's
     "satellites_visual": False,     # passes of the ~150 naked-eye satellites too (CelesTrak "visual")
+    "occultation_km": 100,          # occultations whose band passes this near the place (km)
+    "occultation_months": 6,        # …in the coming months
+    "neo_days": 60,                 # near-Earth asteroids: the approaches of the coming days
+    "neo_notable_only": False,      # …only the notable ones (140 m and more, or nearer than the Moon)
     "plan_split": [40, 60],         # Targets tab: share of the height for the tables and the chart
     "plan_map_east_right": False,   # the map of the night with the east on the right (as uptonight)
     # Updates (updater.py)

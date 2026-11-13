@@ -30,7 +30,7 @@ Usage:
 # Version of Céleste: the only place to change it (window, settings, executable,
 # installer, GitHub requests). Raise it for each release, then push the tag
 # v<version>: the build workflow checks that both agree.
-APP_VERSION = "4.19"
+APP_VERSION = "4.20"
 
 # A beta build (scripts/build_exe.py with CELESTE_BETA=<n>, the Beta workflow) writes
 # _build_info.py: the version is then "4.12 beta <n>", published as a pre-release that

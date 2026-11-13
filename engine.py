@@ -47,6 +47,10 @@ v4.3:
   • Sedna among MINOR_PLANETS; MINOR_PLANET_NUMBERS, the Minor Planet
     Center's numbers ("(136199) Eris")
 
+v4.20:
+  • constellation_at(): the constellation of a direction, for the near-Earth
+    asteroids (neo.py) and the stars hidden by asteroids (occultations.py)
+
 v4.19:
   • unchanged: the month's sheet to print (month_sheet.py) builds on it;
     the sky at an instant is charts.sky_state()
@@ -3066,3 +3070,10 @@ def _constellation(position):
     find, names = _constellations()
     abbreviation = str(find(position))
     return abbreviation, names.get(abbreviation, abbreviation)
+
+
+def constellation_at(ra_hours, dec_degrees, jd_ut):
+    """IAU abbreviation of the constellation of the ICRS direction (*ra_hours*, *dec_degrees*)
+    at the instant *jd_ut*."""
+    from skyfield.api import position_of_radec
+    return _constellation(position_of_radec(ra_hours, dec_degrees, t=_sky()["ts"].ut1_jd(jd_ut)))[0]

@@ -74,6 +74,16 @@ def window(qapp, tmp_path, monkeypatch):
     import mpc
     monkeypatch.setattr(mpc, "CACHE", str(tmp_path / "CometEls.txt"))             # none, and no download:
     prefs.set("planner_mpc", False)                                                # Céleste's comets only
+    import neo
+    import occultations
+
+    def offline(*_args, **_kwargs):
+        raise OSError("offline in the tests")
+    monkeypatch.setattr(neo, "CACHE", str(tmp_path / "neo_approaches.json"))       # the asteroids: none on
+    monkeypatch.setattr(neo, "EPHEMERIS_DIR", str(tmp_path / "neo"))               # disk, and no download
+    monkeypatch.setattr(neo, "_get", offline)
+    monkeypatch.setattr(occultations, "CACHE_DIR", str(tmp_path / "occultations"))
+    monkeypatch.setattr(occultations, "_download", offline)
     Config.apply_theme("nuit")
     switch_lang("fr")
     gui.apply_theme(qapp)
@@ -1392,7 +1402,10 @@ class TestSolarSystemTab:
         assert names == ["Ce soir", "Ciel", "Astres", "Calendrier", "Observer", ""]
         assert window.tabs.tabToolTip(5) == "Paramètres" and not window.tabs.tabIcon(5).isNull()
         bodies = window.tabs.widget(2)
-        assert [bodies.tabText(i) for i in range(bodies.count())] == ["Planètes", "Système solaire", "Coordonnées"]
+        assert [bodies.tabText(i) for i in range(bodies.count())] == ["Planètes", "Système solaire", "Coordonnées",
+                                                                       "Géocroiseurs"]
+        observe = window.tabs.widget(4)
+        assert [observe.tabText(i) for i in range(observe.count())] == ["Cibles", "Occultations", "Journal"]
         page = window._orrery_page
         assert bodies.indexOf(page) == 1 and page.isAncestorOf(window.canvas_orrery)
         assert not window._planets_page.isAncestorOf(window.canvas_orrery)
@@ -2554,7 +2567,7 @@ class TestJournal:
 
     def test_a_page_of_observer(self, window, qapp):
         observe = window.tabs.widget(4)
-        assert [observe.tabText(i) for i in range(observe.count())] == ["Cibles", "Journal"]
+        assert [observe.tabText(i) for i in range(observe.count())] == ["Cibles", "Occultations", "Journal"]
         window.show_page(window._journal_page)
         _pump(qapp, 3)
         assert window.current_page() is window._journal_page
@@ -2700,3 +2713,161 @@ def test_zone_without_timezonefinder(monkeypatch):
     finally:
         gui.common._zone_at.cache_clear()
     assert gui.common._system_zone() in gui.common._zone_names() or gui.common._system_zone() == "UTC"
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Near-Earth asteroids and occultations (v4.20)
+# ──────────────────────────────────────────────────────────────────────
+
+_DATA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+
+
+@pytest.fixture
+def asteroids(window, qapp, monkeypatch):
+    """The window at Paris, with the samples of the IOTA predictions (2026) and of CNEOS'
+    list on disk, Horizons answering for 2016 NV only, and the background work done at once."""
+    import zipfile
+    import gui
+    import neo
+    import occultations
+
+    os.makedirs(occultations.CACHE_DIR, exist_ok=True)
+    with zipfile.ZipFile(occultations.cache_path(2026), "w") as archive:
+        archive.write(os.path.join(_DATA, "occelmnt_sample.xml"), "2026-iota-all.xml")
+    with open(os.path.join(_DATA, "cad_sample.json"), encoding="utf-8") as f:
+        payload = f.read()
+    with open(neo.CACHE, "w", encoding="utf-8") as f:
+        f.write(payload)
+    with open(os.path.join(_DATA, "horizons_2016NV.txt"), encoding="utf-8") as f:
+        rows = neo.parse_ephemeris(f.read())
+
+    def ephemeris(approach, timeout=30):
+        if approach["designation"] != "2016 NV":
+            raise OSError("no Horizons in the tests")
+        return rows
+    monkeypatch.setattr(neo, "ephemeris", ephemeris)
+
+    def run_now(func, on_done, on_error):
+        try:
+            result = func()
+        except Exception as exc:  # noqa: BLE001
+            on_error(exc)
+        else:
+            on_done(result)
+    monkeypatch.setattr(gui.common, "_run_in_background", run_now)
+    window._set_place(48.85, 2.35, "Paris")
+    return window
+
+
+def _at(window, qapp, date):
+    window._set_datetime(date)
+    window.calculate()
+    _pump(qapp, 3)
+
+
+def _texts(table, col):
+    return [table.item(r, col).text() for r in range(table.rowCount())]
+
+
+def _plain(label):
+    """The text of a rich-text label, without its tags."""
+    import html
+    return html.unescape(re.sub(r"<br>", "\n", re.sub(r"</?b>", "", label.text())))
+
+
+class TestAsteroids:
+    def test_occultations_page(self, asteroids, qapp):
+        import settings as prefs
+        window = asteroids
+        _at(window, qapp, datetime(2026, 6, 1, 12, 0))
+        window.show_page(window._occultations_page)
+        _pump(qapp, 3)
+        table = window._occ_table
+        assert _texts(table, 1) == ["(954) Li · 52 km"]                  # 6 months: Juno is in December
+        assert _texts(table, 3) == ["Sur le lieu"]
+        assert _texts(table, 4) == ["2,0 s"]
+        assert "1 occultation à moins de 100 km" in window._occ_status.text()
+        assert "1 sur le lieu" in window._occ_status.text()
+        details = _plain(window._occ_details)
+        assert "(954) Li cache l'étoile UCAC4 348-085188" in details
+        assert "La bande passe sur le lieu" in details and "Ophiuchus" in details
+        assert "Lune éclairée à" in details and "JPL#71" in details
+        window._occ_months.setCurrentIndex(window._occ_months.findData(12))      # into 2027: not published
+        _pump(qapp, 3)
+        assert prefs.get("occultation_months") == 12
+        assert _texts(table, 1)[-1] == "(3) Juno · 249 km"
+        assert "pas de prédictions 2027" in window._occ_status.text()
+
+    def test_occultations_none_near(self, asteroids, qapp):
+        window = asteroids
+        window._set_place(-33.87, 151.21, "Sydney")
+        _at(window, qapp, datetime(2026, 6, 1, 12, 0))
+        window.show_page(window._occultations_page)
+        _pump(qapp, 3)
+        assert window._occ_table.rowCount() == 0
+        assert "Aucune bande à moins de 100 km" in _plain(window._occ_details)
+
+    def test_neo_page(self, asteroids, qapp):
+        import settings as prefs
+        window = asteroids
+        _at(window, qapp, datetime(2026, 12, 1, 12, 0))
+        window.show_page(window._neo_page)
+        _pump(qapp, 3)
+        table = window._neo_table
+        assert _texts(table, 1) == ["2016 NV"]                              # 60 days
+        assert _texts(table, 2) == ["14,3 DL"]
+        assert _texts(table, 3) == ["284 à 634 m"]
+        assert _texts(table, 5) == ["15,0 · visible"]                       # Horizons, seen from Paris
+        details = _plain(window._neo_details)
+        assert "remarquable" in details and "14,25 fois la distance de la Lune" in details
+        assert "Magnitude 15,0 au plus près (JPL Horizons)" in details
+        assert "Visible du 08/12 18:00 au 09/12 00:00" in details and "Poissons" in details
+        assert "7 passages" in window._neo_status.text()                    # the sample's whole list
+        window._neo_days.setCurrentIndex(window._neo_days.findData(365))
+        _pump(qapp, 3)
+        assert prefs.get("neo_days") == 365
+        assert _texts(table, 1) == ["2016 NV", "506074 Svarog", "137108 (1999 AN10)", "2026 VP8"]
+        assert _texts(table, 3)[1] == "665 m"                               # measured
+        assert _texts(table, 5)[3] == "> 16"
+        window._neo_notable.setChecked(True)
+        _pump(qapp, 3)
+        assert _texts(table, 1) == ["2016 NV", "506074 Svarog", "137108 (1999 AN10)"]
+
+    def test_phone_rows(self, asteroids, qapp):
+        window = asteroids
+        _at(window, qapp, datetime(2026, 12, 1, 12, 0))
+        window.show_page(window._neo_page)
+        _pump(qapp, 3)
+        window.resize(360, 740)
+        _pump(qapp, 5)
+        table = window._neo_table
+        shown = [c for c in range(table.columnCount()) if not table.isColumnHidden(c)]
+        assert shown == [0, 1]
+        assert _texts(table, 0) == ["08/12 18:41"]
+        assert _texts(table, 1) == ["2016 NV · 14,3 DL · 15,0 · visible"]
+        window.resize(1350, 820)
+        _pump(qapp, 5)
+        assert _texts(table, 0) == ["08/12/2026 18:41"] and not table.isColumnHidden(5)
+
+    def test_tonight(self, asteroids, qapp):
+        window = asteroids
+        _at(window, qapp, datetime(2026, 6, 6, 20, 0))
+        lines = [text for text, _tone in window._tonight_lines()]
+        assert any("Occultation à 23:22 : (954) Li cache une étoile de magnitude 10,4, la bande passe sur le lieu"
+                   in line for line in lines), lines
+        _at(window, qapp, datetime(2026, 12, 8, 17, 0))
+        lines = [text for text, _tone in window._tonight_lines()]
+        assert any("Astéroïde 2016 NV au plus près à 18:42, à 14,3 distances lunaires (284 à 634 m)" in line
+                   for line in lines), lines
+
+    def test_calendar_titles(self, asteroids, qapp):
+        import astro_calendar
+        window = asteroids
+        items = astro_calendar.collect(datetime(2026, 6, 1), datetime(2027, 1, 1), 48.85, 2.35,
+                                       categories=("neo", "occultations"))
+        titles = [(i["category"], window._calendar_title(i)) for i in items]
+        assert ("occultations", "(954) Li cache une étoile de magnitude 10,4") in titles
+        assert ("neo", "Astéroïde 2016 NV à 14,3 distances lunaires") in titles
+        li = next(i for i in items if i["category"] == "occultations")
+        assert any("La bande passe sur le lieu (2,0 s)" in line for line in window._calendar_details(li))
+

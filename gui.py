@@ -224,9 +224,16 @@ class AstroApp(TonightSpace, SkySpace, BodiesSpace, CalendarSpace, ObserveSpace,
             QTimer.singleShot(0, self._draw_visible_chart)
         self._top_summary.parentWidget().setVisible(compact)
         self.statusBar().setVisible(not compact)
-        self._main_layout.setContentsMargins(*((8, 0, 8, 0) if compact else (16, 8, 16, 0)))
+        self._main_layout.setContentsMargins(*((4, 0, 4, 0) if compact else (16, 8, 16, 0)))
         self._fit_sidebar()
         self.set_drawer(False)
+        # the sizes kept for the other layout are thrown away, hidden pages' too, or the window
+        # stays wider than a phone (5.0 alpha): each widget's cached hint, then the layouts
+        for widget in self.findChildren(QWidget):
+            widget.updateGeometry()
+        for layout in self.findChildren(QLayout):
+            layout.invalidate()
+        self.updateGeometry()
 
     def set_drawer(self, open_):
         """Compact layout: the side panel over the whole window (open) or hidden."""
@@ -265,13 +272,22 @@ class AstroApp(TonightSpace, SkySpace, BodiesSpace, CalendarSpace, ObserveSpace,
         bar.setUsesScrollButtons(not self._compact)
         bar.setElideMode(Qt.TextElideMode.ElideRight if self._compact else Qt.TextElideMode.ElideNone)
         settings = 36                                  # the gear, last
-        available = self.width() - 16                  # the window less the margins (8 + 8)
+        margins = self._main_layout.contentsMargins()
+        available = self.width() - margins.left() - margins.right()
         width = max(0, (available - settings) // max(1, bar.count() - 1) - 4) if self._compact else 0
-        if getattr(self, "_space_bar_width", None) != width:
+
+        def apply(width):
             self._space_bar_width = width
             bar.setStyleSheet(f"QTabBar::tab {{ min-width: {width}px; max-width: {width}px; }} "
                               f"QTabBar::tab:last {{ min-width: {settings - 4}px; max-width: {settings - 4}px; }}"
                               if width else "")
+
+        if getattr(self, "_space_bar_width", None) != width:
+            apply(width)
+        # the tabs' paddings and the frame come on top: narrower until the bar fits the phone
+        while width > 24 and self.tabs.minimumSizeHint().width() > available:
+            width -= 1
+            apply(width)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)

@@ -722,5 +722,8 @@ class BodiesSpace:
         return f"{text} · {t('jupiter.shadow')}" if moon["shadow"] else text
 
     def _show_object_detail(self, obj):
-        """Detailed card of a body of the sky map."""
-        self._build_detail_dialog(obj).exec()
+        """Detailed card of a body of the sky map, over the window without blocking it: a
+        nested loop opened from the map's click (a tap on a phone) left the app stuck."""
+        dialog = self._build_detail_dialog(obj)
+        dialog.open()
+        return dialog

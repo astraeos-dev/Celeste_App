@@ -116,6 +116,8 @@ def main(argv=None):
     if not ensure_ephemeris():
         return 1
     window = AstroApp()
+    from ui import touch
+    touch.install(app, window)               # Android (or CELESTE_TOUCH=1): scrolling, windows, Back
     window.show()
     if args.self_test:
         window._calculate_quietly()                       # stays out of the user's history
@@ -142,11 +144,29 @@ def main(argv=None):
         QTimer.singleShot(4000, lambda: window.check_updates(interactive=False))
 
     if ON_ANDROID:                   # the line the Android workflow looks for (logcat)
-        from config import APP_RELEASE
-        print(f"Céleste {APP_RELEASE} android window OK: {len(window.visible_stars)} stars, "
-              f"{window.tabs.count()} spaces, compact {window.is_compact()}", flush=True)
+        QTimer.singleShot(1500, lambda: report_android(window))
 
     return app.exec()
+
+
+def report_android(window):
+    """
+    The line the Android workflow looks for (logcat): the window started, and
+    whether it and a form opened over it (the observation log's) fit the screen.
+    """
+    from config import APP_RELEASE
+    from ui import touch
+    screen = window.screen().availableGeometry()
+    dialog = window._journal_dialog()
+    dialog.open()
+    QApplication.processEvents()
+    fits = window.minimumSizeHint().width() <= screen.width()
+    dialog_fits = dialog.geometry().width() <= screen.width() and dialog.minimumSizeHint().width() <= screen.width()
+    dialog.reject()
+    print(f"Céleste {APP_RELEASE} android window OK: {len(window.visible_stars)} stars, "
+          f"{window.tabs.count()} spaces, compact {window.is_compact()}, touch {touch.touch_mode()}, "
+          f"fits {fits} (window {window.minimumSizeHint().width()} of {screen.width()} px), "
+          f"dialog fits {dialog_fits}", flush=True)
 
 
 if __name__ == "__main__":

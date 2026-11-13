@@ -553,7 +553,8 @@ launch, SmartScreen shows "Windows protected your PC" (*More info*, then *Run an
   Observe
 - [x] **PySide6** (4.14) — Qt for Python (`qt.py`), whose official tool builds Android apps; a first APK in GitHub
   Actions (`android/`)
-- [x] **Compact layout** (4.15) — the same Qt interface below 900 pixels of width: drawer, bottom bar, touch targets
+- [x] **Compact layout** (4.15) — the same Qt interface below 900 pixels of width: drawer, bottom bar, touch targets;
+  on a touch screen (4.19, `ui/touch.py`): scrolling with the finger, windows over the whole screen, Back, pinch to zoom
 - [ ] **Android app** (5.0) — the same code as the desktop, with the phone's location and a sky map following the
   phone. The plan: [docs/ANDROID.md](docs/ANDROID.md)
 

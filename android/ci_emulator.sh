@@ -28,8 +28,13 @@ if [ -n "$pid" ]; then
 fi
 grep -E " F |DEBUG +:|libc +:|crash_dump|tombstone|Fatal signal|backtrace" logcat.txt | tail -80
 grep -E "android (self-test|engine|window)" logcat.txt
-# the lite app: its self-test line, then the engine's; the full app: the window's
+# the lite app: its self-test line, then the engine's; the full app: the window's, which
+# also says whether the window and a form opened over it fit the phone's screen
 if grep -q "android window OK" logcat.txt; then
+  if grep "android window OK" logcat.txt | grep -q "fits False"; then
+    echo "::error::Céleste's window or a form is wider than the phone's screen (see the line above)"
+    exit 1
+  fi
   echo "Céleste's window opened on the emulator"
   exit 0
 fi

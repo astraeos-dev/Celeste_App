@@ -2263,6 +2263,18 @@ class TestCompactLayout:
         self._phone(window, qapp, 1350, 820)
         assert window._find_entry.width() == 220 and window._mag_slider.width() == 240
 
+    def test_the_window_fits_the_phone_in_every_language(self, window, qapp):
+        """The 5.0 alpha ran off the phone's screen: the sizes kept from the wide layout,
+        and rows too wide in German (the longest labels)."""
+        for lang in ("fr", "de"):
+            window._lang_combo.setCurrentIndex(window._lang_combo.findData(lang))
+            _pump(qapp)
+            for width in (360, 411, 360):
+                self._phone(window, qapp, width)
+                assert window.minimumSizeHint().width() <= width, (lang, width)
+        window._lang_combo.setCurrentIndex(window._lang_combo.findData("fr"))
+        _pump(qapp)
+
     def test_calendar_buttons_in_two_columns(self, window, qapp):
         """The Calendar space's buttons: two columns of short labels on a phone, nothing clipped."""
         self._phone(window, qapp)

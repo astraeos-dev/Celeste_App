@@ -6,7 +6,8 @@ A mixin of the main window (gui.AstroApp): its methods use the window's state
 """
 import numpy as np
 
-from ui import common
+from qt.QtCore import QObject
+from ui import common, touch
 from ui.common import *  # noqa: F401,F403
 
 
@@ -19,6 +20,55 @@ SKY_STEP_MIN = 5                          # a step of the bar, minutes
 SKY_FRAME_MIN = 10                        # the animation: ten minutes of sky a frame
 SKY_FRAME_MS = 40                         # the rest between two frames (drawing one takes longer)
 SKY_NIGHT_MARGIN = timedelta(minutes=30)  # the bar starts before sunset, ends after sunrise
+
+
+class _SkyTouch(QObject):
+    """
+    The sky map by touch (a phone): one finger taps (the card of a body) and
+    drags (a zoomed map moves), two fingers zoom by their spread. Qt's touch
+    events are read here and the map's mouse handlers fed with them: a touch
+    turned into a mouse press by Qt would end the sequence before the second
+    finger comes.
+    """
+
+    _KINDS = {QEvent.Type.TouchBegin: "press", QEvent.Type.TouchUpdate: "move",
+              QEvent.Type.TouchEnd: "release", QEvent.Type.TouchCancel: "cancel"}
+
+    def __init__(self, window):
+        super().__init__(window.canvas_sky)
+        self.window = window
+        self.spread = None                      # the two fingers' distance at the last event
+        window.canvas_sky.setAttribute(Qt.WidgetAttribute.WA_AcceptTouchEvents)
+
+    def eventFilter(self, obj, event):
+        kind = self._KINDS.get(event.type())
+        if kind is None:
+            return False
+        self.handle(kind, [(p.position().x(), p.position().y()) for p in event.points()])
+        return True
+
+    def handle(self, kind, points):
+        """*kind*: press, move, release or cancel; *points*: the fingers (widget pixels)."""
+        from matplotlib.backend_bases import MouseEvent
+        win = self.window
+        if kind == "cancel" or not points:
+            self.spread, win._sky_drag = None, None
+            return
+        if len(points) >= 2:
+            (ax, ay), (bx, by) = points[0], points[1]
+            spread = math.hypot(ax - bx, ay - by)
+            if self.spread:
+                win._sky_pinch(spread / self.spread)
+            self.spread = spread or None
+            return
+        if kind == "release":
+            self.spread = None
+        canvas = win.canvas_sky
+        x, y = canvas.mouseEventCoords(QPointF(*points[0]))
+        name = {"press": "button_press_event", "move": "motion_notify_event",
+                "release": "button_release_event"}[kind]
+        handler = {"press": win._on_sky_press, "move": win._on_sky_hover, "release": win._on_sky_release}[kind]
+        handler(MouseEvent(name, canvas, x, y, button=1))
 
 
 class SkySpace:
@@ -106,6 +156,9 @@ class SkySpace:
         self.canvas_sky.mpl_connect("button_release_event", self._on_sky_release)
         self.canvas_sky.mpl_connect("scroll_event", self._on_sky_scroll)
         self.canvas_sky.mpl_connect("figure_leave_event", self._on_sky_leave)
+        if touch.touch_mode():                             # a phone: one finger taps and moves, two zoom
+            self._sky_touch = _SkyTouch(self)
+            self.canvas_sky.installEventFilter(self._sky_touch)
         if not hasattr(self, "_sky_zoom"):                 # kept through the rebuilds
             self._sky_zoom, self._sky_center = 1.0, (0.0, 0.0)
         self._sky_drag = None
@@ -122,6 +175,7 @@ class SkySpace:
                 widget.setMaximumWidth(16777215)              # QWIDGETSIZE_MAX
             else:
                 widget.setFixedWidth(width)
+        self._sky_zoom_lbl.setMinimumWidth(0 if compact else 40)
 
     def _build_sky_time_bar(self):
         """Under the map: the night on a time bar, and ▶ to watch the sky turn. Only
@@ -649,6 +703,13 @@ class SkySpace:
             self._apply_sky_view()
             self._sky_tip.hide()
             self.canvas_sky.draw_idle()
+
+    def _sky_pinch(self, factor):
+        """Two fingers on the map: the zoom by the change of their spread; lifting
+        them is no click (the drag the first finger started is dropped)."""
+        self._sky_drag = None
+        if factor and factor > 0:
+            self._sky_zoom_by(factor)
 
     def _sky_zoom_by(self, factor, at=None):
         """Zooms by *factor*, keeping the point *at* (map coordinates) under the pointer."""

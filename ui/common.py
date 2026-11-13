@@ -33,7 +33,7 @@ from qt.QtPositioning import QGeoPositionInfo, QGeoPositionInfoSource
 from qt.QtWidgets import (
     QAbstractItemView, QApplication, QBoxLayout, QButtonGroup, QCheckBox, QComboBox, QCompleter,
     QDateEdit, QDateTimeEdit, QDialog, QDialogButtonBox, QFileDialog, QFrame, QGridLayout, QProgressDialog,
-    QHBoxLayout, QHeaderView, QInputDialog, QLabel, QLineEdit, QMainWindow, QMenu,
+    QHBoxLayout, QHeaderView, QInputDialog, QLabel, QLayout, QLineEdit, QMainWindow, QMenu,
     QMessageBox, QPlainTextEdit, QProgressBar, QPushButton, QScrollArea, QSizePolicy, QSlider, QSplitter, QToolTip,
     QStatusBar, QTabBar, QTabWidget, QTableWidget, QTableWidgetItem, QToolButton,
     QVBoxLayout, QWidget,
@@ -1197,6 +1197,7 @@ QTabWidget#spaces > QTabBar::tab {{
 }}
 QTabWidget#spaces > QTabBar::tab:selected {{ border-top-color: {C.ENCRE}; }}
 QTabWidget#space > QTabBar::tab {{ padding: 12px 6px; }}
+QPushButton#themeOption {{ padding: 0px 4px; font-size: 12px; }}
 """
 
 

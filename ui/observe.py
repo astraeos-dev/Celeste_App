@@ -179,7 +179,7 @@ class ObserveSpace:
         views.addSpacing(12)
         views.addWidget(self._plan_time)
         views.addWidget(self._plan_slider, stretch=1)
-        self._plan_enlarge = _button(t("planner.sky_enlarge"), None, "discret", compact=True)
+        self._plan_enlarge = _button(t("planner.sky_enlarge"), "zoom_in", "discret", compact=True)
         self._plan_enlarge.setToolTip(t("planner.sky_enlarge_tip"))
         self._plan_enlarge.clicked.connect(lambda _c=False: self.show_night_sky())
         views.addWidget(self._plan_enlarge)
@@ -219,6 +219,8 @@ class ObserveSpace:
             side.setFixedWidth(320)
         self._btn_plan_side.setVisible(compact)
         self._plan_status.setVisible(not compact)        # the summary under the bar says it too
+        self._btn_plan_export.setText("" if compact else t("planner.export"))    # a phone: the icons (tooltips)
+        self._plan_enlarge.setText("" if compact else t("planner.sky_enlarge"))
         self._btn_plan_back.setVisible(compact)
         self._show_plan_side(False)
 

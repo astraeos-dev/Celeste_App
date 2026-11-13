@@ -13,6 +13,8 @@ markup as it is), about 800 characters at most (the window cuts the rest, GitHub
   with the sky map of the month (and when it shows), the Moon day by day and its phases, the planets and the
   month's events, the minima of Algol included.
 - On a phone, the Calendar space's buttons fit in two columns.
+- Android (test version): pages and lists scroll with the finger, every window fits the screen and closes with
+  Back, the sky map zooms with two fingers, and no page runs off the screen any more.
 
 ## 4.18
 

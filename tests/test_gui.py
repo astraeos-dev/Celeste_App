@@ -84,6 +84,9 @@ def window(qapp, tmp_path, monkeypatch):
     monkeypatch.setattr(neo, "_get", offline)
     monkeypatch.setattr(occultations, "CACHE_DIR", str(tmp_path / "occultations"))
     monkeypatch.setattr(occultations, "_download", offline)
+    import transients
+    monkeypatch.setattr(transients, "CACHE", str(tmp_path / "transients.json"))   # the novae: none on disk
+    monkeypatch.setattr(transients, "_get", offline)
     Config.apply_theme("nuit")
     switch_lang("fr")
     gui.apply_theme(qapp)
@@ -2873,4 +2876,104 @@ class TestAsteroids:
         assert ("neo", "Astéroïde 2016 NV à 14,3 distances lunaires") in titles
         li = next(i for i in items if i["category"] == "occultations")
         assert any("La bande passe sur le lieu (2,0 s)" in line for line in window._calendar_details(li))
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Recent novae and supernovae (v4.21)
+# ──────────────────────────────────────────────────────────────────────
+
+@pytest.fixture
+def novae_lists(window, qapp, monkeypatch):
+    """The window at Paris on the night of 13 November 2026, the samples of both lists answering
+    the downloads, and the background work done at once."""
+    import gui
+    import transients
+    pages = {}
+    for url, name in ((transients.SUPERNOVAE_URL, "snactive_sample.html"), (transients.NOVAE_URL, "novae_sample.html")):
+        with open(os.path.join(_DATA, name), encoding="utf-8") as f:
+            pages[url] = f.read()
+    monkeypatch.setattr(transients, "_get", lambda url, timeout: pages[url])
+
+    def run_now(func, on_done, on_error):
+        try:
+            result = func()
+        except Exception as exc:  # noqa: BLE001
+            on_error(exc)
+        else:
+            on_done(result)
+    monkeypatch.setattr(gui.common, "_run_in_background", run_now)
+    window._set_place(48.85, 2.35, "Paris")
+    _at(window, qapp, datetime(2026, 11, 13, 21, 0))
+    return window
+
+
+class TestTransients:
+    def test_a_page_of_the_sky(self, window):
+        sky = window.tabs.widget(1)
+        assert [sky.tabText(i) for i in range(sky.count())] == ["Carte du ciel", "Trajectoires", "Novae et supernovae"]
+
+    def test_the_page(self, novae_lists, qapp):
+        import settings as prefs
+        window = novae_lists
+        window.show_page(window._transients_page)
+        _pump(qapp, 3)
+        table = window._tr_table
+        names = _texts(table, 0)
+        assert names[:3] == ["V488 Sge", "SN 2026ahvu", "AT 2026aina"]           # the brightest now first
+        assert set(names) == {"SN 2026ahvu", "AT 2026aina", "SN 2026sqf", "SN 2026ahvi", "V8056 Sgr",
+                              "TCP J17520680-2343207", "V488 Sge", "V1452 Tau"}
+        row = names.index("SN 2026sqf")
+        assert table.item(row, 1).text() == "Supernova Ia-CSM" and table.item(row, 2).text() == "NGC 3310"
+        assert table.item(row, 3).text() == "13,3" and table.item(row, 4).text() == "08/07/2026"
+        assert table.item(row, 5).text().endswith("°")                          # high before dawn
+        assert table.item(names.index("SN 2026ahvu"), 5).text() == "—"          # never up from Paris
+        assert table.item(names.index("TCP J17520680-2343207"), 3).text() == "max 11,3"   # faded since
+        assert "8 objets" in window._tr_status.text()
+        table.selectRow(row)
+        details = _plain(window._tr_details)
+        assert "SN 2026sqf · Supernova Ia-CSM" in details and "Dans la galaxie NGC 3310 (Grande Ourse)" in details
+        assert "Éclat maximal : magnitude 11,2 le 28/07/2026" in details
+        assert "Découverte le 08/07/2026 par Patrick Wiggins" in details and "millions d'années-lumière" in details
+        assert "Cette nuit, au plus haut dans le noir à" in details
+        window._tr_mag.setCurrentIndex(window._tr_mag.findData(13))
+        _pump(qapp, 3)
+        assert prefs.get("transients_mag") == 13 and "SN 2026sqf" not in _texts(table, 0)
+
+    def test_on_the_sky_map(self, novae_lists, qapp):
+        window = novae_lists
+        window.show_page(window._transients_page)
+        _pump(qapp, 3)
+        names = [o["name"] for o in window._sky_scene["transients"]]
+        assert "V488 Sge" in names and "SN 2026ahvu" not in names                # above the horizon only
+        assert all(o["kind"] == "transient" for o in window._sky_scene["transients"])
+        table = window._tr_table
+        table.selectRow(_texts(table, 0).index("V488 Sge"))
+        window._show_transient_on_map()
+        _pump(qapp, 3)
+        assert window.current_page() is window._sky_page
+        assert window._sky_found == ("transient", "V488 Sge")
+        assert window._chart_hints["sky"].text().startswith("V488 Sge : hauteur")
+        found = window._resolve_target(("transient", "V488 Sge"))
+        title, rows = window._object_details(found)
+        assert title == "V488 Sge" and ("Type", "Nova") in rows
+        window._tr_on_map.setChecked(False)
+        _pump(qapp, 3)
+        assert window._sky_scene["transients"] == []
+
+    def test_found_by_name(self, novae_lists, qapp):
+        window = novae_lists
+        window.show_page(window._transients_page)
+        _pump(qapp, 3)
+        window.show_page(window._sky_page)
+        _pump(qapp, 3)
+        assert window._find_targets("2026sqf")[0] == ("SN 2026sqf", ("transient", "SN 2026sqf"))
+
+    def test_tonight(self, novae_lists, qapp):
+        """A nova found three weeks before, high in the evening: in Tonight."""
+        window = novae_lists
+        window.show_page(window._transients_page)            # the lists on disk
+        _pump(qapp, 3)
+        _at(window, qapp, datetime(2026, 9, 15, 20, 0))
+        lines = [text for text, _tone in window._tonight_lines()]
+        assert any(line.startswith("★︎ V488 Sge (Nova), magnitude max 7,1, au plus haut à") for line in lines), lines
 

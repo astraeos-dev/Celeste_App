@@ -148,6 +148,11 @@ The interface is translated into French, English, Spanish and German.
   a chosen distance of the place in the coming months (IOTA predictions, made with Occult): where the band passes and
   how wide it is on the ground, how long the star disappears, the star, the drop in brightness, the Moon; in
   "Tonight" and the calendar; OccultWatcher Cloud for the updated paths
+- **Novae and supernovae** — in Sky: the supernovae of nearby galaxies and the novae of ours and of its neighbours
+  bright enough for the magnitude you choose, from David Bishop's list of active supernovae and Koji Mukai's list of
+  recent galactic novae: latest magnitude (or peak), type, host galaxy, discovery, distance from the redshift, and
+  when each is highest in a dark sky tonight from the place; drawn on the sky map (a red four-pointed star) and found
+  by its search; the bright ones in "Tonight"
 - **Satellite passes** — International Space Station, Tiangong and Hubble over 10 days: time of appearance, highest
   point, entry into the Earth's shadow; CelesTrak orbits (AMSAT as a fallback) refreshed every two days
 - **Visibility from here** — for each event, the night to see it (evening, morning or all night), with the altitude,
@@ -306,8 +311,8 @@ Celeste_App/
 ├── engine.py            # Model — pure astronomical calculations (AstroEngine)
 ├── qt.py                # The Qt binding: PySide6 (PyQt6 as a fallback)
 ├── gui.py               # View + controller — the main window (side panel, place, date, calculation)
-├── ui/                  # One module per space: tonight, sky, bodies, neo_tab, calendar_tab, observe,
-│                        #   occultations_tab, journal_tab, settings_tab; touch.py: the finger on a touch screen;
+├── ui/                  # One module per space: tonight, sky, transients_tab, bodies, neo_tab, calendar_tab,
+│                        #   observe, occultations_tab, journal_tab, settings_tab; touch.py: the finger on a touch screen;
 │                        #   common.py: Astræos components, formats, shared widgets
 ├── charts.py            # matplotlib charts — paths, sky map, Solar System
 ├── utils.py             # Utilities — HMS/DMS formats, phase names
@@ -325,6 +330,7 @@ Celeste_App/
 ├── month_sheet.py       # The month's sheet to print: sky map, Moon, planets, events (PDF)
 ├── neo.py               # Near-Earth asteroids: close approaches (CNEOS), positions from JPL Horizons
 ├── occultations.py      # Stars hidden by asteroids: IOTA predictions, the band seen from the place
+├── transients.py        # Recent novae and supernovae: the two lists, merged; when to see them tonight
 ├── planner.py           # Night planner: targets of the night under the observer's constraints
 ├── mpc.py               # Comet elements of the Minor Planet Center (~/.celeste/CometEls.txt)
 ├── instruments.py       # Geometry of the instruments to make: planisphere, sundials, astrolabe (no Qt)
@@ -446,6 +452,8 @@ only the chart of the shown tab is redrawn; the others are when they are opened.
   near-Earth asteroids; **JPL Horizons** — their positions and magnitudes around an approach
 - **International Occultation Timing Association** (IOTA): the predictions of Steve Preston (asteroidoccultation.com),
   computed with **Occult** (David Herald) from Gaia DR3 and the JPL orbits — the asteroid occultations
+- **David Bishop**, *Latest Supernovae* (rochesterastronomy.org), list of the active objects — the supernovae and the
+  novae of other galaxies; **Koji Mukai**, *List of Recent Galactic Novae* (NASA Goddard) — the galactic novae
 
 ---
 
@@ -525,6 +533,7 @@ launch, SmartScreen shows "Windows protected your PC" (*More info*, then *Run an
 - [x] **Variable stars** — the minima of Algol
 - [x] **Near-Earth asteroids and occultations** — close approaches (CNEOS, JPL Horizons), stars hidden by asteroids
   (IOTA predictions)
+- [x] **Novae and supernovae** — the bright ones of the moment, on the sky map and in "Tonight"
 
 ### Interface and visualisation
 
@@ -552,7 +561,7 @@ launch, SmartScreen shows "Windows protected your PC" (*More info*, then *Run an
 ### Engineering and quality
 
 - [x] **Unit tests** — pytest on the engine, the charts, the interface (off screen), the themes, the updates,
-  `utils.py` and `i18n.py` (25 files, ~950 cases)
+  `utils.py` and `i18n.py` (26 files, ~970 cases)
 - [x] **Windows executable** — standalone `Celeste.exe` (PyInstaller), ephemeris downloaded at the first launch
 
 ### Workshop: instruments to make
@@ -600,6 +609,7 @@ observation log in `~/.celeste` on your computer. It connects to the following s
 | Minor Planet Center, CelesTrak, AMSAT | when the comets' or the satellites' orbits are out of date | an ordinary download request |
 | NASA JPL (ssd-api.jpl.nasa.gov, ssd.jpl.nasa.gov) | when you open the near-Earth asteroids page: the list of approaches (twice a day at most), and the positions of the few that could be bright (once a day) | the asteroid's name; not the place |
 | asteroidoccultation.com | when you open the occultations page: the year's IOTA predictions (once a month at most) | an ordinary download request |
+| rochesterastronomy.org, asd.gsfc.nasa.gov | when you open the novae and supernovae page: the two lists (twice a day at most) | an ordinary download request |
 | Open-Meteo (api.open-meteo.com) | only when you turn on the cloud forecast (cloud button of Tonight), at most once an hour | the place's latitude and longitude |
 | OpenStreetMap (tile.openstreetmap.org, nominatim.openstreetmap.org) | only when you open the place map | the area of the map shown; the point you pick, to name it |
 | ipwho.is, ipapi.co, ip-api.com | only when you ask for your position and the system cannot give it | your IP address, which they turn into an approximate place |

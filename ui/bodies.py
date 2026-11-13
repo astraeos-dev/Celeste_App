@@ -499,6 +499,21 @@ class BodiesSpace:
                 if obj.get("minor"):
                     size += f" × {_num(obj['minor'], 0)}′"
                 rows.append((t("detail.size"), size))
+        elif kind == "transient":
+            title = obj["name"]
+            rows.append((t("detail.type"), self._tr_kind({**obj, "kind": obj.get("class", "supernova")})))
+            if obj.get("host"):
+                rows.append((t("transients.detail_host"), obj["host"]))
+            if obj.get("mag") is not None:
+                when = obj.get("mag_date")
+                rows.append((t("detail.mag"), _num(obj["mag"], 1) + (f" ({when:%d/%m/%Y})" if when else "")))
+            if obj.get("peak") is not None:
+                rows.append((t("transients.detail_peak"), _num(obj["peak"], 1)))
+            if obj.get("discovered"):
+                rows.append((t("transients.detail_found"), f"{obj['discovered']:%d/%m/%Y}"))
+            distance = transients.distance_mly(obj.get("z"))
+            if distance:
+                rows.append((t("detail.distance"), tf("transients.mly", value=_num(distance))))
         elif kind == "sun":
             title = f"{sym['Sun']} {t('chart.sun')}"
             rows.append((t("detail.type"), t("detail.type_sun")))

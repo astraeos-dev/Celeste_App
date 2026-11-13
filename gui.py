@@ -23,7 +23,7 @@ Layout:
   - Side panel     : date, place, time zone, favourites, actions, theme
   - Main area      : five spaces (ui/), with their pages under a second
                      row of tabs: Tonight (ephemeris) / Sky (sky map,
-                     trajectories) / Bodies (planets, Solar System,
+                     trajectories, novae and supernovae) / Bodies (planets, Solar System,
                      coordinates, near-Earth asteroids) / Calendar (events) /
                      Observe (targets, occultations, log), and Settings
   - Status bar     : place, visible bodies, UT and local time
@@ -36,6 +36,7 @@ from ui import common
 from ui.common import *  # noqa: F401,F403
 from ui.tonight import TonightSpace
 from ui.sky import SkySpace
+from ui.transients_tab import TransientSpace
 from ui.bodies import BodiesSpace
 from ui.neo_tab import NeoSpace
 from ui.calendar_tab import CalendarSpace
@@ -51,8 +52,8 @@ COMPACT_WIDTH = 900
 _TOUCH_SIZE = 48              # touch targets of the compact layout (Material: 48 dp)
 
 
-class AstroApp(TonightSpace, SkySpace, BodiesSpace, NeoSpace, CalendarSpace, ObserveSpace, OccultationSpace,
-               JournalSpace, SettingsSpace, QMainWindow):
+class AstroApp(TonightSpace, SkySpace, TransientSpace, BodiesSpace, NeoSpace, CalendarSpace, ObserveSpace,
+               OccultationSpace, JournalSpace, SettingsSpace, QMainWindow):
     """Main window of Céleste."""
 
     def __init__(self):
@@ -165,7 +166,7 @@ class AstroApp(TonightSpace, SkySpace, BodiesSpace, NeoSpace, CalendarSpace, Obs
         # Five spaces (docs/ANDROID.md): Tonight, Sky, Bodies, Calendar, Observe
         for key, builders in (
                 ("tonight", (self._build_ephemeris_tab,)),
-                ("sky", (self._build_skymap_tab, self._build_trajectories_tab)),
+                ("sky", (self._build_skymap_tab, self._build_trajectories_tab, self._build_transients_tab)),
                 ("bodies", (self._build_planets_tab, self._build_solar_system_tab,
                             self._build_coordinates_tab, self._build_neo_tab)),
                 ("calendar", (self._build_events_tab,)),
@@ -1000,13 +1001,18 @@ class AstroApp(TonightSpace, SkySpace, BodiesSpace, NeoSpace, CalendarSpace, Obs
     def _sky_scene_for(self, sky, dte, lat, lon, quick=False):
         """The sky map's scene of a sky state (_sky_state): the stars down to the
         chosen magnitude, the minor planets and comets bright enough for it, the
-        Messier objects when they are shown, the horizon drawn by the user.
+        Messier objects when they are shown, the recent novae and supernovae of
+        the lists kept on disk, the horizon drawn by the user.
         *quick*: the stars turned by the sidereal time (the time bar's frames)."""
         bright = [m for m in sky["minor_planets"] if m["mag"] <= self._mag_limit()]
         deep_sky = [o for o in sky["deep_sky"] if o["alt"] > 0] if prefs.get("show_messier") else []
-        return charts.sky_scene(AstroEngine.julian_day(dte), lat, lon, self._mag_limit(), sky["sun"], sky["moon"],
+        jd = AstroEngine.julian_day(dte)
+        news = self._transients_chosen() if prefs.get("show_transients") else []   # the lists kept on disk
+        alts, azs = charts.transient_places(news, jd, lat, lon, quick)
+        news = [{**o, "alt": float(alt), "az": float(az)} for o, alt, az in zip(news, alts, azs)]
+        return charts.sky_scene(jd, lat, lon, self._mag_limit(), sky["sun"], sky["moon"],
                                 sky["planets"] + bright, deep_sky,
-                                [tuple(p) for p in prefs.get("horizon_points") or []], quick=quick)
+                                [tuple(p) for p in prefs.get("horizon_points") or []], quick=quick, transients=news)
 
     def calculate(self):
         """Computes everything for the typed date and place, then updates the display."""
@@ -1170,13 +1176,16 @@ class AstroApp(TonightSpace, SkySpace, BodiesSpace, NeoSpace, CalendarSpace, Obs
         self._refresh_visible_list()
 
     def _refresh_visible_list(self):
-        """The asteroids' lists, downloaded and computed when their page is shown (only
-        when the place, the day or the choices changed)."""
+        """The lists of the asteroids and of the novae and supernovae, downloaded and
+        computed when their page is shown (only when the place, the day or the choices
+        changed)."""
         page = self.current_page()
         if page is getattr(self, "_neo_page", None):
             self._refresh_neo()
         elif page is getattr(self, "_occultations_page", None):
             self._refresh_occultations()
+        elif page is getattr(self, "_transients_page", None):
+            self._refresh_transients()
 
     def _draw_visible_chart(self):
         """Draws the chart of the shown tab when it is out of date: in real time,

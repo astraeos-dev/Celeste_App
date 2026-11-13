@@ -634,7 +634,29 @@ def turned_places(kind, jd, lat, lon):
     return AstroEngine.turned_horizontal((jd - 2451545.0) / 36525.0, lat, lon, ra, dec)
 
 
-def sky_scene(jd, lat, lon, mag_limit, sun, moon, planets, deep_sky=(), horizon=(), quick=False):
+@functools.lru_cache(maxsize=4)
+def _transient_apparent(day, coords):
+    """Apparent places (h, °) of the date of the novae and supernovae *coords* ((ra h, dec °), ...)."""
+    t = (day - 2451545.0) / 36525.0
+    return AstroEngine.stars_apparent(t, [c[0] for c in coords], [c[1] for c in coords])
+
+
+def transient_places(objects, jd, lat, lon, quick=False):
+    """
+    Altitudes and azimuths (°) at *jd* of the novae and supernovae *objects*
+    (dicts ra h, dec °, J2000); *quick*: their apparent places of the day
+    turned by the sidereal time (the time bar's frames).
+    """
+    if not objects:
+        return np.zeros(0), np.zeros(0)
+    t = (jd - 2451545.0) / 36525.0
+    if quick:
+        ra, dec = _transient_apparent(math.floor(jd - 0.5) + 0.5, tuple((o["ra"], o["dec"]) for o in objects))
+        return AstroEngine.turned_horizontal(t, lat, lon, ra, dec)
+    return AstroEngine.stars_horizontal(t, lat, lon, [o["ra"] for o in objects], [o["dec"] for o in objects])
+
+
+def sky_scene(jd, lat, lon, mag_limit, sun, moon, planets, deep_sky=(), horizon=(), quick=False, transients=()):
     """
     Collects what the sky map shows.
 
@@ -649,6 +671,8 @@ def sky_scene(jd, lat, lon, mag_limit, sun, moon, planets, deep_sky=(), horizon=
         horizon: (azimuth, altitude) points of the observer's horizon mask.
         quick (bool): the stars turned from their apparent places of the day
             (turned_places): the time bar's frames.
+        transients (list[dict]): recent novae and supernovae (name, kind, alt,
+            az, ra, dec, mag…): those above the horizon are drawn.
 
     Returns:
         dict: stars (above the horizon and bright enough), constellation
@@ -710,6 +734,7 @@ def sky_scene(jd, lat, lon, mag_limit, sun, moon, planets, deep_sky=(), horizon=
         "moon": placed(moon, "moon"),
         "planets": [placed(p, "planet") for p in planets],
         "deep_sky": [placed(o, "deep_sky") for o in deep_sky if o["alt"] > 0],
+        "transients": [{**placed(o, "transient"), "class": o["kind"]} for o in transients if o["alt"] > 0],
     }
 
 
@@ -728,7 +753,7 @@ def constellation_figures():
 
 def visible_objects(scene):
     """Objects of *scene* above the horizon, as the map draws them."""
-    objs = list(scene["stars"]) + list(scene.get("deep_sky", ()))
+    objs = list(scene["stars"]) + list(scene.get("deep_sky", ())) + list(scene.get("transients", ()))
     objs += [p for p in scene["planets"] if p["alt"] > 0]
     for body in (scene["sun"], scene["moon"]):
         if body["alt"] > 0:
@@ -899,6 +924,19 @@ def draw_sky_map(fig, scene, labels, highlight=None, ax=None):
         taken.append(box)
         ax.annotate(text, (o["x"], o["y"]), xytext=(5, -9), textcoords="offset points",
                     fontsize=SIZE_LEGENDE * 0.75, color=Config.LUNE, zorder=5, va="bottom")
+
+    # recent novae and supernovae: a four-pointed star, named where the name fits
+    news = scene.get("transients", ())
+    if news:
+        ax.scatter([o["x"] for o in news], [o["y"] for o in news], s=70, marker=(4, 1, 0),
+                   color=Config.SIGNAL_ALERTE, linewidths=0, zorder=7)
+        for o in news:
+            box = _label_box(ax, o["x"], o["y"], o["name"], SIZE_LEGENDE * 0.75, 6, 4)
+            if any(_overlaps(box, other) for other in taken):
+                continue
+            taken.append(box)
+            ax.annotate(o["name"], (o["x"], o["y"]), xytext=(6, 4), textcoords="offset points",
+                        fontsize=SIZE_LEGENDE * 0.75, color=Config.SIGNAL_ALERTE, zorder=7, va="bottom")
 
     moon = scene["moon"]
     if moon["alt"] > 0:

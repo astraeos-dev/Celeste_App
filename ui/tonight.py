@@ -480,6 +480,10 @@ class TonightSpace:
                                                       ld=_num(ld, 1 if ld >= 1 else 2),
                                                       size=tf("neo.size", min=_num(size[0]), max=_num(size[1]))
                                                       if size else "—"), None))
+        for obj, seen in n.get("transients", ()):             # bright novae and supernovae (transients.py)
+            lines.append((f"{SYMBOL['star']} " + tf("tonight.transient", name=obj["name"], kind=self._tr_kind(obj),
+                                                     mag=self._tr_mag_text(obj), time=clock(seen["best"]),
+                                                     alt=_num(seen["alt"]), dir=self._wind(seen["az"])), None))
         for seen in n.get("occultations", ()):               # stars hidden by asteroids (occultations.py)
             event = seen["event"]
             asteroid = f"({event['number']}) {event['name']}" if event["number"] else event["name"]

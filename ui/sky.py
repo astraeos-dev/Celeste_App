@@ -474,6 +474,8 @@ class SkySpace:
             return _messier_label(next(o for o in messier_catalog() if o["m"] == ref[1]))
         if kind == "deep":
             return _messier_label(self._deep_object(ref[1]))
+        if kind == "transient":
+            return ref[1]
         return self._star_label(next(s for s in self._sky_scene["catalog"] if s["designation"] == ref[1]))
 
     def _deep_object(self, label):
@@ -492,6 +494,7 @@ class SkySpace:
                    + [("planet", p["name"]) for p in self.planets + self.minor_planets]]
         targets += [(_messier_label(o), None, ("messier", o["m"])) for o in self._deep_sky_all]
         targets += [(t(f"constellations.{key}"), None, ("figure", key)) for key in self._sky_scene["figures"]]
+        targets += [(o["name"], None, ("transient", o["name"])) for o in self._transients_chosen()]
         targets = [(label, self._find_key(label), ref) for label, _key, ref in targets]
         if type(self)._STAR_TARGETS is None:
             stars = [(self._star_label(s), ("star", s["designation"])) for s in self._sky_scene["catalog"]]
@@ -548,6 +551,12 @@ class SkySpace:
             alt, az = AstroEngine.stars_horizontal(tc, self._lat, self._lon, [found["ra"] / 15.0], [found["dec"]],
                                                    self._elevation())
             obj = {**found, "kind": "deep_sky", "alt": float(alt[0]), "az": float(az[0])}
+        elif kind == "transient":
+            found = next((o for o in self._transients_chosen() if o["name"] == ref[1]), None)
+            if found is None:
+                return None
+            alt, az = charts.transient_places([found], AstroEngine.julian_day(sky["dte"]), self._lat, self._lon)
+            obj = {**found, "kind": "transient", "class": found["kind"], "alt": float(alt[0]), "az": float(az[0])}
         else:
             alt, az = scene["figures"][ref[1]]
             obj = {"kind": "figure", "name": ref[1], "alt": alt, "az": az}
@@ -779,6 +788,8 @@ class SkySpace:
                 f"{t('detail.az')} {_deg(obj['az'], 1)}")
         if obj["kind"] in ("star", "deep_sky"):
             line += f"  ·  {t('detail.mag')} {_num(obj['mag'], 2 if obj['kind'] == 'star' else 1)}"
+        elif obj["kind"] == "transient" and (obj.get("mag") or obj.get("peak")) is not None:
+            line += f"  ·  {t('detail.mag')} {self._tr_mag_text(obj)}"
         tip.set_text(f"{title}\n{line}")
         tip.xy = (obj["x"], obj["y"])
         right = obj["x"] > 0.35

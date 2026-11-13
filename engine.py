@@ -47,6 +47,10 @@ v4.3:
   • Sedna among MINOR_PLANETS; MINOR_PLANET_NUMBERS, the Minor Planet
     Center's numbers ("(136199) Eris")
 
+v4.21:
+  • unchanged: the recent novae and supernovae (transients.py) are placed
+    with stars_horizontal() and named with constellation_at()
+
 v4.20:
   • constellation_at(): the constellation of a direction, for the near-Earth
     asteroids (neo.py) and the stars hidden by asteroids (occultations.py)

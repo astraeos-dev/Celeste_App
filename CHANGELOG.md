@@ -7,6 +7,14 @@ Write for them: short sentences, as dashes, no bold or code (the window of versi
 markup as it is), about 800 characters at most (the window cuts the rest, GitHub does not). See the wiki page
 "Publier une version".
 
+## 4.21
+
+- New page in Sky, novae and supernovae: the new stars of the moment bright enough for your telescope, from David
+  Bishop's list of supernovae and Koji Mukai's list of novae, with their latest magnitude, where they are and when
+  to see them tonight from your place.
+- On the sky map they show as a red four-pointed star with their name, and the search finds them.
+- Tonight tells you when a bright one is up.
+
 ## 4.20
 
 - New page in Bodies, near-Earth asteroids: those passing close to the Earth in the coming days, how near, how big

@@ -56,6 +56,7 @@ import planner  # noqa: E402
 import places  # noqa: E402
 import satellites  # noqa: E402
 import settings as prefs  # noqa: E402
+import transients  # noqa: E402
 import updater  # noqa: E402
 import variables  # noqa: E402
 from config import APP_BETA, APP_VERSION, FONT_MONO, FONT_SANS, THEME_NAMES, Config, mix  # noqa: E402
@@ -386,7 +387,8 @@ def _tonight_and_upcoming(key, dte, lat, lon, elev, zone):
     """"Tonight" and the next three visible events (0.3 s), kept for the night and
     the place *key*: a change of theme or language does not compute them again."""
     km = _pref_float("occultation_km", occultations.MAX_KM)
-    key = (*key, satellites.cache_stamp(), neo.cache_stamp(), occultations.cache_stamp(), km)   # new data
+    key = (*key, satellites.cache_stamp(), neo.cache_stamp(), occultations.cache_stamp(), km,   # new data
+           transients.cache_stamp())
     if key not in _TONIGHT_CACHE:
         if len(_TONIGHT_CACHE) >= 8:
             _TONIGHT_CACHE.pop(next(iter(_TONIGHT_CACHE)))
@@ -401,8 +403,25 @@ def _tonight_and_upcoming(key, dte, lat, lon, elev, zone):
                        for e in occultations.load(year)]
         night["occultations"] = occultations.near(predictions, lat, lon, elev, night["start"], night["end"],
                                                   max_km=km)
+        night["transients"] = _tonight_transients(dte, lat, lon, elev, zone)
         _TONIGHT_CACHE[key] = (night, AstroEngine.upcoming_events(dte, lat, lon, elev, zone))
     return _TONIGHT_CACHE[key]
+
+
+_TONIGHT_TRANSIENT_MAG = 13.0     # "Tonight": the novae and supernovae brighter than this…
+_TONIGHT_NOVA_DAYS = 45           # …the galactic novae found in these last days
+
+
+def _tonight_transients(dte, lat, lon, elev, zone):
+    """The bright novae and supernovae of the lists kept on disk (no network) that are high
+    in the dark tonight: [(object, {best, alt, az})], the brightest first, three at most."""
+    objects = transients.chosen(transients.load(), dte.replace(tzinfo=None).date(), _TONIGHT_TRANSIENT_MAG,
+                                _TONIGHT_NOVA_DAYS)
+    if not objects:
+        return []
+    window = planner.night_window(dte, lat, lon, elev, zone, depths=((transients.DARK_SUN, "naut"),))
+    seen = transients.tonight(objects, window["start"], window["end"], lat, lon, elev)
+    return [(o, s) for o, s in zip(objects, seen) if s is not None][:3]
 
 
 def _messier_label(obj, named=True):

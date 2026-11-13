@@ -81,6 +81,9 @@ _DEFAULTS = {
     "occultation_months": 6,        # …in the coming months
     "neo_days": 60,                 # near-Earth asteroids: the approaches of the coming days
     "neo_notable_only": False,      # …only the notable ones (140 m and more, or nearer than the Moon)
+    "transients_mag": 15,           # novae and supernovae: brighter than this magnitude
+    "transients_months": 12,        # …the galactic novae found in these last months
+    "show_transients": True,        # …drawn on the sky map
     "plan_split": [40, 60],         # Targets tab: share of the height for the tables and the chart
     "plan_map_east_right": False,   # the map of the night with the east on the right (as uptonight)
     # Updates (updater.py)

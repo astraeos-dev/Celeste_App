@@ -9,14 +9,26 @@ package="$2"
 # asked at the first start (4.22), waits for an answer nobody gives here, and while it is shown
 # Qt stops the app's timers: the line looked for below would never come
 adb install -r -g "$apk" || { echo "::error::adb install failed"; exit 1; }
+# Android ends an install in the background (its broadcasts): on this emulator, still busy after
+# its boot, Céleste started at once was stopped by the system 2 s after Python started, as the
+# install's PACKAGE_ADDED went out 12 s late (4.24's run; 4.20's too, without a line)
+sleep 30
 adb logcat -c
 adb shell monkey -p "$package" -c android.intent.category.LAUNCHER 1
 # the engine's line comes once the ephemeris is downloaded (32 MB): up to 5 minutes
-for _ in $(seq 60); do
+relaunched=0
+for i in $(seq 60); do
   sleep 5
   adb logcat -d > logcat.txt
   if grep -qE "android (engine|window) (OK|FAILED)|android: (ephemeris FAILED|the event loop ended)" logcat.txt; then
     break
+  fi
+  # the process gone before any of those lines, without an error: started once more, and only once
+  # (a second time the same way fails the check); the log keeps both starts
+  if [ "$relaunched" = 0 ] && [ "$i" -ge 2 ] && ! adb shell pidof "$package" > /dev/null; then
+    echo "::warning::Céleste's process ended before its window without an error line; starting it once more"
+    relaunched=1
+    adb shell monkey -p "$package" -c android.intent.category.LAUNCHER 1
   fi
 done
 sleep 5

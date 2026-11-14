@@ -2471,6 +2471,21 @@ class TestFollowThePhone:
         window._set_sky_follow(True)
         assert not window._sky_follow and not window._sky_follow_btn.isChecked()
 
+    def test_the_compass_on_a_small_phone(self, window, qapp):
+        """The 4.22 compass made the sky map's row of the zoom too wide for the emulator's 320 px screen
+        (349 px): it sits beside the search, which shrinks, and the page is no wider with it."""
+        window._phone_aim = _FakeAim()
+        window.show_page(window._sky_page)
+        window.resize(360, 740)
+        _pump(qapp, 5)
+        assert window._sky_find_row.indexOf(window._sky_follow_btn) >= 0
+        window._sky_follow_btn.setVisible(False)
+        _pump(qapp)
+        without = window._sky_page.minimumSizeHint().width()
+        window._sky_follow_btn.setVisible(True)
+        _pump(qapp)
+        assert window._sky_page.minimumSizeHint().width() <= without + 2
+
     def test_the_map_turns_to_the_sky_behind_the_phone(self, window, qapp):
         import charts
         ax = self._sky(window, qapp)

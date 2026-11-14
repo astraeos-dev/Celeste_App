@@ -128,12 +128,9 @@ class SkySpace:
         self._sky_zoom_lbl = _label("", "donnee")
         self._sky_zoom_lbl.setMinimumWidth(40)
         tools_row.addWidget(self._sky_zoom_lbl)
-        # the map that follows the phone: where there is a rotation sensor (a phone)
-        self._sky_follow_btn = _icon_button("compass", t("skymap.follow_tip"), compact=True, checkable=True)
-        self._sky_follow_btn.toggled.connect(self._set_sky_follow)
-        tools_row.addWidget(self._sky_follow_btn)
         tools_row.addStretch()
         bar.addLayout(tools_row, stretch=1)
+        self._sky_tools_row = tools_row
         # find a star, a planet, a Messier object or a constellation by its name
         self._find_entry = QLineEdit()
         self._find_entry.setPlaceholderText(t("skymap.find_placeholder"))
@@ -154,7 +151,16 @@ class SkySpace:
             self._find_entry.blockSignals(True)
             self._find_entry.setText(self._target_label(self._sky_found))
             self._find_entry.blockSignals(False)
-        bar.addWidget(self._find_entry)
+        # the map that follows the phone, where there is a rotation sensor (a phone): beside the search,
+        # which shrinks, so that the row of the zoom stays narrow enough for a 320 px screen
+        self._sky_follow_btn = _icon_button("compass", t("skymap.follow_tip"), compact=True, checkable=True)
+        self._sky_follow_btn.toggled.connect(self._set_sky_follow)
+        find_row = QHBoxLayout()
+        find_row.setSpacing(12)
+        find_row.addWidget(self._find_entry, stretch=1)
+        find_row.addWidget(self._sky_follow_btn)
+        bar.addLayout(find_row)
+        self._sky_find_row = find_row
         self._reflow.append(bar)
         self._compact_hooks.append(self._sky_toolbar_compact)
         self._sky_toolbar_compact(False)

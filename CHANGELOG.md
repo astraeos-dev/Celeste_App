@@ -9,11 +9,14 @@ markup as it is), about 800 characters at most (the window cuts the rest, GitHub
 
 ## 4.24
 
-- New page in Sky, Constellations: the chart of each of the 88 constellations, as in the sky atlases, with its
-  official outline, its figure, its stars and their Greek letters, its star clusters, nebulae and galaxies, and its
-  neighbours around it.
-- Under the chart: its area, the month it is highest at 10 pm, whether it rises from your place, its brightest stars
-  and its finest objects; and its sheet to print (PDF, A4).
+- The first stable version since 4.12, with everything since. New in Sky: a chart for each of the 88
+  constellations, as in the sky atlases, with its sheet to print; the novae and supernovae of the moment.
+- Tonight: how good the night is (the Moon, and the clouds when you ask for the forecast), the minima of Algol,
+  and the month's sky on a sheet to print.
+- Observe: an observation log, and the stars hidden by asteroids. Bodies: the asteroids passing near the Earth.
+- The sky map zooms and plays the night on a time bar. The Workshop's planisphere becomes a real one, its wheel
+  turning in a folded holder.
+- Five spaces instead of nine tabs, and Céleste's own logo.
 
 ## 4.23
 

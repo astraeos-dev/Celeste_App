@@ -76,6 +76,8 @@ class ConstellationSpace:
             self.canvas_co.setMaximumHeight(_QT_MAX_SIZE)
 
     def _co_fit_height(self):
+        if not self._co_square:                       # a computer's window again, meanwhile
+            return
         side = max(_CO_PHONE_HEIGHT, self.canvas_co.width())
         if self.canvas_co.minimumHeight() != side or self.canvas_co.maximumHeight() != side:
             self.canvas_co.setFixedHeight(side)
@@ -83,8 +85,10 @@ class ConstellationSpace:
     def _co_resized(self):
         """The chart changed size: square on a phone; its labels measured again
         (constellation_chart.declutter)."""
-        if self._co_square:
-            self._co_fit_height()
+        if self._co_square and self.canvas_co.maximumHeight() != max(_CO_PHONE_HEIGHT, self.canvas_co.width()):
+            # once matplotlib's resize is over: it skips a resize that comes inside its own, and the
+            # figure would keep its former size (the labels then measured at the wrong one)
+            QTimer.singleShot(0, self._co_fit_height)
         if self.fig_co.axes:
             constellation_chart.declutter(self.fig_co.axes[0])
 

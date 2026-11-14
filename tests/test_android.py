@@ -77,3 +77,7 @@ def test_the_emulator_check_knows_the_start_lines():
         assert line in source and line in script, line
     # the location granted at install: Android's question would stop the app's timers (4.22)
     assert "adb install -r -g " in script
+    # the install left to settle, and one more start, only one, when the process vanished silently (4.24)
+    install = script.index("adb install")
+    assert "sleep 30" in script[install:script.index("monkey", install)]
+    assert script.count("monkey -p") == 2 and "relaunched=1" in script

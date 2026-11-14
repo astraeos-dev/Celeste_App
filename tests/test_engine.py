@@ -1219,6 +1219,33 @@ class TestStarsOfTheDate:
         assert len(alts) == len(azs) == len(STARS)
         assert all(-90 <= a <= 90 for a in alts) and all(0 <= z < 360 for z in azs)
 
+    def test_apparent_places_turned_by_the_sidereal_time(self):
+        """The sky map's time bar (v4.18): the places of 0 h UT turned to 22 h UT, within
+        a second of arc of the full computation, everywhere in the sky."""
+        from constellations import STARS
+        ra = [s[0] for s in STARS.values()]
+        dec = [s[1] for s in STARS.values()]
+        t0 = AstroEngine.julian_century_j2000(datetime(2026, 11, 2))
+        t = AstroEngine.julian_century_j2000(self.WHEN)
+        ra_app, dec_app = AstroEngine.stars_apparent(t0, ra, dec)
+        alts, azs = AstroEngine.turned_horizontal(t, *self.PARIS, ra_app, dec_app)
+        ref_alts, ref_azs = AstroEngine.stars_horizontal(t, *self.PARIS, ra, dec)
+        worst = max(self._separation_arcsec(a, z, ra_, rz) for a, z, ra_, rz in zip(alts, azs, ref_alts, ref_azs))
+        assert worst < 1.0
+
+    def test_tracks_of_several_bodies_at_once(self):
+        """The night's tracks: the same altitudes and azimuths as one body, one instant at a time."""
+        import numpy as np
+        t0 = AstroEngine.julian_century_j2000(self.WHEN)
+        ts = t0 + np.arange(0, 600, 60) / 1440.0 / 36525.0              # ten hours, hour by hour
+        tracks = AstroEngine.horizontal_tracks(ts, *self.PARIS, ["sun", "moon", "Jupiter"])
+        for body in ("sun", "moon", "Jupiter"):
+            alts, azs = tracks[body]
+            assert len(alts) == len(azs) == 10
+            for k in (0, 7):
+                alt, az = AstroEngine.horizontal(ts[k], *self.PARIS, body, refraction=body == "moon")
+                assert alts[k] == pytest.approx(alt, abs=1e-9) and azs[k] == pytest.approx(az, abs=1e-9)
+
 
 def test_version_is_single_sourced():
     """The engine's docstring describes the version the interface shows (its x.y:

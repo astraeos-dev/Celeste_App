@@ -60,3 +60,4 @@ htmlcov/
 data/*.bsp
 .history/
 /Celeste_App/
+assets/celeste.ico

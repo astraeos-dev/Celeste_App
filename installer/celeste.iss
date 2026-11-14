@@ -15,6 +15,9 @@ AppName=Céleste
 AppVersion={#AppVersion}
 AppVerName=Céleste {#AppVersion}
 AppPublisher=Astræos
+VersionInfoProductName=Céleste
+VersionInfoDescription=Céleste installer
+VersionInfoCompany=Astræos
 AppPublisherURL=https://astraeos-dev.github.io/personnal-site/
 AppSupportURL=https://github.com/astraeos-dev/Celeste_App/issues
 AppUpdatesURL=https://github.com/astraeos-dev/Celeste_App
@@ -52,9 +55,11 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Source: "..\dist\Celeste\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{group}\Céleste"; Filename: "{app}\Celeste.exe"; IconFilename: "{app}\Celeste.exe"
+; AppUserModelID: the one main.py gives the process, so that the taskbar
+; button of the running application is the shortcut's (icon, pinning)
+Name: "{group}\Céleste"; Filename: "{app}\Celeste.exe"; IconFilename: "{app}\Celeste.exe"; AppUserModelID: "astraeos.celeste"
 Name: "{group}\{cm:UninstallProgram,Céleste}"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\Céleste"; Filename: "{app}\Celeste.exe"; IconFilename: "{app}\Celeste.exe"; Tasks: desktopicon
+Name: "{autodesktop}\Céleste"; Filename: "{app}\Celeste.exe"; IconFilename: "{app}\Celeste.exe"; AppUserModelID: "astraeos.celeste"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\Celeste.exe"; Description: "{cm:LaunchProgram,Céleste}"; Flags: nowait postinstall skipifsilent

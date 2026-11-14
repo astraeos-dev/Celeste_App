@@ -13,9 +13,9 @@ Apache License 2.0: see assets/LICENSE-MDI.txt.
 
 import os
 
-from PyQt6.QtCore import QByteArray, QRectF, Qt
-from PyQt6.QtGui import QIcon, QPainter, QPixmap
-from PyQt6.QtSvg import QSvgRenderer
+from qt.QtCore import QByteArray, QRectF, Qt
+from qt.QtGui import QIcon, QPainter, QPixmap
+from qt.QtSvg import QSvgRenderer
 
 _ASSETS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
 
@@ -45,8 +45,27 @@ MDI = {
         "M13.5,8H12V13L16.28,15.54L17,14.33L13.5,12.25V8M13,3A9,9 0 0,0 4,12H1L4.96,16.03L9,12H6A7,7 0 0,1 13,5A7,7 0 0,1 20,12A7,7 0 0,1 13,19C11.07,19 9.32,18.21 8.06,16.94L6.64,18.36C8.27,20 10.5,21 13,21A9,9 0 0,0 22,12A9,9 0 0,0 13,3"),
     "workshop": (  # a set square with its hole (drawn for Céleste)
         "M3 3V21H21L3 3M5 7.83L16.17 19H5V7.83M7.5 13.5V16.5H10.5L7.5 13.5M2 22H22V23H2V22Z"),
+    "note": (  # a page with lines (drawn for Céleste): the observation log
+        "M6 2H14L20 8V20A2 2 0 0 1 18 22H6A2 2 0 0 1 4 20V4A2 2 0 0 1 6 2M13 3.5V9H18.5L13 3.5M8 12V14H16V12H8"
+        "M8 16V18H13V16H8Z"),
+    "edit": (  # a pencil (drawn for Céleste)
+        "M14.06 9L15 9.94 5.92 19H5V18.08L14.06 9M17.66 3C17.41 3 17.15 3.1 16.96 3.29L15.13 5.12 18.88 8.87 "
+        "20.71 7.04C21.1 6.65 21.1 6 20.71 5.63L18.37 3.29C18.17 3.09 17.92 3 17.66 3M14.06 6.19L3 17.25V21H6.75"
+        "L17.81 9.94 14.06 6.19Z"),
+    "cloud": (  # a cloud (drawn for Céleste)
+        "M6.5 19A4.5 4.5 0 0 1 5.9 10.04 6 6 0 0 1 17.6 8.5 4.5 4.5 0 0 1 18 19H6.5M6.5 17H18A2.5 2.5 0 0 0 18 "
+        "12H16.3L16.2 10.6A4 4 0 0 0 8.4 9.7L8 11.1 6.6 11.3A2.5 2.5 0 0 0 6.5 17Z"),
+    "tune": (  # mdi-tune
+        "M3,17V19H9V17H3M3,5V7H13V5H3M13,21V19H21V17H13V15H11V21H13M7,9V11H3V13H7V15H9V9H7M21,13V11H11V13H21M15,9H17V7H21V5H17V3H15V9Z"),
+    "menu": (  # mdi-menu
+        "M3,6H21V8H3V6M3,11H21V13H3V11M3,16H21V18H3V16Z"),
+    "close": (  # mdi-close
+        "M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z"),
     "map": (  # mdi-map
         "M15,19L9,16.89V5L15,7.11M20.5,3C20.44,3 20.39,3 20.34,3L15,5.1L9,3L3.36,4.9C3.15,4.97 3,5.15 3,5.38V20.5A0.5,0.5 0 0,0 3.5,21C3.55,21 3.61,21 3.66,20.97L9,18.9L15,21L20.64,19.1C20.85,19 21,18.85 21,18.62V3.5A0.5,0.5 0 0,0 20.5,3Z"),
+    "compass": (  # a compass, its ring and its needle (drawn for Céleste): the map follows the phone
+        "M12 2A10 10 0 1 1 12 22A10 10 0 1 1 12 2M12 4A8 8 0 1 0 12 20A8 8 0 1 0 12 4"
+        "M7 17L10.2 10.2L17 7L13.8 13.8L7 17Z"),
     "zoom_in": (  # mdi-magnify-plus-outline
         "M15.5,14L20.5,19L19,20.5L14,15.5V14.71L13.73,14.43C12.59,15.41 11.11,16 9.5,16A6.5,6.5 0 0,1 3,9.5A6.5,6.5 0 0,1 9.5,3A6.5,6.5 0 0,1 16,9.5C16,11.11 15.41,12.59 14.43,13.73L14.71,14H15.5M9.5,14C12,14 14,12 14,9.5C14,7 12,5 9.5,5C7,5 5,7 5,9.5C5,12 7,14 9.5,14M12,10H10V12H9V10H7V9H9V7H10V9H12V10Z"),
     "zoom_out": (  # mdi-magnify-minus-outline
@@ -130,19 +149,33 @@ def _asset(name):
 
 def symbol_pixmap(height, encre, star):
     """
-    The Astræos symbol (the æ and its star) at *height* pixels, ink in
-    *encre* and star in *star* (the theme's encre and or).
+    Céleste's symbol (the C open like an orbit and its star, scripts/make_logo.py)
+    at *height* pixels, ink in *encre* and star in *star* (the theme's encre and or).
     """
-    svg = _asset("astraeos-symbole-nuit.svg").replace(_FILE_ENCRE, encre).replace(_FILE_OR, star)
+    svg = _asset("celeste-symbole.svg").replace(_FILE_ENCRE, encre).replace(_FILE_OR, star)
     renderer = QSvgRenderer(QByteArray(svg.encode("utf-8")))
     box = renderer.viewBoxF()
     return _render(svg, height * box.width() / box.height(), height)
 
 
+APP_ICON_SIZES = (16, 20, 24, 32, 40, 48, 64, 128, 256)
+
+
 def app_icon():
-    """Application icon: the Astræos symbol on its Nuit tile."""
-    svg = _asset("astraeos-icone.svg")
+    """
+    Application icon: Céleste's symbol on its Nuit tile.
+
+    Drawn from the SVG at every size Windows asks for (the taskbar takes 24,
+    32 or 40 pixels by the screen's scale), plus the .ico of the built
+    application when it is there (assets/celeste.ico, written by
+    scripts/build_exe.py): the taskbar then shows the same picture as the
+    installer and the Start menu.
+    """
+    svg = _asset("celeste-icone.svg")
     result = QIcon()
-    for size in (16, 24, 32, 48, 64, 128, 256):
+    ico = os.path.join(_ASSETS, "celeste.ico")
+    if os.path.isfile(ico):
+        result.addFile(ico)
+    for size in APP_ICON_SIZES:
         result.addPixmap(_render(svg, size, size, ratio=1.0))
     return result

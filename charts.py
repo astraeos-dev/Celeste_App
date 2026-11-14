@@ -32,13 +32,17 @@ from datetime import timedelta
 
 import matplotlib
 from matplotlib import font_manager
+from matplotlib.collections import Collection, LineCollection
 from matplotlib.colors import to_rgba
 from matplotlib.patches import Circle, Patch
+from matplotlib.text import Annotation
+from matplotlib.transforms import Affine2D
 from matplotlib.ticker import FuncFormatter, MultipleLocator
 
 from config import Config, FONT_SANS, mix
 from star_catalog import CATALOG
-from engine import COMETS, EPHEMERIS_YEARS, AstroEngine, _HORIZON_CORRECTION_SUN
+from engine import (COMETS, EPHEMERIS_YEARS, MINOR_PLANETS, PLANETS, AstroEngine, _HORIZON_CORRECTION_SUN,
+                    messier_catalog)
 
 # Astronomical symbols (Astraeos Symboles). Matplotlib never draws emoji, so
 # they go without the U+FE0E selector here.
@@ -539,7 +543,122 @@ def star_marker_size(mag):
     return diameter * diameter
 
 
-def sky_scene(jd, lat, lon, mag_limit, sun, moon, planets, deep_sky=(), horizon=()):
+def sky_state(dte, lat, lon, elevation_m=0.0):
+    """
+    The sky at *dte* (UT) seen from the place: the Sun, the Moon, the
+    planets, the minor planets and the comets within their tables, the 110
+    Messier objects, with their positions — for the window's calculation, the
+    sky map's time bar and the monthly sheet (month_sheet.py).
+
+    Returns:
+        dict: dte; sun, moon (name, ra, dec, alt, az, dist; the Sun's eot, the
+        Moon's illum, phase, age); planets, minor_planets (name, ra, dec, dist,
+        alt, az, elong, east, mag, minor, comet); comets (names); deep_sky
+        (the Messier catalogue with alt, az).
+    """
+    tc = AstroEngine.julian_century_j2000(dte)
+    s_l, r_sun = AstroEngine.sun_position(tc)
+    s_ra, s_dec = AstroEngine.ecliptic_to_equatorial(s_l, 0, tc)
+    s_alt, s_az = AstroEngine.horizontal(tc, lat, lon, "sun", elevation_m)
+
+    m_l, m_b, m_p = AstroEngine.moon_position(tc)
+    m_ra, m_dec = AstroEngine.ecliptic_to_equatorial(m_l, m_b, tc)
+    m_alt, m_az = AstroEngine.horizontal(tc, lat, lon, "moon", elevation_m, refraction=True)
+    illum, age = AstroEngine.moon_phase(tc)
+
+    sun = {"name": "Sun", "ra": s_ra, "dec": s_dec, "alt": s_alt, "az": s_az, "dist": r_sun,
+           "eot": AstroEngine.equation_of_time(tc)}
+    moon = {"name": "Moon", "ra": m_ra, "dec": m_dec, "alt": m_alt, "az": m_az, "illum": illum,
+            "phase": AstroEngine.mod360(m_l - s_l), "dist": 6378.14 / math.sin(math.radians(m_p)),
+            "age": age}
+
+    planets, minor_planets = [], []
+    comets = AstroEngine.comets_at(tc)                          # within their tables (2025–2031)
+    bodies = PLANETS + MINOR_PLANETS + comets
+    magnitudes = AstroEngine.observations(tc, bodies)
+    for name in bodies:
+        ra, dec, dist = AstroEngine.planet_position(tc, name)
+        alt, az = AstroEngine.horizontal(tc, lat, lon, name, elevation_m)
+        minor = name not in PLANETS
+        (minor_planets if minor else planets).append({
+            "name": name, "ra": ra, "dec": dec, "dist": dist, "alt": alt, "az": az,
+            "elong": AstroEngine.angular_separation(ra, dec, s_ra, s_dec),
+            "east": (ra - s_ra) % 24 < 12, "mag": magnitudes[name]["mag"], "minor": minor,
+            "comet": name in COMETS,
+        })
+
+    alts, azs = AstroEngine.deep_sky_horizontal(tc, lat, lon, elevation_m)
+    deep_sky = [{**obj, "alt": float(alt), "az": float(az)} for obj, alt, az in zip(messier_catalog(), alts, azs)]
+    return {"dte": dte, "sun": sun, "moon": moon, "planets": planets, "minor_planets": minor_planets,
+            "comets": comets, "deep_sky": deep_sky}
+
+
+@functools.lru_cache(maxsize=1)
+def _sky_points():
+    """
+    The sky map's points, J2000 (ICRS): the catalogue's stars, then for each
+    constellation the point where it is named and the points of its figure;
+    arrays (RA h, Dec °, proper motions in RA and Dec, mas a year).
+    """
+    figures = constellation_figures()
+    points = [point for figure in figures.values()
+              for point in [figure["center"]] + [p for line in figure["lines"] for p in line]]
+    ra = np.array([c[1] for c in CATALOG] + [p[0] for p in points], dtype=float)
+    dec = np.array([c[2] for c in CATALOG] + [p[1] for p in points], dtype=float)
+    pm_ra = np.array([c[4] for c in CATALOG] + [0.0] * len(points), dtype=float)
+    pm_dec = np.array([c[5] for c in CATALOG] + [0.0] * len(points), dtype=float)
+    return ra, dec, pm_ra, pm_dec
+
+
+@functools.lru_cache(maxsize=4)
+def _apparent_places(kind, day):
+    """Apparent places (h, °) of the date of the sky map's points ("sky") or of the
+    Messier objects ("messier") on the Julian day *day* (0 h UT): over a day
+    they move by less than a second of arc."""
+    t = (day - 2451545.0) / 36525.0
+    if kind == "sky":
+        ra, dec, pm_ra, pm_dec = _sky_points()
+        return AstroEngine.stars_apparent(t, ra, dec, pm_ra, pm_dec)
+    catalog = messier_catalog()
+    return AstroEngine.stars_apparent(t, [o["ra"] for o in catalog], [o["dec"] for o in catalog])
+
+
+def turned_places(kind, jd, lat, lon):
+    """
+    Altitudes and azimuths (°) at *jd* of the sky map's points ("sky": the
+    catalogue's stars, then the figures' points, as sky_scene orders them) or
+    of the Messier objects ("messier"): their apparent places of the day turned
+    by the sidereal time — for the time bar, within a second of arc of the
+    full computation and many times faster.
+    """
+    day = math.floor(jd - 0.5) + 0.5
+    ra, dec = _apparent_places(kind, day)
+    return AstroEngine.turned_horizontal((jd - 2451545.0) / 36525.0, lat, lon, ra, dec)
+
+
+@functools.lru_cache(maxsize=4)
+def _transient_apparent(day, coords):
+    """Apparent places (h, °) of the date of the novae and supernovae *coords* ((ra h, dec °), ...)."""
+    t = (day - 2451545.0) / 36525.0
+    return AstroEngine.stars_apparent(t, [c[0] for c in coords], [c[1] for c in coords])
+
+
+def transient_places(objects, jd, lat, lon, quick=False):
+    """
+    Altitudes and azimuths (°) at *jd* of the novae and supernovae *objects*
+    (dicts ra h, dec °, J2000); *quick*: their apparent places of the day
+    turned by the sidereal time (the time bar's frames).
+    """
+    if not objects:
+        return np.zeros(0), np.zeros(0)
+    t = (jd - 2451545.0) / 36525.0
+    if quick:
+        ra, dec = _transient_apparent(math.floor(jd - 0.5) + 0.5, tuple((o["ra"], o["dec"]) for o in objects))
+        return AstroEngine.turned_horizontal(t, lat, lon, ra, dec)
+    return AstroEngine.stars_horizontal(t, lat, lon, [o["ra"] for o in objects], [o["dec"] for o in objects])
+
+
+def sky_scene(jd, lat, lon, mag_limit, sun, moon, planets, deep_sky=(), horizon=(), quick=False, transients=()):
     """
     Collects what the sky map shows.
 
@@ -552,6 +671,10 @@ def sky_scene(jd, lat, lon, mag_limit, sun, moon, planets, deep_sky=(), horizon=
         deep_sky (list[dict]): Messier objects above the horizon (m, type,
             alt, az, ra, dec, mag, label...).
         horizon: (azimuth, altitude) points of the observer's horizon mask.
+        quick (bool): the stars turned from their apparent places of the day
+            (turned_places): the time bar's frames.
+        transients (list[dict]): recent novae and supernovae (name, kind, alt,
+            az, ra, dec, mag…): those above the horizon are drawn.
 
     Returns:
         dict: stars (above the horizon and bright enough), constellation
@@ -564,13 +687,12 @@ def sky_scene(jd, lat, lon, mag_limit, sun, moon, planets, deep_sky=(), horizon=
     # every star of the catalogue and every point of the constellation figures
     # brought to the date at once (proper motion, precession, nutation, aberration)
     figures_data = constellation_figures()
-    points = [point for figure in figures_data.values()
-              for point in [figure["center"]] + [p for line in figure["lines"] for p in line]]
-    alts, azs = AstroEngine.stars_horizontal(
-        (jd - 2451545.0) / 36525.0, lat, lon,
-        [c[1] for c in CATALOG] + [p[0] for p in points], [c[2] for c in CATALOG] + [p[1] for p in points],
-        pm_ra_mas=[c[4] for c in CATALOG] + [0] * len(points),
-        pm_dec_mas=[c[5] for c in CATALOG] + [0] * len(points))
+    if quick:
+        alts, azs = turned_places("sky", jd, lat, lon)
+    else:
+        ra, dec, pm_ra, pm_dec = _sky_points()
+        alts, azs = AstroEngine.stars_horizontal((jd - 2451545.0) / 36525.0, lat, lon, ra, dec,
+                                                 pm_ra_mas=pm_ra, pm_dec_mas=pm_dec)
     stars, catalog = [], []
     for (designation, ra, dec, mag, _pm_ra, _pm_dec, name), alt, az in zip(CATALOG, alts, azs):
         alt, az = float(alt), float(az)
@@ -614,6 +736,7 @@ def sky_scene(jd, lat, lon, mag_limit, sun, moon, planets, deep_sky=(), horizon=
         "moon": placed(moon, "moon"),
         "planets": [placed(p, "planet") for p in planets],
         "deep_sky": [placed(o, "deep_sky") for o in deep_sky if o["alt"] > 0],
+        "transients": [{**placed(o, "transient"), "class": o["kind"]} for o in transients if o["alt"] > 0],
     }
 
 
@@ -632,7 +755,7 @@ def constellation_figures():
 
 def visible_objects(scene):
     """Objects of *scene* above the horizon, as the map draws them."""
-    objs = list(scene["stars"]) + list(scene.get("deep_sky", ()))
+    objs = list(scene["stars"]) + list(scene.get("deep_sky", ())) + list(scene.get("transients", ()))
     objs += [p for p in scene["planets"] if p["alt"] > 0]
     for body in (scene["sun"], scene["moon"]):
         if body["alt"] > 0:
@@ -676,7 +799,7 @@ def _overlaps(a, b):
 _LABEL_PLACES = ((6, 3, "left"), (6, -14, "left"), (-6, 3, "right"), (-6, -14, "right"))
 
 
-def draw_sky_map(fig, scene, labels, highlight=None):
+def draw_sky_map(fig, scene, labels, highlight=None, ax=None):
     """
     Draws the sky map.
 
@@ -687,14 +810,18 @@ def draw_sky_map(fig, scene, labels, highlight=None):
             clockwise) and planets ({"Venus": "Vénus", ...}).
         highlight (dict | None): the object found by name, circled in gold:
             x, y, label, and wide (True for a constellation).
+        ax: the axes to draw in (the monthly sheet, month_sheet.py): the
+            figure is then neither cleared nor titled.
 
     Returns:
         tuple: (axes, tooltip annotation)
     """
-    fig.clear()
-    fig.set_layout_engine("none")
-    fig.patch.set_facecolor(Config.CIEL_100)
-    ax = fig.add_axes((0.02, 0.02, 0.96, 0.89))
+    whole = ax is None
+    if whole:
+        fig.clear()
+        fig.set_layout_engine("none")
+        fig.patch.set_facecolor(Config.CIEL_100)
+        ax = fig.add_axes((0.02, 0.02, 0.96, 0.89))
     ax.set_aspect("equal")
     ax.set_xlim(-1.17, 1.17)
     ax.set_ylim(-1.17, 1.17)
@@ -725,10 +852,11 @@ def draw_sky_map(fig, scene, labels, highlight=None):
                 fontsize=SIZE_CORPS if main else SIZE_LEGENDE,
                 fontweight=600 if main else 400)
 
-    for (x1, y1), (x2, y2) in scene["lines"]:
-        line, = ax.plot([x1, x2], [y1, y2], color=Config.ENCRE_ATTENUEE, linewidth=0.8,
-                        alpha=0.4, zorder=2)
-        line.set_clip_path(dome)
+    if scene["lines"]:                                   # one artist for all the figures: fast to draw
+        figures = LineCollection(scene["lines"], colors=[to_rgba(Config.ENCRE_ATTENUEE, 0.4)],
+                                 linewidths=0.8, zorder=2)
+        ax.add_collection(figures, autolim=False)
+        figures.set_clip_path(dome)
 
     stars = scene["stars"]
     if stars:
@@ -799,6 +927,19 @@ def draw_sky_map(fig, scene, labels, highlight=None):
         ax.annotate(text, (o["x"], o["y"]), xytext=(5, -9), textcoords="offset points",
                     fontsize=SIZE_LEGENDE * 0.75, color=Config.LUNE, zorder=5, va="bottom")
 
+    # recent novae and supernovae: a four-pointed star, named where the name fits
+    news = scene.get("transients", ())
+    if news:
+        ax.scatter([o["x"] for o in news], [o["y"] for o in news], s=70, marker=(4, 1, 0),
+                   color=Config.SIGNAL_ALERTE, linewidths=0, zorder=7)
+        for o in news:
+            box = _label_box(ax, o["x"], o["y"], o["name"], SIZE_LEGENDE * 0.75, 6, 4)
+            if any(_overlaps(box, other) for other in taken):
+                continue
+            taken.append(box)
+            ax.annotate(o["name"], (o["x"], o["y"]), xytext=(6, 4), textcoords="offset points",
+                        fontsize=SIZE_LEGENDE * 0.75, color=Config.SIGNAL_ALERTE, zorder=7, va="bottom")
+
     moon = scene["moon"]
     if moon["alt"] > 0:
         ax.plot(moon["x"], moon["y"], "o", color=Config.LUNE, markersize=10,
@@ -825,9 +966,50 @@ def draw_sky_map(fig, scene, labels, highlight=None):
         _body_label(ax, highlight["x"], highlight["y"] + radius, highlight["label"],
                     Config.OR, size=SIZE_LEGENDE, weight=600, dx=0, dy=4, ha="center")
 
-    fig.text(0.03, 0.97, labels["title"], ha="left", va="top", fontsize=SIZE_SOUS_TITRE,
-             fontweight=600, color=Config.ENCRE)
+    if whole:
+        fig.text(0.03, 0.97, labels["title"], ha="left", va="top", fontsize=SIZE_SOUS_TITRE,
+                 fontweight=600, color=Config.ENCRE)
     return ax, _tooltip(ax)
+
+
+def turn_sky(ax, degrees):
+    """
+    Turns what is drawn in the sky map's axes by *degrees* counterclockwise
+    about the zenith (the map that follows the phone): every artist drawn in
+    data coordinates, the labels kept upright at their turned places, a
+    slanted label (the horizon's) kept along its circle. The first call gives
+    the artists the turn; the next ones only change its angle, so turning the
+    map redraws it without building it again. Returns the turn (Affine2D).
+    """
+    turn = getattr(ax, "_celeste_turn", None)
+    if turn is None:
+        turn = Affine2D()
+        turned = turn + ax.transData
+        for artist in ax.get_children():
+            if isinstance(artist, Annotation):
+                if isinstance(artist.xycoords, str) and artist.xycoords == "data":
+                    artist.xycoords = turned
+                    if artist.get_annotation_clip() is None:        # still hidden when its point is out of view
+                        artist.set_annotation_clip(True)
+                continue
+            if isinstance(artist, Collection) and artist.get_offset_transform() is ax.transData:
+                artist.set_offset_transform(turned)
+            if artist.get_transform() is ax.transData:
+                artist.set_transform(turned)
+        ax._celeste_turn = turn
+        ax._celeste_slanted = [(text, text.get_rotation()) for text in ax.texts
+                               if not isinstance(text, Annotation) and text.get_rotation()]
+    turn.clear().rotate_deg(degrees)
+    for text, slant in ax._celeste_slanted:
+        text.set_rotation((slant + degrees + 90.0) % 180.0 - 90.0)        # along the circle, never upside down
+    return turn
+
+
+def turned_xy(x, y, degrees):
+    """A point of the sky map turned by *degrees* counterclockwise about the zenith."""
+    a = math.radians(degrees)
+    c, s = math.cos(a), math.sin(a)
+    return c * x - s * y, s * x + c * y
 
 
 # Symbols of the deep-sky objects (types of engine.MESSIER_TYPES), as in sky
@@ -892,9 +1074,11 @@ def draw_orrery(fig, scene, labels):
     fig.set_layout_engine("constrained")
     fig.get_layout_engine().set(w_pad=0.16, h_pad=0.12, wspace=0.08)
     fig.patch.set_facecolor(Config.CIEL_100)
+    width, height = fig.get_size_inches()
+    rows, cols = (2, 1) if width < 0.9 * height else (1, 2)    # a phone: one above the other
     panels = (
-        (fig.add_subplot(1, 2, 1), 1.8, ("Mercury", "Venus", "Mars"), labels["inner"]),
-        (fig.add_subplot(1, 2, 2), 31.5, ("Jupiter", "Saturn", "Uranus", "Neptune"), labels["outer"]),
+        (fig.add_subplot(rows, cols, 1), 1.8, ("Mercury", "Venus", "Mars"), labels["inner"]),
+        (fig.add_subplot(rows, cols, 2), 31.5, ("Jupiter", "Saturn", "Uranus", "Neptune"), labels["outer"]),
     )
     earth = scene["earth"]
     fig._orrery_moving = []                     # (name, marker, label): what move_orrery moves

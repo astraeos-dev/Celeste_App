@@ -1,0 +1,528 @@
+"""
+ui/tonight.py — Ce soir: the ephemeris page (the night ahead, the Sun, the Moon, the bodies).
+
+A mixin of the main window (gui.AstroApp): its methods use the window's state
+(self.*) and those of the other spaces.
+"""
+from ui import common
+from ui.common import *  # noqa: F401,F403
+
+
+class TonightSpace:
+    # ── Tab 1: ephemeris ──────────────────────────────────────────────────────
+
+    def _build_ephemeris_tab(self):
+        scroll, _page, lay = _scroll_page()
+
+        # The values read at a glance
+        cards = QHBoxLayout()
+        cards.setSpacing(16)
+        self.card_sun_alt = DataCard(t("cards.sun_alt"), SYMBOL["Sun"], "or")
+        self.card_sun_rise = DataCard(t("cards.sun_rise"), SYMBOL["Sun"], "or")
+        self.card_moon_alt = DataCard(t("cards.moon_alt"), SYMBOL["Moon"], "lune")
+        self.card_moon_illum = DataCard(t("cards.moon_illum"), SYMBOL["Moon"], "lune")
+        for card in (self.card_sun_alt, self.card_sun_rise, self.card_moon_alt,
+                     self.card_moon_illum):
+            cards.addWidget(card, stretch=1)
+        lay.addLayout(cards)
+        self._reflow.append(cards)
+
+        # Tonight: the night, the Moon, the visible planets and the next events
+        card = _card()
+        card.setObjectName("card")
+        outer = QVBoxLayout(card)
+        outer.setContentsMargins(16, 16, 16, 16)
+        outer.setSpacing(6)
+        head = QHBoxLayout()
+        head.setSpacing(8)
+        head.addWidget(_label(SYMBOL["star"], "symbol", tone="or"))
+        head.addWidget(_label(t("tonight.title"), "sous-titre"))
+        head.addStretch()
+        # the clouds of the night: forecast by Open-Meteo, only when asked (the place is sent)
+        self._weather_btn = _icon_button("cloud", t("quality.weather_tip"), compact=True, checkable=True)
+        self._weather_btn.setChecked(bool(prefs.get("weather_forecast")))
+        self._weather_btn.toggled.connect(self._on_weather_toggled)
+        head.addWidget(self._weather_btn)
+        week_btn = _icon_button("calendar", t("quality.week_tip"), compact=True)
+        week_btn.clicked.connect(lambda _=False: self.show_week_quality())
+        self._week_btn = week_btn
+        head.addWidget(week_btn)
+        sheet_btn = _icon_button("export", t("month_sheet.button_tip"), compact=True)   # month_sheet.py
+        sheet_btn.clicked.connect(lambda _=False: self._month_sheet_dialog())
+        self._sheet_btn = sheet_btn
+        head.addWidget(sheet_btn)
+        outer.addLayout(head)
+        # the quality of the night: its rating, the hours, the sky of the place
+        self._quality_label = _label("", "corps", wrap=True)
+        self._night_strip = NightStrip()
+        self._quality_note = _label("", "legende", tone="attenuee", wrap=True)
+        self._weather_credit = _label("", "legende", tone="attenuee")
+        self._weather_credit.setTextFormat(Qt.TextFormat.RichText)
+        self._weather_credit.setOpenExternalLinks(True)
+        self._weather_credit.setText(f'<a href="https://open-meteo.com/">{t("quality.credit")}</a>')
+        for widget in (self._quality_label, self._night_strip, self._quality_note, self._weather_credit):
+            outer.addWidget(widget)
+        outer.addSpacing(6)
+        self._tonight_box = QVBoxLayout()
+        self._tonight_box.setSpacing(6)
+        outer.addLayout(self._tonight_box)
+        self._tonight_key = None
+        lay.addWidget(card)
+
+        row = QHBoxLayout()
+        row.setSpacing(16)
+
+        # Sun
+        card, body, self._lbl_sun_state = self._body_card(SYMBOL["Sun"], "or", t("sun.title"))
+        self.sun_labels = {}
+        r = self._section_rows(body, 0, t("sun.section_position"), [
+            ("ra", "sun.ra"), ("dec", "sun.dec"), ("alt", "sun.alt"),
+            ("az", "sun.az"), ("eot", "sun.eot"), ("dist", "sun.dist"),
+        ], self.sun_labels)
+        self._sun_events_title = _label("", "section")
+        self._section_rows(body, r, self._sun_events_title, [
+            ("dawn_astro", "sun.dawn_astro"), ("dawn_naut", "sun.dawn_naut"),
+            ("dawn_civ", "sun.dawn_civil"), ("rise", "sun.rise", True),
+            ("transit", "sun.transit"), ("set", "sun.set", True),
+            ("dusk_civ", "sun.dusk_civil"), ("dusk_naut", "sun.dusk_naut"),
+            ("dusk_astro", "sun.dusk_astro"), ("day_length", "sun.day_length"),
+        ], self.sun_labels)
+        row.addWidget(card, stretch=1)
+
+        # Moon
+        card, body, self._lbl_moon_state = self._body_card(SYMBOL["Moon"], "lune", t("moon.title"))
+        btn_calendar = _button(t("calendar.button"), "calendar", "secondaire", compact=True)
+        btn_calendar.setToolTip(t("calendar.button_tip"))
+        btn_calendar.clicked.connect(lambda _=False: self._show_moon_calendar())
+        card.layout().itemAt(0).layout().insertWidget(3, btn_calendar)
+        self.moon_labels = {}
+        r = self._section_rows(body, 0, t("moon.section_position"), [
+            ("ra", "moon.ra"), ("dec", "moon.dec"), ("alt", "moon.alt"),
+            ("az", "moon.az"), ("dist", "moon.dist"),
+        ], self.moon_labels)
+
+        body.setRowMinimumHeight(r, 16)
+        body.addWidget(_label(t("moon.section_phase"), "section"), r + 1, 0, 1, 2)
+        r += 1
+        phase_row = QHBoxLayout()
+        phase_row.setSpacing(16)
+        self._phase_disc = MoonPhase(56)
+        phase_row.addWidget(self._phase_disc)
+        phase_text = QVBoxLayout()
+        phase_text.setSpacing(8)
+        self._lbl_phase_name = _label("—", "sous-titre")
+        phase_text.addWidget(self._lbl_phase_name)
+        self._illum_bar = QProgressBar()
+        self._illum_bar.setRange(0, 1000)
+        self._illum_bar.setTextVisible(False)
+        self._illum_bar.setAccessibleName(t("moon.illum"))
+        phase_text.addWidget(self._illum_bar)
+        phase_row.addLayout(phase_text, stretch=1)
+        body.addLayout(phase_row, r + 1, 0, 1, 2)
+        r = self._section_rows(body, r + 2, None, [
+            ("illum", "moon.illum"), ("age", "moon.age"),
+        ], self.moon_labels)
+
+        self._moon_events_title = _label("", "section")
+        self._section_rows(body, r, self._moon_events_title, [
+            ("rise", "moon.rise", True), ("transit", "moon.transit"),
+            ("set", "moon.set", True),
+        ], self.moon_labels)
+        row.addWidget(card, stretch=1)
+
+        lay.addLayout(row)
+        self._reflow.append(row)
+        lay.addStretch()
+        self._ephem_page = scroll
+        self._add_page(scroll, t("tabs.ephemeris"))
+
+    def _body_card(self, symbol, accent, title):
+        """Card of a body: (card, data grid, state badge)."""
+        card = _card()
+        outer = QVBoxLayout(card)
+        outer.setContentsMargins(16, 16, 16, 16)
+        outer.setSpacing(12)
+        head = QHBoxLayout()
+        head.setSpacing(8)
+        head.addWidget(_label(symbol, "symbol", tone=accent))
+        head.addWidget(_label(title, "sous-titre"))
+        head.addStretch()
+        badge = _badge()
+        head.addWidget(badge)
+        outer.addLayout(head)
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(16)
+        grid.setVerticalSpacing(6)
+        grid.setColumnStretch(0, 1)
+        outer.addLayout(grid)
+        outer.addStretch()
+        return card, grid, badge
+
+    @staticmethod
+    def _section_rows(grid, row, title, fields, labels):
+        """
+        Adds a heading (text, QLabel or None), then a "label … value" line per
+        field (compact DataCard); returns the next row.
+        Field: (key, translation key[, emphasised]).
+        """
+        if title is not None:
+            if isinstance(title, str):
+                title = _label(title, "section")
+            if row:
+                grid.setRowMinimumHeight(row, 16)
+                row += 1
+            grid.addWidget(title, row, 0, 1, 2)
+            row += 1
+        for key, text_key, *opt in fields:
+            strong = bool(opt and opt[0])
+            name = _label(t(text_key), "corps" if strong else "legende", strong=strong)
+            grid.addWidget(name, row, 0)
+            value = _label("—", "donnee", strong=strong)
+            value.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            value.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            grid.addWidget(value, row, 1)
+            labels[key] = value
+            row += 1
+        return row
+
+    def _day_length(self):
+        rise, sunset = self.sun_events.get("rise"), self.sun_events.get("set")
+        if rise is None or sunset is None:
+            return "—"
+        minutes = round((sunset - rise).total_seconds() / 60) % 1440
+        return tf("units.duration", h=minutes // 60, m=f"{minutes % 60:02d}")
+
+    def _sun_phase(self):
+        return charts.day_phase(self.sun_data["alt"])
+
+    def _update_data_cards(self):
+        sd, md = self.sun_data, self.moon_data
+        self.card_sun_alt.set_value(
+            _num(sd["alt"], 1, signed=True), "°",
+            f"{tf('cards.azimuth', value=_deg(sd['az'], 1))} · {t('sun.state_' + self._sun_phase())}")
+        rise, sunset = self.sun_events.get("rise"), self.sun_events.get("set")
+        self.card_sun_rise.set_value(
+            self._format_event(rise), "",
+            tf("cards.set_at", time=self._format_event(sunset)))
+        self.card_moon_alt.set_value(
+            _num(md["alt"], 1, signed=True), "°",
+            f"{tf('cards.rise_at', time=self._format_event(self.moon_events.get('rise')))} · "
+            f"{tf('cards.set_at', time=self._format_event(self.moon_events.get('set')))}")
+        key = Formatters.PHASES[Formatters.phase_index(md["phase"])][0]
+        self.card_moon_illum.set_value(_num(md["illum"], 0), "%", t(f"phases.{key}"))
+
+    def _update_sun_card(self):
+        sd, lb, ev = self.sun_data, self.sun_labels, self.sun_events
+        lb["ra"].setText(_ra(sd["ra"]))
+        lb["dec"].setText(_dec(sd["dec"]))
+        lb["alt"].setText(_dec(sd["alt"]))
+        lb["az"].setText(_az(sd["az"]))
+        lb["eot"].setText(tf("units.minutes", value=_num(sd["eot"], 1, signed=True)))
+        lb["dist"].setText(tf("units.au", value=_num(sd["dist"], 4)))
+        for key in ("dawn_astro", "dawn_naut", "dawn_civ", "rise", "transit",
+                    "set", "dusk_civ", "dusk_naut", "dusk_astro"):
+            lb[key].setText(self._format_event(ev.get(key)))
+        lb["day_length"].setText(self._day_length())
+        self._sun_events_title.setText(self._events_title())
+        phase = self._sun_phase()
+        _set_badge(self._lbl_sun_state, t(f"sun.state_{phase}"),
+                      "info" if phase == "day" else "neutre")
+
+    def _update_tonight(self, dte, lat, lon, elev):
+        """The "Tonight" summary, computed again when the night, the place or the time zone change."""
+        start = AstroEngine._local_day(dte - timedelta(hours=12), self._zone)[0]
+        key = (f"{start:%Y-%m-%d %H}", round(lat, 4), round(lon, 4),
+               getattr(self._zone, "key", "UTC"), elev)
+        if key == self._tonight_key:
+            return
+        self._tonight_key = key
+        self._tonight, self._upcoming = _tonight_and_upcoming(key, dte, lat, lon, elev, self._zone)
+        self._tonight_place = (lat, lon)
+        self._update_night_quality()
+        while self._tonight_box.count():
+            item = self._tonight_box.takeAt(0)
+            if item.widget():
+                item.widget().hide()                  # deleteLater() only acts on the next turn
+                item.widget().deleteLater()
+        for text, tone in self._tonight_lines():
+            self._tonight_box.addWidget(_label(text, "corps" if tone is None else "legende",
+                                               tone=tone or None, wrap=True))
+
+    # ── The quality of the night ──────────────────────────────────────────────
+
+    def _on_weather_toggled(self, on):
+        prefs.set("weather_forecast", bool(on))
+        self._update_night_quality()
+
+    def _weather_key(self):
+        lat, lon = self._tonight_place
+        return (round(lat, 2), round(lon, 2))
+
+    def _night_weather(self):
+        """
+        The forecast of the place, or None: kept an hour (five minutes after a
+        failure); asked in the background when missing, the quality drawn
+        again when it comes.
+        """
+        lat, lon = self._tonight_place
+        key = self._weather_key()
+        cached = getattr(self, "_weather", None)
+        fresh = cached is not None and cached[0] == key and (
+            time.monotonic() - cached[1] < (3600 if cached[2] is not None else 300))
+        if not fresh and getattr(self, "_weather_pending", None) != key:
+            self._weather_pending = key
+
+            def done(data):
+                self._weather, self._weather_pending, self._weather_error = (key, time.monotonic(), data), None, None
+                self._update_night_quality()
+
+            def failed(exc):
+                self._weather, self._weather_pending, self._weather_error = (key, time.monotonic(), None), None, exc
+                self._update_night_quality()
+
+            common._run_in_background(
+                lambda: night_quality.load_forecast(lat, lon, user_agent=f"Celeste/{APP_VERSION}"), done, failed)
+            cached = getattr(self, "_weather", None)      # already there when the answer came at once
+        return cached[2] if cached is not None and cached[0] == key else None
+
+    def _update_night_quality(self):
+        """The rating of the night, its hours and the sky of the place, in the Tonight card."""
+        night = getattr(self, "_tonight", None)
+        if night is None or not hasattr(self, "_quality_label"):
+            return
+        use_weather = bool(prefs.get("weather_forecast"))
+        weather = self._night_weather() if use_weather else None
+        if use_weather and weather is None and getattr(self, "_weather", (None,))[0] == self._weather_key():
+            weather = self._weather[2]
+        q = night_quality.assess(night, weather)
+        self._night_quality = q
+        clock = self._clock
+        if q["rating"] == "no_night":
+            self._quality_label.setText(t("quality.no_night"))
+            self._quality_text = ""
+            self._night_strip.hide()
+        else:
+            parts = [tf("quality.line", rating=t(f"quality.rating_{q['rating']}"), score=q["score"])]
+            if q["best"]:
+                parts.append(tf("quality.best", start=clock(q["best"]["start"]), end=clock(q["best"]["end"])))
+            if q["weather"]:
+                parts.append(tf("quality.clouds", pct=_num(q["cloud"])))
+            elif not use_weather:
+                parts.append(t("quality.moon_only"))
+            elif getattr(self, "_weather_pending", None) is not None:
+                parts.append(t("quality.weather_loading"))
+            elif getattr(self, "_weather_error", None) is not None:
+                parts.append(t("quality.weather_error"))
+            else:
+                parts.append(t("quality.beyond_forecast"))
+            self._quality_label.setText(" · ".join(parts))
+            self._quality_text = " · ".join(parts)
+            labels, tips = [], []
+            for hour in q["hours"]:
+                local = self._local(hour["time"])
+                labels.append(self._fmt_clock(local).replace(":00", ""))
+                tip = [tf("quality.tip_score", time=clock(hour["time"]), score=hour["score"])]
+                if hour["dark"] < 1.0:
+                    tip.append(t("quality.tip_twilight"))
+                if hour["cloud"] is not None:
+                    tip.append(tf("quality.clouds", pct=_num(hour["cloud"])))
+                tip.append(t("quality.tip_moon_up" if hour["glare"] > 0 else "quality.tip_moon_down"))
+                tips.append(" · ".join(tip))
+            self._night_strip.set_hours(q["hours"], labels, tips)
+            self._night_strip.show()
+        bortle = int(prefs.get("bortle") or 0)
+        if bortle:
+            self._quality_note.setText(tf("quality.bortle", n=bortle, label=t(f"quality.bortle_{bortle}"),
+                                          mag=_num(night_quality.limiting_magnitude(bortle), 1)))
+        else:
+            self._quality_note.setText(t("quality.bortle_unset"))
+        self._weather_credit.setVisible(q["weather"])
+        self._refresh_plan_summary()                       # Observer › Targets shows it too
+
+    # ── The coming nights ─────────────────────────────────────────────────
+
+    def _week_quality(self, nights=7):
+        """The quality of the *nights* nights from the one of the chosen date (0.1 s each)."""
+        dte, lat, lon, elev = self._dte, self._lat, self._lon, self._elevation()
+        weather = None
+        if prefs.get("weather_forecast"):
+            cached = getattr(self, "_weather", None)
+            if cached is not None and cached[0] == (round(lat, 2), round(lon, 2)):
+                weather = cached[2]
+        out = []
+        for i in range(nights):
+            night = AstroEngine.tonight(dte + timedelta(days=i), lat, lon, elev, self._zone)
+            out.append((night, night_quality.assess(night, weather)))
+        return out
+
+    def show_week_quality(self):
+        """A window: the coming seven nights, their rating, best window, clouds and Moon."""
+        if self._dte is None:
+            return None
+        rows = self._week_quality()
+        dlg = QDialog(self)
+        dlg.setWindowTitle(t("quality.week_title"))
+        dlg.setMinimumWidth(640)
+        lay = QVBoxLayout(dlg)
+        lay.setSpacing(12)
+        lay.addWidget(_label(t("quality.week_hint"), "legende", tone="attenuee", wrap=True))
+        weather = any(q["weather"] for _, q in rows)
+        columns = ["night", "quality", "best", "moon"] + (["clouds"] if weather else [])
+        table = QTableWidget(len(rows), len(columns))
+        table.setHorizontalHeaderLabels([t(f"quality.col_{c}") for c in columns])
+        table.verticalHeader().setVisible(False)
+        table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        locale = _locale()
+        for r, (night, q) in enumerate(rows):
+            day = self._local(night["start"]).date()
+            cells = {"night": locale.toString(QDate(day.year, day.month, day.day), "ddd d MMM"),
+                     "quality": (t("quality.no_night") if q["rating"] == "no_night"
+                                 else f"{t('quality.rating_' + q['rating'])} · {q['score']}/100"),
+                     "best": (f"{self._clock(q['best']['start'])}–{self._clock(q['best']['end'])}"
+                              if q["best"] else "—"),
+                     "moon": tf("quality.week_moon", pct=_num(100.0 * night["moon"]["fraction"]),
+                                up=_num(100.0 * q["moon_up"])),
+                     "clouds": "—" if q["cloud"] is None else f"{_num(q['cloud'])} %"}
+            for c, key in enumerate(columns):
+                table.setItem(r, c, QTableWidgetItem(cells[key]))
+                if key == "quality" and q["rating"] != "no_night":
+                    # the score's colour, as the hours of Tonight (an item's own background
+                    # would be covered by the theme's style sheet)
+                    badge = QLabel(cells[key])
+                    fill = mix(Config.SIGNAL_OK, Config.CIEL_200, q["score"] / 100.0)
+                    ink = Config.CIEL_000 if q["score"] >= 50 else Config.ENCRE
+                    badge.setStyleSheet(f"background: {fill}; color: {ink}; border-radius: 4px; "
+                                        f"padding: 2px 10px; margin: 4px 6px;")
+                    table.setCellWidget(r, c, badge)
+                    table.item(r, c).setText("")               # the label shows it; kept in tooltip
+                    table.item(r, c).setToolTip(cells[key])
+                    table.item(r, c).setData(Qt.ItemDataRole.UserRole, cells[key])
+        table.resizeColumnsToContents()
+        if "quality" in columns:                       # the badges are wider than the (empty) items
+            col = columns.index("quality")
+            badges = [table.cellWidget(r, col) for r in range(len(rows)) if table.cellWidget(r, col)]
+            if badges:
+                table.setColumnWidth(col, max(table.columnWidth(col),
+                                              max(b.sizeHint().width() for b in badges) + 40))
+        table.horizontalHeader().setStretchLastSection(True)
+        header_h = table.horizontalHeader().sizeHint().height()
+        table.setMinimumHeight(header_h + sum(table.rowHeight(r) for r in range(len(rows))) + 6)
+        width = sum(table.columnWidth(c) for c in range(len(columns))) + 40
+        dlg.resize(min(1180, max(640, width)), dlg.sizeHint().height())
+        lay.addWidget(table)
+        if weather:
+            credit = _label(f'<a href="https://open-meteo.com/">{t("quality.credit")}</a>', "legende",
+                            tone="attenuee")
+            credit.setTextFormat(Qt.TextFormat.RichText)
+            credit.setOpenExternalLinks(True)
+            lay.addWidget(credit)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        buttons.rejected.connect(dlg.reject)
+        lay.addWidget(buttons)
+        dlg.table = table
+        self._week_dialog = dlg
+        dlg.open()
+        return dlg
+
+    def _tonight_lines(self):
+        """[(text, tone)] of the summary: the night, the Moon, a line per visible planet, what comes next."""
+        n, clock = self._tonight, self._clock
+        lines = []
+        if n["dark"] is None:
+            lines.append((t("tonight.no_night"), None))
+        else:
+            lines.append((tf(f"tonight.dark_{n['dark']}", start=clock(n["dusk"]), end=clock(n["dawn"])), None))
+        moon = n["moon"]
+        rise, sets = moon["rise"], moon["set"]
+        if rise and sets:
+            when = (tf("tonight.moon_rises_sets", rise=clock(rise), set=clock(sets)) if rise < sets
+                    else tf("tonight.moon_sets_rises", rise=clock(rise), set=clock(sets)))
+        elif rise:
+            when = tf("tonight.moon_rises", time=clock(rise))
+        elif sets:
+            when = tf("tonight.moon_sets", time=clock(sets))
+        else:
+            when = t("tonight.moon_up" if moon["up"] > 0.5 else "tonight.moon_down")
+        lines.append((f"{SYMBOL['Moon']} " + tf("tonight.moon", pct=_num(100.0 * moon["fraction"]), when=when),
+                      None))
+        if not n["planets"]:
+            lines.append((t("tonight.no_planet"), "attenuee"))
+        for planet in n["planets"]:
+            seen = self._visibility_text(planet)
+            text = f"{_planet_name(planet['name'], symbol=True)} · {seen[:1].lower()}{seen[1:]}"
+            mag = tf("events.magnitude", value=_num(planet["mag"], 1))
+            text += f" · {mag[:1].lower()}{mag[1:]}"
+            if planet["rise"]:
+                text += " · " + tf("tonight.rises", time=clock(planet["rise"]))
+            if planet["set"]:
+                text += " · " + tf("tonight.sets", time=clock(planet["set"]))
+            lines.append((text, None))
+        if n.get("satellites"):
+            items = [tf("tonight.satellite_item", name=_satellite_name(p["name"], short=True),
+                        start=clock(p["start"]), end=clock(p["end"]), alt=_num(p["max_alt"]),
+                        dir=self._wind(p["max_az"])) for p in n["satellites"][:4]]
+            lines.append((tf("tonight.satellites", passes=" · ".join(items)), None))
+        if n.get("deep_sky"):
+            catalog = messier_catalog()
+            items = [tf("tonight.deep_sky_item", name=_messier_label(catalog[o["m"] - 1]), alt=_num(o["alt"]),
+                        time=clock(o["best"])) for o in n["deep_sky"]]
+            lines.append((tf("tonight.deep_sky", objects=" · ".join(items)), None))
+        for minimum in n.get("algol", ()):                  # the Demon Star at its faintest (variables.py)
+            lines.append((f"{SYMBOL['star']} " + tf("tonight.algol", time=clock(minimum["date"]),
+                                                     uncertainty=variables.UNCERTAINTY_MIN,
+                                                     alt=_num(minimum["alt"]), dir=self._wind(minimum["az"])),
+                          None))
+        for approach in n.get("neo", ()):                     # notable asteroids passing by (neo.py)
+            ld = neo.lunar_distances(approach["distance_au"])
+            size = neo.size_m(approach)
+            lines.append((f"{SYMBOL['Earth']} " + tf("tonight.neo", name=approach["name"], time=clock(approach["date"]),
+                                                      ld=_num(ld, 1 if ld >= 1 else 2),
+                                                      size=tf("neo.size", min=_num(size[0]), max=_num(size[1]))
+                                                      if size else "—"), None))
+        for obj, seen in n.get("transients", ()):             # bright novae and supernovae (transients.py)
+            lines.append((f"{SYMBOL['star']} " + tf("tonight.transient", name=obj["name"], kind=self._tr_kind(obj),
+                                                     mag=self._tr_mag_text(obj), time=clock(seen["best"]),
+                                                     alt=_num(seen["alt"]), dir=self._wind(seen["az"])), None))
+        for seen in n.get("occultations", ()):               # stars hidden by asteroids (occultations.py)
+            event = seen["event"]
+            asteroid = f"({event['number']}) {event['name']}" if event["number"] else event["name"]
+            if seen["inside"]:
+                text = tf("tonight.occultation_inside", time=clock(seen["date"]), asteroid=asteroid,
+                          mag=_num(event["star_mag"], 1), duration=_num(seen["duration"], 1))
+            else:
+                text = tf("tonight.occultation_outside", time=clock(seen["date"]), asteroid=asteroid,
+                          mag=_num(event["star_mag"], 1), edge=_num(seen["edge_km"]),
+                          side=self._wind(seen["direction"]))
+            lines.append((f"{SYMBOL['star']} " + text, None))
+        if self._upcoming:
+            items = []
+            for ev in self._upcoming:
+                best = self._local(ev["visibility"]["best"])
+                items.append(tf("tonight.event", date=f"{best:%d/%m}", title=self._event_title(ev, symbol=False),
+                                when=t(f"tonight.period_{ev['visibility']['period']}")))
+            lines.append((tf("tonight.upcoming", events=" · ".join(items)), "attenuee"))
+        else:
+            lines.append((t("tonight.no_upcoming"), "attenuee"))
+        return lines
+
+    def _update_moon_card(self):
+        md, lb, ev = self.moon_data, self.moon_labels, self.moon_events
+        lb["ra"].setText(_ra(md["ra"]))
+        lb["dec"].setText(_dec(md["dec"]))
+        lb["alt"].setText(_dec(md["alt"]))
+        lb["az"].setText(_az(md["az"]))
+        lb["dist"].setText(tf("units.km", value=_num(md["dist"])))
+        key = Formatters.PHASES[Formatters.phase_index(md["phase"])][0]
+        self._phase_disc.set_phase(md["phase"], southern=(self._lat or 0) < 0)
+        self._lbl_phase_name.setText(t(f"phases.{key}"))
+        self._illum_bar.setValue(int(round(md["illum"] * 10)))
+        lb["illum"].setText(f"{_num(md['illum'], 1)} %")
+        lb["age"].setText(tf("units.days", value=_num(md["age"], 1)))
+        for key in ("rise", "transit", "set"):
+            lb[key].setText(self._format_event(ev.get(key)))
+        self._moon_events_title.setText(self._events_title())
+        if md["alt"] > 0:
+            _set_badge(self._lbl_moon_state, t("common.above_horizon"), "info")
+        else:
+            _set_badge(self._lbl_moon_state, t("common.below_horizon"), "neutre")

@@ -43,7 +43,7 @@ comment en ajouter un, par exemple le quadrant horaire ou le cadran vertical dé
 
 - Le lieu est un `workshop.Place` : `lat`, `lon`, `zone` (tzinfo), `when` (TU), `std_offset` (heure d'hiver du
   fuseau) et `has_dst`. `place.dst_hours(ut)` donne l'heure d'été d'un instant.
-- L'atelier refuse les latitudes de moins de 10° et de plus de 80° (`_workshop_place` dans `gui.py`) : la carte
+- L'atelier refuse les latitudes de moins de 10° et de plus de 80° (`_workshop_place` dans `ui/common.py`) : la carte
   tournante et le cadran horizontal y dégénèrent. Un nouvel instrument qui va plus loin peut assouplir cette règle.
 - La fenêtre de l'atelier a ses propres champs (ville, coordonnées, fuseau, date) : elle part du lieu du panneau
   latéral, mais les changer ne touche pas au panneau.

@@ -47,6 +47,54 @@ v4.3:
   • Sedna among MINOR_PLANETS; MINOR_PLANET_NUMBERS, the Minor Planet
     Center's numbers ("(136199) Eris")
 
+v4.24:
+  • unchanged: the constellation charts (constellation_chart.py) draw the
+    IAU outlines with star_catalog's stars and planner's deep-sky objects
+
+v4.23:
+  • unchanged: the Workshop's planisphere becomes a star wheel in a holder
+    folded in two (workshop.py), on the same geometry (instruments.py)
+
+v4.22:
+  • unchanged: the sky map that follows the phone turns the drawn map
+    (charts.turn_sky, orientation.py, geomag.py)
+
+v4.21:
+  • unchanged: the recent novae and supernovae (transients.py) are placed
+    with stars_horizontal() and named with constellation_at()
+
+v4.20:
+  • constellation_at(): the constellation of a direction, for the near-Earth
+    asteroids (neo.py) and the stars hidden by asteroids (occultations.py)
+
+v4.19:
+  • unchanged: the month's sheet to print (month_sheet.py) builds on it;
+    the sky at an instant is charts.sky_state()
+
+v4.18:
+  • horizontal_tracks(): several bodies over many instants, the observer
+    computed once; stars_apparent() and turned_horizontal(): the stars'
+    places of the day turned by the sidereal time (the sky map's time bar,
+    within a second of arc); the minima of Algol (variables.py) build on it
+
+v4.17:
+  • unchanged: the observation log (journal.py) and the engine on Android
+    (android/main.py) build on it
+
+v4.16:
+  • tonight() gives the night hour by hour (Sun and Moon altitudes), for the
+    quality of the night (night_quality.py)
+
+v4.15:
+  • unchanged: the window gets a compact layout for phones and narrow windows
+
+v4.14:
+  • unchanged: the interface moves to PySide6 (qt.py); a first Android build
+
+v4.13:
+  • unchanged: the interface is split into spaces (ui/) around this engine,
+    which stays free of Qt
+
 v4.12:
   • the astrolabe and the nocturnal of the Workshop check their scales against
     this engine (sun_position(), stars_horizontal(), equation_of_time()); the
@@ -1087,6 +1135,24 @@ class AstroEngine:
         return alt.degrees, az.degrees
 
     @classmethod
+    def horizontal_tracks(cls, t, lat, lon, bodies, elevation_m=0.0, refracted=("moon",)):
+        """
+        Altitudes and azimuths (degrees) of several bodies at the instants *t*
+        (array of Julian centuries of UT), as horizontal() gives them one at a
+        time, the observer and the Earth's rotation computed once:
+        {body: (altitudes, azimuths)}; the bodies of *refracted* with the
+        standard refraction (the Moon, as in the calculation).
+        """
+        sky = _sky()
+        here = (sky["earth"] + wgs84.latlon(lat, lon, elevation_m=elevation_m)).at(cls._time_ut(t))
+        tracks = {}
+        for body in bodies:
+            air = {"temperature_C": 10.0, "pressure_mbar": 1010.0} if body in refracted else {}
+            alt, az, _ = here.observe(cls._target(body)).apparent().altaz(**air)
+            tracks[body] = (alt.degrees, az.degrees)
+        return tracks
+
+    @classmethod
     def stars_horizontal(cls, t, lat, lon, ra_hours, dec_degrees, elevation_m=0.0,
                          pm_ra_mas=None, pm_dec_mas=None):
         """
@@ -1114,6 +1180,44 @@ class AstroEngine:
         here  = (sky["earth"] + wgs84.latlon(lat, lon, elevation_m=elevation_m)).at(cls._time_ut(t))
         alt, az, _ = here.observe(stars).apparent().altaz()
         return alt.degrees, az.degrees
+
+    @classmethod
+    def stars_apparent(cls, t, ra_hours, dec_degrees, pm_ra_mas=None, pm_dec_mas=None):
+        """
+        Apparent places of stars given by their J2000 coordinates (ICRS) at t
+        (Julian centuries of UT): right ascensions (h) and declinations (°) of
+        the true equator and equinox of the date, seen from the Earth's centre
+        (proper motion, precession, nutation, aberration). In a day they move
+        by less than a second of arc: turned_horizontal turns them with the
+        sidereal time alone (the sky map's time bar).
+        """
+        motion = {} if pm_ra_mas is None else {
+            "ra_mas_per_year": np.asarray(pm_ra_mas, dtype=float),
+            "dec_mas_per_year": np.asarray(pm_dec_mas, dtype=float)}
+        stars = Star(ra_hours=np.asarray(ra_hours, dtype=float),
+                     dec_degrees=np.asarray(dec_degrees, dtype=float), **motion)
+        time = cls._time_ut(t)
+        # epoch: the one instant (epoch="date" would compute the nutation once per star)
+        ra, dec, _ = _sky()["earth"].at(time).observe(stars).apparent().radec(epoch=time)
+        return ra.hours, dec.degrees
+
+    @classmethod
+    def turned_horizontal(cls, t, lat, lon, ra_hours, dec_degrees):
+        """
+        Altitudes and azimuths (°, geometric; azimuth from the north through the
+        east) at t of apparent places of the date (stars_apparent), from the
+        local apparent sidereal time: stars_horizontal's to a second of arc
+        (the diurnal aberration, 0.3″ at most, is left out), many times faster.
+        """
+        last = (cls._time_ut(t).gast + lon / 15.0) % 24.0
+        h = np.radians((last - np.asarray(ra_hours, dtype=float)) * 15.0)
+        d = np.radians(np.asarray(dec_degrees, dtype=float))
+        phi = math.radians(lat)
+        sin_alt = math.sin(phi) * np.sin(d) + math.cos(phi) * np.cos(d) * np.cos(h)
+        alt = np.degrees(np.arcsin(np.clip(sin_alt, -1.0, 1.0)))
+        az = np.degrees(np.arctan2(-np.cos(d) * np.sin(h),
+                                   np.sin(d) * math.cos(phi) - np.cos(d) * np.cos(h) * math.sin(phi))) % 360.0
+        return alt, az
 
     # The bodies of the coordinates table, in the order of the Solar System
     BODIES  = ("sun", "moon", "Mercury", "Venus", "earth", "Mars", "Ceres", "Pallas", "Juno",
@@ -2473,7 +2577,10 @@ class AstroEngine:
             than magnitude 10 (dicts name, period 'evening' | 'morning' |
             'night', best, alt, az, mag, rise and set during the night or
             None), by best time; deep_sky: the five brightest Messier objects
-            at least 30° high in the dark (dicts m, alt, az, best, mag).
+            at least 30° high in the dark (dicts m, alt, az, best, mag);
+            hours: the 24 hours from noon to noon (dicts time, the UT start
+            of the hour; sun, moon: their altitudes in the middle of it, °),
+            for the quality of the night (night_quality.py).
         """
         sky = _sky()
         here = sky["earth"] + wgs84.latlon(lat, lon, elevation_m=elevation_m)
@@ -2543,8 +2650,10 @@ class AstroEngine:
                             "rise": when(crossing(alt, -0.57, True, lo, hi)),
                             "set": when(crossing(alt, -0.57, False, lo, hi))})
         planets.sort(key=lambda p: p["best"])
+        hours = [{"time": when(jds[12 * k]), "sun": float(sun[12 * k + 6]), "moon": float(moon_alt[12 * k + 6])}
+                 for k in range(24)]
         return {"start": start, "end": when(jds[-1]), "dark": dark, "dusk": when(dusk), "dawn": when(dawn),
-                "moon": moon, "planets": planets,
+                "moon": moon, "planets": planets, "hours": hours,
                 "deep_sky": cls._tonight_deep_sky(jds, sun, here, lat, lon, start)}
 
     @classmethod
@@ -2977,3 +3086,10 @@ def _constellation(position):
     find, names = _constellations()
     abbreviation = str(find(position))
     return abbreviation, names.get(abbreviation, abbreviation)
+
+
+def constellation_at(ra_hours, dec_degrees, jd_ut):
+    """IAU abbreviation of the constellation of the ICRS direction (*ra_hours*, *dec_degrees*)
+    at the instant *jd_ut*."""
+    from skyfield.api import position_of_radec
+    return _constellation(position_of_radec(ra_hours, dec_degrees, t=_sky()["ts"].ut1_jd(jd_ut)))[0]

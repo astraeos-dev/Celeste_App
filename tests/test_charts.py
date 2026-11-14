@@ -56,6 +56,11 @@ def _bodies(dte=DTE):
     return jd, sun, moon, planets
 
 
+def _sky_labels():
+    return {"title": "Sky", "sun": "Sun", "moon": "Moon", "horizon": "Horizon",
+            "cardinals": ["N", "NE", "E", "SE", "S", "SW", "W", "NW"], "planets": PLANET_LABELS}
+
+
 # ──────────────────────────────────────────────────────────────────────
 # 1. Phases of the day
 # ──────────────────────────────────────────────────────────────────────
@@ -175,6 +180,62 @@ class TestSkyScene:
         objs = charts.visible_objects(scene)
         assert all(o["alt"] > 0 for o in objs)
         assert scene["sun"] not in objs          # the Sun is down at 21:30 UT
+
+    def test_quick_scene_of_the_time_bar(self):
+        """The stars turned from their places of the day: the same map to a second of arc."""
+        jd, sun, moon, planets = _bodies()
+        full = charts.sky_scene(jd, LAT, LON, 6.0, sun, moon, planets)
+        quick = charts.sky_scene(jd, LAT, LON, 6.0, sun, moon, planets, quick=True)
+        assert len(quick["catalog"]) == len(full["catalog"])
+        assert [s["name"] for s in quick["stars"]] == [s["name"] for s in full["stars"]]
+        worst = max(AstroEngine.angular_separation(a["az"] / 15.0, a["alt"], b["az"] / 15.0, b["alt"])
+                    for a, b in zip(quick["catalog"], full["catalog"]))
+        assert worst * 3600.0 < 1.0
+        assert quick["figures"].keys() == full["figures"].keys()
+        assert len(quick["lines"]) == len(full["lines"])
+
+    def test_constellations_drawn_as_one_artist(self):
+        """368 segments: one collection, not one line each (the time bar's frames)."""
+        from matplotlib.collections import LineCollection
+        jd, sun, moon, planets = _bodies()
+        scene = charts.sky_scene(jd, LAT, LON, 6.0, sun, moon, planets)
+        fig = Figure()
+        ax, _tip = charts.draw_sky_map(fig, scene, _sky_labels())
+        figures = [c for c in ax.collections if isinstance(c, LineCollection)]
+        assert len(figures) == 1 and len(figures[0].get_segments()) == len(scene["lines"])
+        assert len(ax.lines) < 30                              # grid, planets: no line per segment
+
+    def test_turned_map(self):
+        """The map that follows the phone (4.22): every mark at its turned place, the labels upright."""
+        from matplotlib.collections import PathCollection
+        from matplotlib.text import Annotation
+        jd, sun, moon, planets = _bodies()
+        scene = charts.sky_scene(jd, LAT, LON, 6.0, sun, moon, planets)
+        fig = Figure(figsize=(6, 6))
+        ax, tip = charts.draw_sky_map(fig, scene, _sky_labels())
+        star = scene["stars"][0]
+        stars = [c for c in ax.collections if isinstance(c, PathCollection)][-1]
+        labels = [a for a in ax.texts if isinstance(a, Annotation) and a is not tip]
+        slanted = [a for a in ax.texts if not isinstance(a, Annotation) and a.get_rotation()]
+        assert labels and len(slanted) == 1                                   # the horizon's label
+        before = {id(a): ax.transData.transform(a.xy) for a in labels}
+        charts.turn_sky(ax, 90)
+        fig.canvas.draw()                                                     # draws, turned
+        where = stars.get_offset_transform().transform((star["x"], star["y"]))
+        assert where == pytest.approx(ax.transData.transform(charts.turned_xy(star["x"], star["y"], 90)))
+        for a in labels:
+            assert a.xycoords.transform(a.xy) == pytest.approx(
+                ax.transData.transform(charts.turned_xy(*a.xy, 90)))
+            assert a.get_rotation() == 0
+            assert a.get_annotation_clip()              # hidden, as before, when its point is out of view
+        assert tip.get_annotation_clip() is False       # the tooltip: never hidden
+        assert slanted[0].get_rotation() == pytest.approx(68)                 # -22° + 90°
+        assert tip.xycoords is not None and not isinstance(tip.xycoords, str)  # the tooltip follows
+        charts.turn_sky(ax, 0)                                                # back: only the angle changes
+        for a in labels:
+            assert a.xycoords.transform(a.xy) == pytest.approx(before[id(a)])
+        assert charts.turned_xy(1.0, 0.0, 90) == pytest.approx((0.0, 1.0))
+        assert charts.turned_xy(*charts.turned_xy(0.3, -0.7, 33), -33) == pytest.approx((0.3, -0.7))
 
     def test_hit_test(self):
         objs = [{"x": 0.0, "y": 0.0, "name": "a"}, {"x": 0.5, "y": 0.5, "name": "b"}]

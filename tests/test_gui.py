@@ -1,5 +1,5 @@
 """
-tests/test_gui.py — Tests of the PyQt6 interface (without a screen)
+tests/test_gui.py — Tests of the Qt interface (without a screen)
 ===================================================================
 Builds the Céleste window off screen (QT_QPA_PLATFORM=offscreen) and drives
 it: calculation, change of language and theme (Nuit, Jour, Observation)
@@ -9,7 +9,7 @@ symbols followed by U+FE0E).
 
 The preferences and favourites are written to a temporary folder: the
 user's (~/.celeste) are never modified.
-The tests are skipped when PyQt6 (or Qt's system libraries) is
+The tests are skipped when PySide6 and PyQt6 (or Qt's system libraries) are
 missing.
 
 Run with:  pytest tests/test_gui.py -v
@@ -17,23 +17,25 @@ Run with:  pytest tests/test_gui.py -v
 
 import io
 import json
+import math
 import re
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 
+import numpy as np
 import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-pytest.importorskip("PyQt6.QtWidgets", reason="PyQt6 or the Qt libraries are missing")
+pytest.importorskip("qt", reason="PySide6 (or PyQt6) or the Qt libraries are missing")
 pytest.importorskip("matplotlib")
 
 from engine import COMETS  # noqa: E402
 from matplotlib.backend_bases import MouseEvent  # noqa: E402
-from PyQt6.QtCore import QEvent, Qt  # noqa: E402
-from PyQt6.QtWidgets import (  # noqa: E402
+from qt.QtCore import QDate, QDateTime, QEvent, Qt, QTime  # noqa: E402
+from qt.QtWidgets import (  # noqa: E402
     QAbstractButton, QApplication, QDialog, QFrame, QLabel, QMessageBox,
 )
 
@@ -56,6 +58,7 @@ def window(qapp, tmp_path, monkeypatch):
     from i18n import switch_lang
 
     monkeypatch.setattr(prefs, "_SETTINGS_FILE", str(tmp_path / "settings.json"))
+    monkeypatch.setattr(prefs, "USER_DIR", str(tmp_path))      # the journal, the forecast: nothing in ~/.celeste
     prefs.reset()
     prefs.set("default_tz", "UTC")      # times expected in UT; the automatic zone has its own tests
     favorites = tmp_path / "favorites.json"
@@ -63,7 +66,7 @@ def window(qapp, tmp_path, monkeypatch):
         "Paris": {"lat": 48.8566, "lon": 2.3522},
         "Tokyo": {"lat": 35.6762, "lon": 139.6503},
     }), encoding="utf-8")
-    monkeypatch.setattr(gui, "_FAVORITES_FILE", str(favorites))
+    monkeypatch.setattr(gui.common, "_FAVORITES_FILE", str(favorites))
     import satellites
     monkeypatch.setattr(satellites, "CACHE", str(tmp_path / "satellites.tle"))    # none on disk
     import history
@@ -73,6 +76,19 @@ def window(qapp, tmp_path, monkeypatch):
     import mpc
     monkeypatch.setattr(mpc, "CACHE", str(tmp_path / "CometEls.txt"))             # none, and no download:
     prefs.set("planner_mpc", False)                                                # Céleste's comets only
+    import neo
+    import occultations
+
+    def offline(*_args, **_kwargs):
+        raise OSError("offline in the tests")
+    monkeypatch.setattr(neo, "CACHE", str(tmp_path / "neo_approaches.json"))       # the asteroids: none on
+    monkeypatch.setattr(neo, "EPHEMERIS_DIR", str(tmp_path / "neo"))               # disk, and no download
+    monkeypatch.setattr(neo, "_get", offline)
+    monkeypatch.setattr(occultations, "CACHE_DIR", str(tmp_path / "occultations"))
+    monkeypatch.setattr(occultations, "_download", offline)
+    import transients
+    monkeypatch.setattr(transients, "CACHE", str(tmp_path / "transients.json"))   # the novae: none on disk
+    monkeypatch.setattr(transients, "_get", offline)
     Config.apply_theme("nuit")
     switch_lang("fr")
     gui.apply_theme(qapp)
@@ -239,10 +255,10 @@ class TestCalculation:
         assert window.sun_labels["rise"].text() == "6:55 AM"
 
     def test_hidden_charts_are_drawn_on_demand(self, window, qapp):
-        window.tabs.setCurrentIndex(0)
+        window.show_page(window._ephem_page)
         window.calculate()
         assert {"traj", "sky", "orrery"} <= window._dirty
-        window.tabs.setCurrentIndex(1)
+        window.show_page(window._traj_page)
         _pump(qapp)
         assert "traj" not in window._dirty and "sky" in window._dirty
 
@@ -257,13 +273,13 @@ class TestLiveSwitching:
         window.entry_lat.setText("48.8566")
         window._lang_combo.setCurrentIndex(window._lang_combo.findData("en"))
         _pump(qapp)
-        assert window.tabs.tabText(0) == "Ephemeris"
+        assert window.tabs.tabText(0) == "Tonight"
         assert window.btn_calc.text() == "Calculate"
         assert window._edit_datetime() == DTE
         assert window.entry_lat.text() == "48.8566"
         assert prefs.get("lang") == "en"
 
-    @pytest.mark.parametrize("lang, word", [("es", "Efemérides"), ("de", "Ephemeriden")])
+    @pytest.mark.parametrize("lang, word", [("es", "Esta noche"), ("de", "Heute Nacht")])
     def test_every_language_builds(self, window, qapp, lang, word):
         window._lang_combo.setCurrentIndex(window._lang_combo.findData(lang))
         _pump(qapp)
@@ -288,7 +304,7 @@ class TestLiveSwitching:
         from config import Config
         window.theme_selector.buttons["observation"].click()
         _pump(qapp)
-        monkeypatch.setattr(gui, "QMessageBox", _yes_box(gui))
+        monkeypatch.setattr(gui.common, "QMessageBox", _yes_box(gui))
         window._reset_settings()
         _pump(qapp)
         assert prefs.get("theme") == "nuit" and Config.THEME == "nuit"
@@ -319,15 +335,15 @@ class TestFavorites:
             def getText(*_args, **_kwargs):
                 return "Maison", True
 
-        monkeypatch.setattr(gui, "QInputDialog", Input)
+        monkeypatch.setattr(gui.common, "QInputDialog", Input)
         window.save_location()
-        with open(gui._FAVORITES_FILE, encoding="utf-8") as f:
+        with open(gui.common._FAVORITES_FILE, encoding="utf-8") as f:
             assert json.load(f)["Maison"] == {"lat": 49.6333, "lon": -1.6167, "elev": 0}
         assert window.combo_fav.currentText() == "Maison"
 
-        monkeypatch.setattr(gui, "QMessageBox", _yes_box(gui))
+        monkeypatch.setattr(gui.common, "QMessageBox", _yes_box(gui))
         window.delete_location()
-        with open(gui._FAVORITES_FILE, encoding="utf-8") as f:
+        with open(gui.common._FAVORITES_FILE, encoding="utf-8") as f:
             assert "Maison" not in json.load(f)
 
 
@@ -387,7 +403,7 @@ class TestEvents:
 
     def test_map_of_a_conjunction(self, window, qapp):
         """The "Map" button of a conjunction opens the path of the bodies among the stars."""
-        from PyQt6.QtWidgets import QPushButton
+        from qt.QtWidgets import QPushButton
         window._search_conjunctions_gui()
         qapp.processEvents()
         buttons = [b for card in _event_cards(window) for b in card.findChildren(QPushButton)
@@ -517,7 +533,7 @@ class TestSkyMapAndTrajectory:
             window._build_detail_dialog(obj).close()
 
     def test_sky_tooltip(self, window, qapp):
-        window.tabs.setCurrentIndex(2)
+        window.show_page(window._sky_page)
         _pump(qapp)
         window.canvas_sky.draw()
         vega = _vega(window)
@@ -529,7 +545,7 @@ class TestSkyMapAndTrajectory:
         assert not tip.get_visible()
 
     def test_trajectory_tooltip(self, window, qapp):
-        window.tabs.setCurrentIndex(1)
+        window.show_page(window._traj_page)
         _pump(qapp)
         window.canvas_traj.draw()
         x, y = window._traj_ax.transData.transform((12.0, 0.0))
@@ -587,6 +603,15 @@ class TestAstraeosRules:
         bad = {text for text in texts if any(_is_emoji(ch) for ch in text)}
         assert not bad, bad
 
+    def test_window_icon_at_taskbar_sizes(self, window):
+        """The window carries Céleste's icon at every size the Windows taskbar takes."""
+        import icons
+        sizes = {(s.width(), s.height()) for s in window.windowIcon().availableSizes()}
+        for size in (16, 24, 32, 40, 48):
+            assert (size, size) in sizes
+            assert not window.windowIcon().pixmap(size, size).isNull()
+        assert set(icons.APP_ICON_SIZES) >= {16, 24, 32, 40, 48}
+
     def test_symbols_use_text_presentation(self, window):
         """Each body symbol is followed by U+FE0E (never shown as an emoji)."""
         name = window._planet_items["Venus"]["col_planet"].text()
@@ -594,7 +619,7 @@ class TestAstraeosRules:
 
     def test_single_gold_area(self, window):
         """A single primary button (gold fill) in the window."""
-        from PyQt6.QtWidgets import QPushButton
+        from qt.QtWidgets import QPushButton
         principal = [b for b in window.findChildren(QPushButton)
                      if b.property("variant") == "principal" and b.isVisibleTo(window)]
         assert principal == [window.btn_calc]
@@ -602,8 +627,8 @@ class TestAstraeosRules:
     def test_focused_field_shows_the_gold_ring(self, window, qapp):
         """v4.8: the box of a field with the keyboard focus is outlined in gold (the
         property was named "focus", Qt's own read-only one, and never changed)."""
-        from PyQt6.QtCore import Qt
-        from PyQt6.QtGui import QFocusEvent
+        from qt.QtCore import Qt
+        from qt.QtGui import QFocusEvent
         from config import Config
         for field in (window.field_lat, window.field_date):
             box = field.box
@@ -634,15 +659,16 @@ class _FakeSource:
     (0 access denied, 1 closed, 2 unknown, 4 timeout), with or without a last
     known position."""
     def __init__(self, coord, error=2, last=None):
-        from PyQt6.QtCore import QObject, pyqtSignal
+        from qt import Signal
+        from qt.QtCore import QObject
 
         class Source(QObject):
-            positionUpdated = pyqtSignal(object)
-            errorOccurred = pyqtSignal(int)
+            positionUpdated = Signal(object)
+            errorOccurred = Signal(int)
 
             def lastKnownPosition(self, *_args):
-                from PyQt6.QtCore import QDateTime
-                from PyQt6.QtPositioning import QGeoCoordinate, QGeoPositionInfo
+                from qt.QtCore import QDateTime
+                from qt.QtPositioning import QGeoCoordinate, QGeoPositionInfo
                 if last is None:
                     return QGeoPositionInfo()
                 return QGeoPositionInfo(QGeoCoordinate(*last), QDateTime.currentDateTime())
@@ -651,8 +677,8 @@ class _FakeSource:
                 if coord is None:
                     self.errorOccurred.emit(error)
                 else:
-                    from PyQt6.QtCore import QDateTime
-                    from PyQt6.QtPositioning import QGeoCoordinate, QGeoPositionInfo
+                    from qt.QtCore import QDateTime
+                    from qt.QtPositioning import QGeoCoordinate, QGeoPositionInfo
                     info = QGeoPositionInfo(QGeoCoordinate(*coord), QDateTime.currentDateTime())
                     info.setAttribute(QGeoPositionInfo.Attribute.HorizontalAccuracy, 25.0)
                     self.positionUpdated.emit(info)
@@ -704,7 +730,7 @@ class TestMoonCalendar:
 
 class TestOrreryAnimation:
     def _planets_tab(self, window, qapp):
-        window.tabs.setCurrentWidget(next(p for p, n in window._chart_tabs.items() if n == "orrery"))
+        window.show_page(next(p for p, n in window._chart_tabs.items() if n == "orrery"))
         _pump(qapp)
 
     def test_steps_move_the_planets(self, window, qapp):
@@ -724,7 +750,7 @@ class TestOrreryAnimation:
         self._planets_tab(window, qapp)
         window._orrery_play.click()
         assert window._orrery_timer.isActive()
-        window.tabs.setCurrentIndex(0)
+        window.show_page(window._ephem_page)
         assert not window._orrery_timer.isActive()
 
     def test_back_to_the_date(self, window, qapp):
@@ -757,7 +783,7 @@ class TestSatellites:
                 on_error(exc)
             else:
                 on_done(result)
-        monkeypatch.setattr(gui, "_run_in_background", run_now)
+        monkeypatch.setattr(gui.common, "_run_in_background", run_now)
         answer = {"refresh": (ELEMENTS, None)}
         monkeypatch.setattr(satellites, "refresh", lambda: answer["refresh"])
         return answer
@@ -798,7 +824,7 @@ class TestSatellites:
 
 class TestDeepSky:
     def test_on_the_sky_map(self, window, qapp):
-        window.tabs.setCurrentWidget(next(p for p, n in window._chart_tabs.items() if n == "sky"))
+        window.show_page(next(p for p, n in window._chart_tabs.items() if n == "sky"))
         _pump(qapp)
         dso = [o for o in window._sky_objects if o["kind"] == "deep_sky"]
         assert 30 < len(dso) < 110 and all(o["alt"] > 0 for o in dso)
@@ -873,7 +899,7 @@ class TestComets:
         monkeypatch.setattr(window, "_mag_limit", lambda: 7.0)
         self._at(window, qapp, datetime(2028, 11, 11, 3), -33.45, -70.67)
         assert "Tsuchinshan" in [o.get("name") for o in window._sky_objects]
-        window.tabs.setCurrentWidget(next(p for p, n in window._chart_tabs.items() if n == "sky"))
+        window.show_page(next(p for p, n in window._chart_tabs.items() if n == "sky"))
         _pump(qapp)                                       # the map draws, name included
 
 
@@ -907,7 +933,7 @@ class TestPlaceSearch:
     def test_name_without_network(self, monkeypatch):
         """Without Nominatim, the nearest city of the offline list names the point."""
         import gui
-        monkeypatch.setattr(gui, "_nominatim_name", lambda lat, lon: "")
+        monkeypatch.setattr(gui.common, "_nominatim_name", lambda lat, lon: "")
         assert gui._place_name(49.6333, -1.6167) == "Cherbourg"
         assert gui._place_name(48.0, -30.0) == ""
 
@@ -916,17 +942,34 @@ class TestGeolocation:
     def test_device_position_is_used(self, window, monkeypatch):
         """Cherbourg given by the device's service, named by OpenStreetMap."""
         import gui
-        monkeypatch.setattr(gui, "QGeoPositionInfoSource", _FakeSource((49.6386, -1.6164)))
-        monkeypatch.setattr(gui, "_place_name", lambda lat, lon: "Cherbourg-en-Cotentin")
+        monkeypatch.setattr(gui.common, "QGeoPositionInfoSource", _FakeSource((49.6386, -1.6164)))
+        monkeypatch.setattr(gui.common, "_place_name", lambda lat, lon, online=True: "Cherbourg-en-Cotentin")
         window.geolocate()
         assert window.entry_lat.text().replace(",", ".") == "49.6386"
         assert window.location_name == "Cherbourg-en-Cotentin"
         assert "±25 m" in window.statusBar().currentMessage()
 
+    def test_the_point_sent_to_be_named(self, window, monkeypatch):
+        """Asked for (the button): OpenStreetMap names the town from the point to the hundredth of a
+        degree; at startup (a phone does it each time), the list on the computer names it, nothing is sent."""
+        import gui
+        monkeypatch.setattr(gui.common, "QGeoPositionInfoSource", _FakeSource((49.6386, -1.6164)))
+        sent = []
+
+        def answer(request, timeout):
+            sent.append(request.full_url)
+            return _FakeResponse(json.dumps({"address": {"city": "Cherbourg-en-Cotentin"}}).encode())
+        monkeypatch.setattr(gui.common.urllib.request, "urlopen", answer)
+        window.geolocate(interactive=True)
+        assert len(sent) == 1 and "lat=49.64&lon=-1.62" in sent[0]
+        assert window.location_name == "Cherbourg-en-Cotentin"
+        window.geolocate(interactive=False)
+        assert len(sent) == 1 and window.location_name == "Cherbourg"
+
     def test_ip_address_only_as_a_fallback(self, window, monkeypatch):
         """Silent service: position of the IP address, announced as approximate."""
         import gui
-        monkeypatch.setattr(gui, "QGeoPositionInfoSource", _FakeSource(None))
+        monkeypatch.setattr(gui.common, "QGeoPositionInfoSource", _FakeSource(None))
         answer = {"status": "success", "city": "Paris", "country": "France",
                   "lat": 48.8566, "lon": 2.3522, "timezone": "Europe/Paris"}
         monkeypatch.setattr(gui.urllib.request, "urlopen",
@@ -945,7 +988,7 @@ class TestGeolocation:
     def test_access_denied_is_explained(self, window, monkeypatch):
         """Issue #19: access denied by Windows — the window says so and opens the settings."""
         import gui
-        monkeypatch.setattr(gui, "QGeoPositionInfoSource", _FakeSource(None, error=0))
+        monkeypatch.setattr(gui.common, "QGeoPositionInfoSource", _FakeSource(None, error=0))
         monkeypatch.setattr(gui.sys, "platform", "win32")
         opened = []
         monkeypatch.setattr(gui.QDesktopServices, "openUrl", staticmethod(lambda url: opened.append(url)))
@@ -962,7 +1005,7 @@ class TestGeolocation:
         """Access that cannot be allowed (setting greyed out): the window offers the map,
         and the place picked there is used."""
         import gui
-        monkeypatch.setattr(gui, "QGeoPositionInfoSource", _FakeSource(None, error=0))
+        monkeypatch.setattr(gui.common, "QGeoPositionInfoSource", _FakeSource(None, error=0))
         self._ip_answer(monkeypatch)
         picked = []
         monkeypatch.setattr(window, "choose_on_map", lambda: picked.append(True))
@@ -975,7 +1018,7 @@ class TestGeolocation:
 
     def test_no_answer_at_all_offers_the_map(self, window, monkeypatch):
         import gui
-        monkeypatch.setattr(gui, "QGeoPositionInfoSource", _FakeSource(None, error=0))
+        monkeypatch.setattr(gui.common, "QGeoPositionInfoSource", _FakeSource(None, error=0))
 
         def offline(*a, **k):
             raise OSError("offline")
@@ -1029,7 +1072,7 @@ class TestGeolocation:
 
             def exec(self):
                 return gui.QDialog.DialogCode.Accepted
-        monkeypatch.setattr(gui, "PlacePicker", Fake)
+        monkeypatch.setattr(gui.common, "PlacePicker", Fake)
         window.choose_on_map()
         assert window.location_name == "Marseille"
         assert window.entry_lat.text().startswith("43,2965")
@@ -1037,9 +1080,9 @@ class TestGeolocation:
     def test_last_known_position_before_the_ip_address(self, window, monkeypatch):
         """Timeout: the device's last known position rather than the IP address."""
         import gui
-        monkeypatch.setattr(gui, "QGeoPositionInfoSource",
+        monkeypatch.setattr(gui.common, "QGeoPositionInfoSource",
                             _FakeSource(None, error=4, last=(49.6386, -1.6164)))
-        monkeypatch.setattr(gui, "_place_name", lambda lat, lon: "Cherbourg-en-Cotentin")
+        monkeypatch.setattr(gui.common, "_place_name", lambda lat, lon, online=True: "Cherbourg-en-Cotentin")
         monkeypatch.setattr(gui.urllib.request, "urlopen", lambda *a, **k: pytest.fail("adresse IP"))
         window.geolocate()
         assert window.location_name == "Cherbourg-en-Cotentin"
@@ -1047,7 +1090,7 @@ class TestGeolocation:
     def test_no_window_at_startup(self, window, monkeypatch):
         """At startup (automatic geolocation), the status bar only."""
         import gui
-        monkeypatch.setattr(gui, "QGeoPositionInfoSource", _FakeSource(None, error=4))
+        monkeypatch.setattr(gui.common, "QGeoPositionInfoSource", _FakeSource(None, error=4))
         self._ip_answer(monkeypatch)
         window._geo_dialog = None
         window.geolocate(interactive=False)
@@ -1067,7 +1110,7 @@ class TestCoordinatesTab:
               "Éris", "Sedna"]
 
     def _open(self, window):
-        window.tabs.setCurrentWidget(window._coord_page)
+        window.show_page(window._coord_page)
 
     def _choose(self, window, key, value):
         menu = window.coord_menus[key]
@@ -1187,8 +1230,8 @@ class TestUserFiles:
     def test_favorites_start_from_the_default_list(self, window, tmp_path, monkeypatch):
         """Without saved favourites, the starting list (36 cities); saved in the user's folder."""
         import gui
-        monkeypatch.setattr(gui, "_FAVORITES_FILE", str(tmp_path / "user" / "favorites.json"))
-        monkeypatch.setattr(gui, "_LEGACY_FAVORITES_FILE", str(tmp_path / "absent.json"))
+        monkeypatch.setattr(gui.common, "_FAVORITES_FILE", str(tmp_path / "user" / "favorites.json"))
+        monkeypatch.setattr(gui.common, "_LEGACY_FAVORITES_FILE", str(tmp_path / "absent.json"))
         favorites = window._load_favorites()
         assert len(favorites) == 36 and "Paris" in favorites
         assert favorites["Mexico"] == {"lat": 19.4326, "lon": -99.1332, "elev": 2240}
@@ -1200,8 +1243,8 @@ class TestUserFiles:
     def test_preloaded_places_in_the_interface_language(self, window, tmp_path, monkeypatch, qapp):
         """v4.8: London, Londres, Londres, London; a language without its own name: English."""
         import gui
-        monkeypatch.setattr(gui, "_FAVORITES_FILE", str(tmp_path / "user" / "favorites.json"))
-        monkeypatch.setattr(gui, "_LEGACY_FAVORITES_FILE", str(tmp_path / "legacy.json"))
+        monkeypatch.setattr(gui.common, "_FAVORITES_FILE", str(tmp_path / "user" / "favorites.json"))
+        monkeypatch.setattr(gui.common, "_LEGACY_FAVORITES_FILE", str(tmp_path / "legacy.json"))
         names = {lang: list(gui._default_favorites(lang)) for lang in ("fr", "en", "es", "de", "it")}
         assert all(len(n) == len(set(n)) == 36 for n in names.values())
         assert [n[14] for n in names.values()] == ["Londres", "London", "Londres", "London", "London"]
@@ -1223,7 +1266,7 @@ class TestUserFiles:
 class TestEclipseMap:
     def test_map_of_a_solar_eclipse(self, window, qapp):
         """The "Map" button of an eclipse opens its ground projection."""
-        from PyQt6.QtWidgets import QPushButton
+        from qt.QtWidgets import QPushButton
         window._search_eclipses_gui()
         qapp.processEvents()
         buttons = [b for b in window.findChildren(QPushButton) if b.text() == "Carte"]
@@ -1288,7 +1331,7 @@ class TestDataWindow:
 
     def test_click_in_the_coordinates_table(self, window, qapp):
         """Sun and Vesta from the Coordinates tab; the Earth has no card."""
-        window.tabs.setCurrentWidget(window._coord_page)
+        window.show_page(window._coord_page)
         from engine import AstroEngine
         bodies = list(AstroEngine.BODIES)
         window._detail_dialog = None
@@ -1378,29 +1421,41 @@ class TestFirstLaunch:
 class TestSolarSystemTab:
     def test_its_own_tab_after_the_planets(self, window, qapp):
         names = [window.tabs.tabText(i) for i in range(window.tabs.count())]
-        assert names == ["Éphémérides", "Trajectoires", "Carte du ciel", "Planètes", "Système solaire",
-                         "Coordonnées", "Événements", "Cibles", ""]
-        assert window.tabs.tabToolTip(8) == "Paramètres" and not window.tabs.tabIcon(8).isNull()
-        page = window.tabs.widget(4)
-        assert window.canvas_orrery.isAncestorOf(window.canvas_orrery) and page.isAncestorOf(window.canvas_orrery)
-        assert not window.tabs.widget(3).isAncestorOf(window.canvas_orrery)
-        assert window.tabs.widget(3).isAncestorOf(window.planet_table)
-        window.tabs.setCurrentIndex(4)
+        assert names == ["Ce soir", "Ciel", "Astres", "Calendrier", "Observer", ""]
+        assert window.tabs.tabToolTip(5) == "Paramètres" and not window.tabs.tabIcon(5).isNull()
+        bodies = window.tabs.widget(2)
+        assert [bodies.tabText(i) for i in range(bodies.count())] == ["Planètes", "Système solaire", "Coordonnées",
+                                                                       "Géocroiseurs"]
+        observe = window.tabs.widget(4)
+        assert [observe.tabText(i) for i in range(observe.count())] == ["Cibles", "Occultations", "Journal"]
+        page = window._orrery_page
+        assert bodies.indexOf(page) == 1 and page.isAncestorOf(window.canvas_orrery)
+        assert not window._planets_page.isAncestorOf(window.canvas_orrery)
+        assert window._planets_page.isAncestorOf(window.planet_table)
+        window.show_page(page)
         _pump(qapp, 3)
+        assert window.tabs.currentIndex() == 2 and window.current_page() is page
         assert "orrery" not in window._dirty                     # drawn when its tab shows
         assert window.fig_orrery.axes
 
+    def test_the_page_survives_a_rebuild(self, window, qapp):
+        """A new language rebuilds the window on the same page of the same space."""
+        window.show_page(window._coord_page)
+        window._lang_combo.setCurrentIndex(window._lang_combo.findData("en"))
+        _pump(qapp)
+        assert window.current_page() is window._coord_page and window.tabs.tabText(2) == "Bodies"
+
     def test_animation_stops_when_the_tab_is_left(self, window, qapp):
-        window.tabs.setCurrentIndex(4)
+        window.show_page(window._orrery_page)
         window._toggle_orrery()
         assert window._orrery_timer.isActive()
-        window.tabs.setCurrentIndex(3)
+        window.show_page(window._planets_page)
         _pump(qapp, 3)
         assert not window._orrery_timer.isActive()
 
     def test_every_body_fits_in_the_planets_tab(self, window, qapp):
         """With the map gone, the table shows the 7 planets, 9 minor planets and the comets at once."""
-        window.tabs.setCurrentIndex(3)
+        window.show_page(window._planets_page)
         window._planet_selector.buttons["all"].click()
         _pump(qapp, 3)
         table = window.planet_table
@@ -1409,13 +1464,27 @@ class TestSolarSystemTab:
         window._planet_selector.buttons["planets"].click()
 
     @pytest.mark.parametrize("lang", ["fr", "en", "es", "de"])
-    def test_the_nine_tabs_fit_at_the_minimum_width(self, window, qapp, lang):
+    def test_the_spaces_fit_at_the_minimum_width(self, window, qapp, lang):
         window._lang_combo.setCurrentIndex(window._lang_combo.findData(lang))
         _pump(qapp)
         window.resize(window.minimumWidth(), window.minimumHeight())
         _pump(qapp, 3)
-        assert window.tabs.count() == 9
+        assert window.tabs.count() == 6
         assert window.tabs.tabBar().sizeHint().width() <= window.tabs.width()
+        for space in window._space_tabs:
+            assert space.tabBar().sizeHint().width() <= window.tabs.width()
+
+    def test_a_short_title_when_the_row_is_full(self, window, qapp):
+        """On a phone, the Sky's four pages: the Novae page under its short title, the full one in its
+        tooltip; back to the full title on a computer's window."""
+        space = next(s for s in window._space_tabs if s.indexOf(window._transients_page) >= 0)
+        index = space.indexOf(window._transients_page)
+        window.resize(window.minimumWidth(), window.minimumHeight())
+        _pump(qapp, 3)
+        assert space.tabText(index) == "Novae" and space.tabToolTip(index) == "Novae et supernovae"
+        window.resize(1350, 820)
+        _pump(qapp, 3)
+        assert space.tabText(index) == "Novae et supernovae" and space.tabToolTip(index) == ""
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -1434,8 +1503,8 @@ def planner_tab(window, qapp, monkeypatch):
             on_error(exc)
         else:
             on_done(result)
-    monkeypatch.setattr(gui, "_run_in_background", run_now)
-    window.tabs.setCurrentWidget(window._planner_page)              # computes the night
+    monkeypatch.setattr(gui.common, "_run_in_background", run_now)
+    window.show_page(window._planner_page)              # computes the night
     _pump(qapp, 3)
     return window
 
@@ -1450,8 +1519,8 @@ class TestPlanner:
     def test_computed_when_the_tab_shows(self, planner_tab):
         w = planner_tab
         assert w._plan is not None and w._plan["window"]["kind"] == "astro"
-        assert w._plan_summary.text() == ("Nuit astronomique de 18:33 à 05:08. "
-                                          "Lune éclairée à 49 % : écart minimal de 45°.")
+        assert w._plan_summary.text().splitlines()[0] == ("Nuit astronomique de 18:33 à 05:08. "
+                                                          "Lune éclairée à 49 % : écart minimal de 45°.")
         assert w._plan_status.text() == "8 cibles retenues sur 48 objets (Messier (110))."
         assert self._column(w, "deep_sky", "col_target")[:2] == ["M33 Galaxie du Triangle", "M34"]
         assert self._column(w, "deep_sky", "col_fraction")[0] == "91 %"
@@ -1463,8 +1532,8 @@ class TestPlanner:
         import gui
         monkeypatch.setattr(gui.planner, "plan", lambda *a, **k: pytest.fail("computed again"))
         planner_tab._compute_plan()
-        planner_tab.tabs.setCurrentIndex(0)
-        planner_tab.tabs.setCurrentWidget(planner_tab._planner_page)
+        planner_tab.show_page(planner_tab._ephem_page)
+        planner_tab.show_page(planner_tab._planner_page)
 
     def test_constraints_are_read_checked_and_kept(self, planner_tab):
         w = planner_tab
@@ -1498,7 +1567,8 @@ class TestPlanner:
         table.selectRow(3)                                              # M31
         w._plan_context_menu(table.visualItemRect(table.item(3, 0)).center())
         actions = {a.text(): a for a in w._plan_menu.actions()}
-        assert set(actions) == {"Voir sur la carte du ciel", "Ajouter à « à faire »", "Marquer comme déjà fait"}
+        assert set(actions) == {"Voir sur la carte du ciel", "Noter une observation", "Ajouter à « à faire »",
+                                "Marquer comme déjà fait"}
         actions["Marquer comme déjà fait"].trigger()
         w._plan_menu.close()
         assert prefs.get("planner_done") == ["M31"]
@@ -1524,10 +1594,10 @@ class TestPlanner:
     def test_target_shown_on_the_sky_map(self, planner_tab, qapp):
         w = planner_tab
         w._show_plan_target_on_map(3)                                   # M31
-        assert w.tabs.currentIndex() == 2 and w._sky_found == ("messier", 31)
+        assert w.current_page() is w._sky_page and w._sky_found == ("messier", 31)
         w._plan_catalog.setCurrentIndex(w._plan_catalog.findData("caldwell"))
         w._compute_plan()
-        w.tabs.setCurrentWidget(w._planner_page)
+        w.show_page(w._planner_page)
         first = w._plan["deep_sky"][0]
         row = next(r for r in range(w._plan_tables["deep_sky"].rowCount())
                    if w._plan_tables["deep_sky"].item(r, 0).data(gui_name_role()) == first["label"])
@@ -1682,7 +1752,7 @@ def gui_name_role():
 class TestSkySearch:
     @staticmethod
     def _find(window, text):
-        window.tabs.setCurrentIndex(2)
+        window.show_page(window._sky_page)
         window._find_entry.setText(text)
         window._on_find_return()
 
@@ -1756,7 +1826,7 @@ class TestSkySearch:
         assert "Lune : hauteur" in window._chart_hints["sky"].text() and len(self._rings(window)) == 1
         window._lang_combo.setCurrentIndex(window._lang_combo.findData("en"))
         _pump(qapp)
-        window.tabs.setCurrentIndex(2)
+        window.show_page(window._sky_page)
         _pump(qapp, 3)
         assert window._find_entry.text() == "Moon" and window._sky_found == ("moon",)
         assert window._chart_hints["sky"].text().startswith("Moon: altitude ")
@@ -1965,7 +2035,7 @@ class TestUpdates:
                 on_error(exc)
             else:
                 on_done(result)
-        monkeypatch.setattr(gui, "_run_in_background", run_now)
+        monkeypatch.setattr(gui.common, "_run_in_background", run_now)
         answer = {"release": dict(self.RELEASE)}
         monkeypatch.setattr(gui.updater, "latest_release", lambda: answer["release"])
         return answer
@@ -2125,7 +2195,7 @@ def test_astronomical_calendar(window, qapp, tmp_path, monkeypatch):
     the filters, and the .ics export of what they let through."""
     import gui
     from datetime import date
-    monkeypatch.setattr(gui, "_run_in_background", lambda func, done, err: done(func()))
+    monkeypatch.setattr(gui.common, "_run_in_background", lambda func, done, err: done(func()))
     window.show_calendar()
     qapp.processEvents()
     cal = window._cal_state
@@ -2143,3 +2213,1074 @@ def test_astronomical_calendar(window, qapp, tmp_path, monkeypatch):
     text = target.read_text(encoding="utf-8")
     assert text.count("BEGIN:VEVENT") == len(window._ics_items) and "Pleine lune" in text
     widgets["boxes"]["moon"].setChecked(True)
+    # v4.18: the minima of Algol seen from the place, under their own filter
+    assert widgets["boxes"]["variables"].text() == "Étoiles variables"
+    assert any(i["category"] == "variables" for i in cal["items"])
+    window._cal_choose(date(2026, 11, 10))                       # 00:12 UT, Algol near the zenith
+    assert any("Minimum d'Algol" in c.lines.text() for c in window._cal_widgets["cells"])
+
+
+def test_month_sheet(window, qapp, tmp_path, monkeypatch):
+    """v4.19: the month's sheet to print: the calculation's month by default, the PDF written
+    in the colours of the Jour theme, the window's theme kept."""
+    import gui
+    import month_sheet
+    from config import Config
+    monkeypatch.setattr(gui.common, "_run_in_background", lambda func, done, err: done(func()))
+    dlg = window._month_sheet_dialog()
+    assert (dlg.month.date().year(), dlg.month.date().month()) == (2026, 11)
+    target = tmp_path / "ciel.pdf"
+    monkeypatch.setattr(gui.QFileDialog, "getSaveFileName", lambda *a, **k: (str(target), ""))
+    seen, real_save = {}, month_sheet.save
+
+    def spy(path, sheet, texts):
+        seen["theme"], seen["texts"] = Config.THEME, texts
+        real_save(path, sheet, texts)
+
+    monkeypatch.setattr(month_sheet, "save", spy)
+    dlg.save()
+    assert target.read_bytes().startswith(b"%PDF")
+    assert seen["theme"] == "jour" and Config.THEME == "nuit"
+    texts = seen["texts"]
+    assert texts["title"] == "Novembre 2026" and len(texts["phases"]) == 4
+    assert any(title == "Minimum d'Algol" for _when, title in texts["events"])
+    assert "vers" in texts["map_caption"] and "Fiche enregistrée" in window.statusBar().currentMessage()
+    window._sheet_btn.click()                                        # the button of the Tonight card
+    assert window._month_sheet_dlg.isVisible()
+    window._month_sheet_dlg.reject()
+
+
+def test_algol_minimum_tonight(window, qapp):
+    """v4.18: Tonight names the minimum of Algol of the night when it can be watched."""
+    window._set_datetime(datetime(2026, 11, 9, 21, 0))
+    window.calculate()
+    algol = [text for text, _tone in window._tonight_lines() if "Algol" in text]
+    assert len(algol) == 1 and "00:1" in algol[0] and "±30 min" in algol[0]
+    window._set_datetime(datetime(2026, 11, 8, 21, 0))                 # no minimum that night
+    window.calculate()
+    assert not any("Algol" in text for text, _tone in window._tonight_lines())
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Compact layout: a phone, or a narrow window (v4.15, docs/ANDROID.md)
+# ──────────────────────────────────────────────────────────────────────
+
+class TestCompactLayout:
+    from qt.QtWidgets import QTabWidget
+
+    @staticmethod
+    def _phone(window, qapp, width=360, height=740):
+        window.resize(width, height)
+        _pump(qapp, 5)
+
+    def test_wide_by_default(self, window, qapp):
+        assert not window.is_compact()
+        assert window._sidebar_scroll.isVisible() and window._main.isVisible()
+        assert window.tabs.tabPosition() == self.QTabWidget.TabPosition.North
+        assert not window._top_summary.parentWidget().isVisible()
+
+    def test_phone_width(self, window, qapp):
+        self._phone(window, qapp)
+        assert window.is_compact()
+        assert window.width() == 360
+        assert not window._sidebar_scroll.isVisible() and window._main.isVisible()
+        assert window.tabs.tabPosition() == self.QTabWidget.TabPosition.South
+        assert window._top_summary.parentWidget().isVisible()
+        assert "Cherbourg" in window._top_summary.text()
+        assert not window.statusBar().isVisible()
+
+    def test_the_spaces_fit_the_bottom_bar(self, window, qapp):
+        self._phone(window, qapp)
+        bar = window.tabs.tabBar()
+        right = max(bar.tabRect(i).right() for i in range(bar.count()))
+        assert right <= window.tabs.width()
+        assert all(bar.tabRect(i).height() >= 44 for i in range(bar.count()))     # touch targets
+
+    def test_sky_map_toolbar_in_rows(self, window, qapp):
+        """The map's tools stacked at a phone's width, nothing over another; the time bar under the map."""
+        self._phone(window, qapp)
+        window.show_page(window._sky_page)
+        _pump(qapp, 5)
+        boxes = [w.geometry().translated(w.parentWidget().mapTo(window, w.pos()) - w.pos())
+                 for w in (window._mag_slider, window._messier_box, window._find_entry)]
+        assert boxes[0].bottom() < boxes[1].top() and boxes[1].bottom() < boxes[2].top()
+        assert window._find_entry.width() > 300 and window._mag_slider.width() > 150
+        slider = window._sky_time_slider
+        assert slider.mapTo(window, slider.rect().topLeft()).y() > window.canvas_sky.mapTo(window, window.canvas_sky.rect().bottomLeft()).y()
+        self._phone(window, qapp, 1350, 820)
+        assert window._find_entry.width() == 220 and window._mag_slider.width() == 240
+
+    def test_the_window_fits_the_phone_in_every_language(self, window, qapp):
+        """The 5.0 alpha ran off the phone's screen: the sizes kept from the wide layout,
+        and rows too wide in German (the longest labels)."""
+        for lang in ("fr", "de"):
+            window._lang_combo.setCurrentIndex(window._lang_combo.findData(lang))
+            _pump(qapp)
+            for width in (360, 411, 360):
+                self._phone(window, qapp, width)
+                assert window.minimumSizeHint().width() <= width, (lang, width)
+        window._lang_combo.setCurrentIndex(window._lang_combo.findData("fr"))
+        _pump(qapp)
+
+    def test_calendar_buttons_in_two_columns(self, window, qapp):
+        """The Calendar space's buttons: two columns of short labels on a phone, nothing clipped."""
+        self._phone(window, qapp)
+        buttons = window._evt_bar_buttons
+        assert all("(" not in b.text() for b in buttons)
+        assert len({window._evt_bar.getItemPosition(window._evt_bar.indexOf(b))[1] for b in buttons}) == 2
+        self._phone(window, qapp, 1350, 820)
+        assert buttons[1].text() == "Éclipses (12 mois)" and buttons[-1].text() == "Exporter (.ics)"
+
+    def test_drawer(self, window, qapp):
+        self._phone(window, qapp)
+        window._drawer_btn.click()
+        _pump(qapp, 3)
+        assert window._sidebar_scroll.isVisible() and not window._main.isVisible()
+        assert window._sidebar_scroll.width() > 312                               # the whole width
+        window.btn_calc.click()
+        _pump(qapp, 3)
+        assert not window._sidebar_scroll.isVisible() and window._main.isVisible()
+
+    def test_cards_one_under_another(self, window, qapp):
+        self._phone(window, qapp)
+        assert window.card_sun_alt.y() < window.card_sun_rise.y()
+        window.resize(1400, 880)
+        _pump(qapp, 5)
+        assert not window.is_compact()
+        assert window.card_sun_alt.y() == window.card_sun_rise.y()
+        assert window._sidebar_scroll.isVisible()
+
+    def test_targets_constraints_on_their_own_page(self, window, qapp):
+        self._phone(window, qapp)
+        window.show_page(window._planner_page)
+        _pump(qapp, 3)
+        assert not window._plan_side.isVisible() and window._plan_right.isVisible()
+        window._btn_plan_side.click()
+        assert window._plan_side.isVisible() and not window._plan_right.isVisible()
+        window._show_plan_side(False)
+        assert not window._plan_side.isVisible()
+
+    def test_survives_a_rebuild(self, window, qapp):
+        self._phone(window, qapp)
+        window._lang_combo.setCurrentIndex(window._lang_combo.findData("en"))
+        _pump(qapp, 5)
+        assert window.is_compact()
+        assert window.tabs.tabPosition() == self.QTabWidget.TabPosition.South
+
+
+class TestSkyMapZoom:
+    @staticmethod
+    def _sky(window, qapp):
+        window.show_page(window._sky_page)
+        _pump(qapp, 3)
+        window.canvas_sky.draw()
+        return window._sky_ax
+
+    def test_whole_sky_by_default(self, window, qapp):
+        ax = self._sky(window, qapp)
+        assert ax.get_xlim() == pytest.approx((-1.17, 1.17))
+        assert window._sky_zoom_lbl.text() == ""
+
+    def test_zoom_keeps_the_point_under_the_pointer(self, window, qapp):
+        ax = self._sky(window, qapp)
+        window._sky_zoom_by(2.0, (0.5, 0.2))
+        x0, x1 = ax.get_xlim()
+        assert x1 - x0 == pytest.approx(1.17)
+        # the point (0.5, 0.2) stays at the same fraction of the view
+        assert (0.5 - x0) / (x1 - x0) == pytest.approx((0.5 + 1.17) / 2.34)
+        assert window._sky_zoom_lbl.text() == "×2,0"
+
+    def test_kept_when_the_map_is_redrawn(self, window, qapp):
+        ax = self._sky(window, qapp)
+        window._sky_zoom_by(3.0, (0.0, 0.5))
+        window.calculate()
+        window._dirty.add("sky")
+        window._draw_visible_chart()
+        x0, x1 = window._sky_ax.get_xlim()
+        assert x1 - x0 == pytest.approx(2.34 / 3.0)
+        window._sky_reset_view()
+        assert window._sky_ax.get_xlim() == pytest.approx((-1.17, 1.17))
+
+    def test_limits(self, window, qapp):
+        self._sky(window, qapp)
+        window._sky_zoom_by(0.5)
+        assert window._sky_zoom == 1.0
+        window._sky_zoom_by(1000.0, (5.0, 5.0))
+        assert window._sky_zoom == 12.0
+        cx, cy = window._sky_center
+        assert cx <= 1.17 and cy <= 1.17                       # the map's edge stays in view
+
+    def test_drag_moves_a_zoomed_map(self, window, qapp):
+        from matplotlib.backend_bases import MouseEvent
+        ax = self._sky(window, qapp)
+        window._sky_zoom_by(4.0)
+        x, y = ax.transData.transform((0.0, 0.0))
+        window._on_sky_press(MouseEvent("button_press_event", window.canvas_sky, x, y, button=1))
+        window._on_sky_hover(MouseEvent("motion_notify_event", window.canvas_sky, x + 60, y, button=1))
+        window._on_sky_release(MouseEvent("button_release_event", window.canvas_sky, x + 60, y, button=1))
+        assert window._sky_center[0] < 0                     # dragged right: the view moved left
+        assert window._sky_drag is None
+
+
+class _FakeAim:
+    """A phone's rotation sensor (ui/phone.PhoneAim) held by the test: *angles* are Qt's x, y, z."""
+
+    def __init__(self):
+        self.angles, self.running = None, False
+
+    def available(self):
+        return True
+
+    def start(self):
+        self.running = True
+
+    def stop(self):
+        self.running = False
+
+    def active(self):
+        return self.running
+
+    def reading(self):
+        return self.angles
+
+
+def _held(alt, az):
+    """Qt's angles of a phone held upright then tilted, its back at (*alt*, magnetic *az*), not tilted sideways."""
+    return 90.0 + alt, 0.0, -az
+
+
+class TestFollowThePhone:
+    """Ciel › Carte du ciel: the map turned and moved by the phone's rotation sensor (v4.22)."""
+
+    @staticmethod
+    def _sky(window, qapp):
+        window._phone_aim = _FakeAim()
+        window.show_page(window._sky_page)
+        _pump(qapp, 3)
+        window.canvas_sky.draw()
+        return window._sky_ax
+
+    @staticmethod
+    def _aim_at(window, alt, az):
+        window._phone_aim.angles = _held(alt, az)
+        for _ in range(40):                              # four seconds held still: the map settles
+            window._sky_follow_tick()
+
+    def test_no_sensor_on_a_desktop(self, window):
+        assert window._sky_follow_btn.isHidden()
+        window._set_sky_follow(True)
+        assert not window._sky_follow and not window._sky_follow_btn.isChecked()
+
+    def test_the_compass_on_a_small_phone(self, window, qapp):
+        """The 4.22 compass made the sky map's row of the zoom too wide for the emulator's 320 px screen
+        (349 px): it sits beside the search, which shrinks, and the page is no wider with it."""
+        window._phone_aim = _FakeAim()
+        window.show_page(window._sky_page)
+        window.resize(360, 740)
+        _pump(qapp, 5)
+        assert window._sky_find_row.indexOf(window._sky_follow_btn) >= 0
+        window._sky_follow_btn.setVisible(False)
+        _pump(qapp)
+        without = window._sky_page.minimumSizeHint().width()
+        window._sky_follow_btn.setVisible(True)
+        _pump(qapp)
+        assert window._sky_page.minimumSizeHint().width() <= without + 2
+
+    def test_the_map_turns_to_the_sky_behind_the_phone(self, window, qapp):
+        import charts
+        ax = self._sky(window, qapp)
+        window._sky_follow_btn.setChecked(True)          # the button
+        assert window._sky_follow and window._phone_aim.running and window._sky_zoom == 2.5
+        assert "déclinaison magnétique" in window.statusBar().currentMessage()
+        decl = window._sky_declination
+        assert -1.0 < decl < 3.0                          # Cherbourg: about 1° east
+        self._aim_at(window, 30, 120)                     # 30° up, toward the south-east (magnetic)
+        alt, az, turn = window._sky_aim
+        assert alt == pytest.approx(30, abs=0.01) and az == pytest.approx(120 + decl, abs=0.01)
+        assert turn == pytest.approx(60 - decl, abs=0.01) and window._sky_turn == turn
+        # the view centred where the phone looks, that point straight below the zenith on the screen
+        cx, cy = charts.turned_xy(*charts.sky_xy(alt, az), turn)
+        assert cx == pytest.approx(0, abs=1e-6) and cy == pytest.approx(-60 / 90, abs=1e-6)
+        assert np.mean(ax.get_xlim()) == pytest.approx(cx) and np.mean(ax.get_ylim()) == pytest.approx(cy)
+        ring = window._sky_reticle
+        assert ring.get_visible() and (ring.get_xdata()[0], ring.get_ydata()[0]) == pytest.approx(
+            charts.sky_xy(alt, az))
+        # a star there is drawn at its turned place, and a tap on it opens its card
+        shown = []
+        window._show_object_detail = shown.append
+        star = min(window._sky_scene["stars"], key=lambda s: math.hypot(s["x"] - charts.sky_xy(alt, az)[0],
+                                                                         s["y"] - charts.sky_xy(alt, az)[1]))
+        x, y = ax.transData.transform(charts.turned_xy(star["x"], star["y"], turn))
+        window._on_sky_press(MouseEvent("button_press_event", window.canvas_sky, x, y, button=1))
+        window._on_sky_release(MouseEvent("button_release_event", window.canvas_sky, x, y, button=1))
+        assert shown and shown[0]["name"] == star["name"]
+
+    def test_small_moves_do_not_redraw(self, window, qapp):
+        self._sky(window, qapp)
+        window._set_sky_follow(True)
+        self._aim_at(window, 45, 200)
+        before = window._sky_aim
+        assert before[0] == pytest.approx(45, abs=0.02)   # settled where the phone points
+        drawn = []
+        window._show_sky_aim = lambda *aim: drawn.append(aim)
+        window._phone_aim.angles = _held(45.1, 200.1)    # a hand's tremor, and back
+        window._sky_follow_tick()
+        window._phone_aim.angles = _held(45, 200)
+        for _ in range(20):
+            window._sky_follow_tick()
+        assert drawn == []
+        del window._show_sky_aim
+        self._aim_at(window, 50, 210)                    # moved: the map follows, then settles
+        assert window._sky_aim[0] == pytest.approx(50, abs=0.02)
+
+    def test_back_to_north_up(self, window, qapp):
+        import charts
+        ax = self._sky(window, qapp)
+        window._set_sky_follow(True)
+        self._aim_at(window, 40, 0)                      # facing north: the map upside down
+        assert window._sky_turn == pytest.approx(180 - window._sky_declination, abs=0.01)
+        window._set_sky_follow(False)
+        assert not window._phone_aim.running and window._sky_turn == 0 and not window._sky_reticle.get_visible()
+        # the same sky in view, now north up: the north, 40° up
+        x, y = charts.sky_xy(40, window._sky_declination)
+        assert np.mean(ax.get_xlim()) == pytest.approx(x, abs=1e-6)
+        assert np.mean(ax.get_ylim()) == pytest.approx(y, abs=1e-6)
+        assert not window._sky_follow_btn.isChecked()
+
+    def test_the_finger_does_not_move_a_followed_map(self, window, qapp):
+        ax = self._sky(window, qapp)
+        window._set_sky_follow(True)
+        self._aim_at(window, 20, 90)
+        center = window._sky_center
+        x, y = ax.transData.transform(center)
+        window._on_sky_press(MouseEvent("button_press_event", window.canvas_sky, x, y, button=1))
+        window._on_sky_hover(MouseEvent("motion_notify_event", window.canvas_sky, x + 80, y, button=1))
+        window._on_sky_release(MouseEvent("button_release_event", window.canvas_sky, x + 80, y, button=1))
+        assert window._sky_center == center
+
+    def test_the_sensor_rests_on_another_page(self, window, qapp):
+        self._sky(window, qapp)
+        window._set_sky_follow(True)
+        window.show_page(window._traj_page)
+        _pump(qapp)
+        window._sky_follow_tick()
+        assert not window._phone_aim.running and window._sky_follow
+        window.show_page(window._sky_page)
+        _pump(qapp)
+        window._sky_follow_tick()
+        assert window._phone_aim.running
+
+    def test_kept_through_a_new_drawing(self, window, qapp):
+        self._sky(window, qapp)
+        window._set_sky_follow(True)
+        self._aim_at(window, 25, 300)
+        window._dirty.add("sky")
+        window._draw_visible_chart()                      # a new calculation, a frame of the time bar
+        assert window._sky_reticle.get_visible()
+        assert window._sky_ax._celeste_turn.to_values() != (1, 0, 0, 1, 0, 0)    # still turned
+
+    def test_reset_stops_following(self, window, qapp):
+        self._sky(window, qapp)
+        window._set_sky_follow(True)
+        self._aim_at(window, 60, 45)
+        window._sky_reset_view()
+        assert not window._sky_follow and window._sky_turn == 0 and window._sky_zoom == 1.0
+
+
+class TestPhoneLocation:
+    """Android asks the person before Céleste reads the phone's position (v4.22)."""
+
+    class _App:
+        def __init__(self, status, answer=None):
+            self.status, self.answer, self.asked = status, answer, 0
+
+        def checkPermission(self, _permission):
+            return self.status
+
+        def requestPermission(self, _permission, _context, callback):
+            self.asked += 1
+            self.status = self.answer
+            callback()
+
+    def test_the_permission(self, monkeypatch):
+        import mobile
+        from qt.QtCore import Qt
+        from ui import phone
+        said = []
+        go_on, refused = (lambda: said.append("yes")), (lambda: said.append("no"))
+        assert phone.location_allowed(None, go_on, refused)                         # a desktop: nothing to ask
+        monkeypatch.setattr(mobile, "is_android", lambda: True)
+        status = Qt.PermissionStatus
+        assert phone.location_allowed(None, go_on, refused, app=self._App(status.Granted))
+        app = self._App(status.Undetermined, answer=status.Granted)
+        assert not phone.location_allowed(None, go_on, refused, app=app)           # asked, then yes
+        assert app.asked == 1 and said == ["yes"]
+        app = self._App(status.Undetermined, answer=status.Denied)
+        assert not phone.location_allowed(None, go_on, refused, app=app)
+        assert said == ["yes", "no"]
+        app = self._App(status.Denied)                                              # Android asks no more
+        assert not phone.location_allowed(None, go_on, refused, app=app)
+        assert app.asked == 0 and said == ["yes", "no", "no"]
+
+    def test_refused_no_address_lookup(self, window, monkeypatch):
+        import gui
+        from ui import phone
+
+        def no_lookup():
+            raise AssertionError("the IP address looked up although the person said no")
+        monkeypatch.setattr(gui, "_ip_location", no_lookup)
+        monkeypatch.setattr(phone, "location_allowed", lambda _ctx, _go_on, refused, app=None: refused() or False)
+        lat = window.entry_lat.text()
+        window.geolocate(interactive=False)                                         # at launch: a word below
+        assert "permission" in window.statusBar().currentMessage()
+        window.geolocate(interactive=True)                                          # the button: a window
+        box = window._geo_dialog
+        assert "permission" in box.text() and "Android" in box.informativeText()
+        box.close()
+        assert window.entry_lat.text() == lat and window._geo_source is None
+
+
+class TestSkyTimeBar:
+    """Ciel › Carte du ciel: the night on a time bar under the map, played with ▶ (v4.18)."""
+
+    @staticmethod
+    def _sky(window, qapp):
+        window.show_page(window._sky_page)
+        _pump(qapp, 3)
+        return window._sky_time_slider
+
+    def test_the_bar_spans_the_night(self, window, qapp):
+        import planner
+        slider = self._sky(window, qapp)
+        night = planner.night_window(DTE, window._lat, window._lon, 0.0, window._zone, depths=((-0.833, "n"),))
+        start = (night["start"] - DTE).total_seconds() / 60 - 30           # half an hour before sunset
+        end = (night["end"] - DTE).total_seconds() / 60 + 30               # and after sunrise
+        assert start - 5 < slider.minimum() <= start and end <= slider.maximum() < end + 5
+        assert slider.value() == 0 and window._sky_offset_min == 0
+        assert window._sky_time_lbl.text() == "21:30"                      # the place's time (UTC here)
+        assert not window._sky_time_reset.isEnabled()
+
+    def test_the_map_moves_not_the_calculation(self, window, qapp):
+        slider = self._sky(window, qapp)
+        sun_alt, stars = window.sun_data["alt"], list(window.visible_stars)
+        slider.setValue(120)
+        _pump(qapp, 3)
+        assert window._sky_time_lbl.text() == "23:30" and window._sky_time_reset.isEnabled()
+        assert "01/11/2026 23:30" in window.fig_sky.texts[-1].get_text()     # the map's title
+        assert window._sky_scene["sun"]["alt"] < sun_alt - 8                 # the Sun near its lowest, at midnight
+        assert window.sun_data["alt"] == sun_alt and window.visible_stars == stars
+        vega = next(s for s in window._sky_scene["catalog"] if s["name"] == "Vega")
+        calc_vega = next(s for s in window._sky_calc_scene["catalog"] if s["name"] == "Vega")
+        assert abs(vega["alt"] - calc_vega["alt"]) > 5                       # setting in the north-west
+        window._reset_sky_time()
+        assert slider.value() == 0 and window._sky_scene is window._sky_calc_scene
+        assert not window._sky_time_reset.isEnabled()
+
+    def test_steps_of_five_minutes(self, window, qapp):
+        slider = self._sky(window, qapp)
+        slider.setValue(123)
+        assert slider.value() == 125 and window._sky_offset_min == 125
+
+    def test_the_animation_plays_the_night_to_its_end(self, window, qapp):
+        from i18n import t
+        slider = self._sky(window, qapp)
+        window._toggle_sky_animation()
+        assert window._sky_animating and window._sky_play.toolTip() == t("skymap.time_pause")
+        for _ in range(500):
+            if not window._sky_animating:
+                break
+            window._sky_animation_step()
+        assert slider.value() == slider.maximum() and not window._sky_animating
+        assert window._sky_play.toolTip() == t("skymap.time_play")
+        window._toggle_sky_animation()                                      # at the end: from the start
+        assert slider.value() == slider.minimum()
+        window._stop_sky_animation()
+
+    def test_same_calculation_keeps_the_time_another_does_not(self, window, qapp):
+        slider = self._sky(window, qapp)
+        slider.setValue(60)
+        _pump(qapp, 3)
+        window.calculate()                                                  # a new magnitude limit, say
+        assert window._sky_offset_min == 60 and window._sky_scene is not window._sky_calc_scene
+        window._set_datetime(DTE + timedelta(days=1))
+        window.calculate()
+        assert window._sky_offset_min == 0 and slider.value() == 0
+        assert window._sky_scene is window._sky_calc_scene
+
+    def test_the_object_found_follows_the_bar(self, window, qapp):
+        slider = self._sky(window, qapp)
+        window._find_on_sky(("planet", "Jupiter"))
+        slider.setValue(240)
+        _pump(qapp, 3)
+        found = window._resolve_target(("planet", "Jupiter"))
+        on_map = next(p for p in window._sky_scene["planets"] if p["name"] == "Jupiter")
+        calc = next(p for p in window.planets if p["name"] == "Jupiter")
+        assert found["alt"] == pytest.approx(on_map["alt"]) and abs(found["alt"] - calc["alt"]) > 10
+
+    def test_moving_the_bar_ends_the_real_time(self, window, qapp):
+        window.btn_live.setChecked(True)
+        slider = self._sky(window, qapp)
+        # the bar spans the night of the clock's time: in the morning it ends at the present
+        # (the night under way), so it moves back; else forward
+        step = 60 if slider.value() + 60 <= slider.maximum() else -60
+        slider.setValue(slider.value() + step)
+        assert not window.live_mode and not window.btn_live.isChecked()
+
+    def test_a_hidden_animation_stops(self, window, qapp):
+        self._sky(window, qapp)
+        window._toggle_sky_animation()
+        window.show_page(window._traj_page)
+        _pump(qapp, 3)
+        assert not window._sky_animating and not window._sky_anim_timer.isActive()
+
+    def test_the_bar_survives_a_rebuild(self, window, qapp):
+        slider = self._sky(window, qapp)
+        slider.setValue(90)
+        _pump(qapp, 3)
+        window._lang_combo.setCurrentIndex(window._lang_combo.findData("en"))
+        _pump(qapp)
+        assert window._sky_time_slider.value() == 90 and window._sky_time_lbl.text() == "23:00"
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Quality of the night in the Tonight card (v4.16, night_quality.py)
+# ──────────────────────────────────────────────────────────────────────
+
+class TestNightQuality:
+    @staticmethod
+    def _forecast(window, cloud):
+        import night_quality
+        return {night_quality._forecast_key(h["time"]): {"cloud": cloud, "humidity": 70.0}
+                for h in window._tonight["hours"]}
+
+    def test_rated_from_the_moon_by_default(self, window):
+        import settings as prefs
+        assert not prefs.get("weather_forecast") and not window._weather_btn.isChecked()
+        text = window._quality_label.text()
+        assert text.startswith("Qualité de la nuit : ") and "/100" in text
+        assert "d'après la Lune seule" in text
+        assert window._night_strip.isVisibleTo(window) and window._night_strip._hours
+        assert not window._weather_credit.isVisibleTo(window)
+        assert "échelle de Bortle" in window._quality_note.text()
+
+    def test_bortle_of_the_place(self, window):
+        import settings as prefs
+        combo = window._bortle_combo
+        assert combo.count() == 10 and combo.currentData() == 0
+        combo.setCurrentIndex(combo.findData(4))
+        assert prefs.get("bortle") == 4
+        assert window._quality_note.text().startswith("Ciel du lieu : Bortle 4")
+        assert "6,3" in window._quality_note.text()
+
+    def test_forecast_turned_on(self, window, monkeypatch):
+        import gui
+        import settings as prefs
+        asked = []
+
+        def at_once(func, on_done, on_error):
+            asked.append(func)
+            on_done(self._forecast(window, 50.0))
+
+        monkeypatch.setattr(gui.common, "_run_in_background", at_once)
+        window._weather_btn.setChecked(True)
+        assert prefs.get("weather_forecast") is True and len(asked) == 1
+        assert "nuages 50 %" in window._quality_label.text()
+        assert window._weather_credit.isVisibleTo(window)
+        assert "Open-Meteo" in window._weather_credit.text()
+        window._update_night_quality()
+        assert len(asked) == 1                                    # kept: not asked again
+        window._weather_btn.setChecked(False)
+        assert "d'après la Lune seule" in window._quality_label.text()
+        assert not window._weather_credit.isVisibleTo(window)
+
+    def test_forecast_unavailable(self, window, monkeypatch):
+        import gui
+        monkeypatch.setattr(gui.common, "_run_in_background",
+                            lambda func, on_done, on_error: on_error(OSError("no network")))
+        window._weather_btn.setChecked(True)
+        assert "indisponible" in window._quality_label.text()
+
+    def test_hour_tooltips(self, window):
+        tips = window._night_strip._tips
+        assert tips and all("/100" in tip for tip in tips)
+        assert any("Lune" in tip for tip in tips)
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Observation log, Observer › Journal (v4.17, journal.py)
+# ──────────────────────────────────────────────────────────────────────
+
+class TestJournal:
+    @staticmethod
+    def _add(window, target="M31 Galaxie d'Andromède", notes="Bras de poussière en vision décalée"):
+        dlg = window._journal_dialog(target=target)
+        dlg.fields["instrument"].setText("Lunette 80/480")
+        dlg.fields["seeing"].setCurrentIndex(dlg.fields["seeing"].findData(4))
+        dlg.fields["transparency"].setCurrentIndex(dlg.fields["transparency"].findData(3))
+        dlg.fields["notes"].setPlainText(notes)
+        return dlg, dlg.save()
+
+    def test_a_page_of_observer(self, window, qapp):
+        observe = window.tabs.widget(4)
+        assert [observe.tabText(i) for i in range(observe.count())] == ["Cibles", "Occultations", "Journal"]
+        window.show_page(window._journal_page)
+        _pump(qapp, 3)
+        assert window.current_page() is window._journal_page
+        assert window._journal_empty.isVisibleTo(window) and not window._journal_table.isVisibleTo(window)
+        assert window._journal_count.text() == "0 observation"
+
+    def test_add(self, window, tmp_path):
+        import settings as prefs
+        dlg, kept = self._add(window)
+        assert kept["target"] == "M31 Galaxie d'Andromède" and kept["place"] == "Cherbourg-en-Cotentin"
+        assert kept["seeing"] == 4 and kept["transparency"] == 3 and kept["lat"] == pytest.approx(49.6333)
+        assert kept["quality"] == window._night_quality["score"]
+        assert (tmp_path / "journal.json").is_file()
+        table = window._journal_table
+        assert table.rowCount() == 1 and table.item(0, 1).text() == "M31 Galaxie d'Andromède"
+        assert table.item(0, 4).text() == "4/5 · 3/5"
+        assert window._journal_count.text() == "1 observation"
+        assert prefs.get("journal_instrument") == "Lunette 80/480"
+        assert window._journal_dialog().fields["instrument"].text() == "Lunette 80/480"   # remembered
+
+    def test_the_date_is_kept_in_ut(self, window):
+        import journal
+        from datetime import datetime
+        dlg = window._journal_dialog(target="Jupiter")
+        dlg.fields["date"].setDateTime(QDateTime(QDate(2026, 11, 12), QTime(22, 15)))
+        dlg.save()
+        entry = journal.load()[0]
+        assert entry["date"] == "2026-11-12T22:15:00"                         # the fixture's zone is UTC
+        assert datetime.fromisoformat(entry["date"]).hour == 22
+
+    def test_a_target_is_needed(self, window):
+        import journal
+        dlg = window._journal_dialog()
+        assert dlg.save() is None and journal.load() == []
+
+    def test_edit_and_delete(self, window, monkeypatch):
+        import gui
+        import journal
+        self._add(window)
+        window._journal_table.selectRow(0)
+        assert window._journal_edit_btn.isEnabled()
+        window._journal_edit_selected()
+        dlg = window._journal_dlg
+        assert dlg.fields["target"].text() == "M31 Galaxie d'Andromède"
+        dlg.fields["notes"].setPlainText("Ciel voilé vers minuit")
+        dlg.save()
+        assert len(journal.load()) == 1 and journal.load()[0]["notes"] == "Ciel voilé vers minuit"
+        window._journal_table.selectRow(0)
+        monkeypatch.setattr(gui.common, "QMessageBox", _yes_box(gui))
+        window._journal_delete_selected()
+        assert journal.load() == [] and window._journal_count.text() == "0 observation"
+
+    def test_export(self, window, tmp_path, monkeypatch):
+        import gui
+        self._add(window)
+        out = tmp_path / "journal.csv"
+        monkeypatch.setattr(gui.QFileDialog, "getSaveFileName", lambda *a, **k: (str(out), "CSV (*.csv)"))
+        window._journal_export()
+        text = out.read_text(encoding="utf-8-sig")
+        assert text.splitlines()[0].startswith("Date (TU),Cible,Lieu")
+        assert "M31 Galaxie d'Andromède" in text and "Lunette 80/480" in text
+
+    def test_from_the_targets_list(self, planner_tab, qapp):
+        w = planner_tab
+        table = w._plan_tables["deep_sky"]
+        table.selectRow(0)
+        w._plan_context_menu(table.visualItemRect(table.item(0, 0)).center())
+        actions = [a for a in w._plan_menu.actions() if a.text() == "Noter une observation"]
+        assert actions
+        actions[0].trigger()
+        dlg = w._journal_dlg
+        assert dlg.fields["target"].text() == table.item(0, 0).data(gui_name_role())
+        dlg.reject()
+
+
+def test_qt_standard_buttons_in_the_interface_language(qapp):
+    """Qt's own texts follow the language: Save becomes Enregistrer (qtbase_fr.qm of the binding)."""
+    import gui
+    from qt.QtWidgets import QDialogButtonBox
+    try:
+        assert gui.install_qt_translation("fr")
+        box = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
+        texts = {b.text().replace("&", "") for b in box.buttons()}
+        assert texts == {"Enregistrer", "Annuler"}
+        assert gui.install_qt_translation("de")
+        box = QDialogButtonBox(QDialogButtonBox.StandardButton.Cancel)
+        assert box.buttons()[0].text().replace("&", "") == "Abbrechen"
+    finally:
+        assert not gui.install_qt_translation("en")                 # English: Qt's own texts
+    box = QDialogButtonBox(QDialogButtonBox.StandardButton.Cancel)
+    assert box.buttons()[0].text().replace("&", "") == "Cancel"
+
+
+class TestWeekQuality:
+    def test_seven_nights(self, window):
+        dlg = window.show_week_quality()
+        table = dlg.table
+        assert table.rowCount() == 7 and table.columnCount() == 4               # no clouds column without forecast
+        headers = [table.horizontalHeaderItem(c).text() for c in range(table.columnCount())]
+        assert headers == ["Nuit", "Qualité", "Meilleur moment", "Lune"]
+        quality = table.item(0, 1).data(Qt.ItemDataRole.UserRole)
+        assert "/100" in quality and table.cellWidget(0, 1).text() == quality
+        assert "éclairée à" in table.item(0, 3).text()
+        first = window._week_quality(1)[0][1]
+        assert quality.endswith(f"{first['score']}/100")                        # the night of the chosen date
+        dlg.reject()
+
+    def test_with_the_forecast(self, window, monkeypatch):
+        import gui
+        import night_quality
+        night = window._tonight
+        data = {night_quality._forecast_key(h["time"]): {"cloud": 80.0, "humidity": 70.0} for h in night["hours"]}
+        monkeypatch.setattr(gui.common, "_run_in_background", lambda func, ok, ko: ok(data))
+        window._weather_btn.setChecked(True)
+        dlg = window.show_week_quality()
+        table = dlg.table
+        assert table.columnCount() == 5 and table.horizontalHeaderItem(4).text() == "Nuages"
+        assert table.item(0, 4).text() == "80 %"
+        assert table.item(6, 4).text() == "—"                                  # beyond the sample forecast
+        dlg.reject()
+
+
+def test_quality_of_the_night_in_the_targets(planner_tab):
+    """Observer › Targets: the quality of the night under the planner's summary, as in Tonight."""
+    w = planner_tab
+    summary = w._plan_summary.text()
+    assert summary.splitlines()[-1] == w._quality_label.text()
+    assert "Qualité de la nuit" in summary
+
+
+def test_zone_without_timezonefinder(monkeypatch):
+    """Android ships no timezonefinder: the automatic zone is then the device's own."""
+    import gui
+
+    def missing():
+        raise ImportError("No module named 'timezonefinder'")
+
+    gui.common._zone_at.cache_clear()
+    monkeypatch.setattr(gui.common, "_tz_finder", missing)
+    try:
+        monkeypatch.setattr(gui.common, "_system_zone", lambda: "Europe/Paris")
+        assert gui.common._zone_at(35.68, 139.69) == "Europe/Paris"
+    finally:
+        gui.common._zone_at.cache_clear()
+    assert gui.common._system_zone() in gui.common._zone_names() or gui.common._system_zone() == "UTC"
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Near-Earth asteroids and occultations (v4.20)
+# ──────────────────────────────────────────────────────────────────────
+
+_DATA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+
+
+@pytest.fixture
+def asteroids(window, qapp, monkeypatch):
+    """The window at Paris, with the samples of the IOTA predictions (2026) and of CNEOS'
+    list on disk, Horizons answering for 2016 NV only, and the background work done at once."""
+    import zipfile
+    import gui
+    import neo
+    import occultations
+
+    os.makedirs(occultations.CACHE_DIR, exist_ok=True)
+    with zipfile.ZipFile(occultations.cache_path(2026), "w") as archive:
+        archive.write(os.path.join(_DATA, "occelmnt_sample.xml"), "2026-iota-all.xml")
+    with open(os.path.join(_DATA, "cad_sample.json"), encoding="utf-8") as f:
+        payload = f.read()
+    with open(neo.CACHE, "w", encoding="utf-8") as f:
+        f.write(payload)
+    with open(os.path.join(_DATA, "horizons_2016NV.txt"), encoding="utf-8") as f:
+        rows = neo.parse_ephemeris(f.read())
+
+    def ephemeris(approach, timeout=30):
+        if approach["designation"] != "2016 NV":
+            raise OSError("no Horizons in the tests")
+        return rows
+    monkeypatch.setattr(neo, "ephemeris", ephemeris)
+
+    def run_now(func, on_done, on_error):
+        try:
+            result = func()
+        except Exception as exc:  # noqa: BLE001
+            on_error(exc)
+        else:
+            on_done(result)
+    monkeypatch.setattr(gui.common, "_run_in_background", run_now)
+    window._set_place(48.85, 2.35, "Paris")
+    return window
+
+
+def _at(window, qapp, date):
+    window._set_datetime(date)
+    window.calculate()
+    _pump(qapp, 3)
+
+
+def _texts(table, col):
+    return [table.item(r, col).text() for r in range(table.rowCount())]
+
+
+def _plain(label):
+    """The text of a rich-text label, without its tags."""
+    import html
+    return html.unescape(re.sub(r"<br>", "\n", re.sub(r"</?b>", "", label.text())))
+
+
+class TestAsteroids:
+    def test_occultations_page(self, asteroids, qapp):
+        import settings as prefs
+        window = asteroids
+        _at(window, qapp, datetime(2026, 6, 1, 12, 0))
+        window.show_page(window._occultations_page)
+        _pump(qapp, 3)
+        table = window._occ_table
+        assert _texts(table, 1) == ["(954) Li · 52 km"]                  # 6 months: Juno is in December
+        assert _texts(table, 3) == ["Sur le lieu"]
+        assert _texts(table, 4) == ["2,0 s"]
+        assert "1 occultation à moins de 100 km" in window._occ_status.text()
+        assert "1 sur le lieu" in window._occ_status.text()
+        details = _plain(window._occ_details)
+        assert "(954) Li cache l'étoile UCAC4 348-085188" in details
+        assert "La bande passe sur le lieu" in details and "Ophiuchus" in details
+        assert "Lune éclairée à" in details and "JPL#71" in details
+        window._occ_months.setCurrentIndex(window._occ_months.findData(12))      # into 2027: not published
+        _pump(qapp, 3)
+        assert prefs.get("occultation_months") == 12
+        assert _texts(table, 1)[-1] == "(3) Juno · 249 km"
+        assert "pas de prédictions 2027" in window._occ_status.text()
+
+    def test_occultations_none_near(self, asteroids, qapp):
+        window = asteroids
+        window._set_place(-33.87, 151.21, "Sydney")
+        _at(window, qapp, datetime(2026, 6, 1, 12, 0))
+        window.show_page(window._occultations_page)
+        _pump(qapp, 3)
+        assert window._occ_table.rowCount() == 0
+        assert "Aucune bande à moins de 100 km" in _plain(window._occ_details)
+
+    def test_neo_page(self, asteroids, qapp):
+        import settings as prefs
+        window = asteroids
+        _at(window, qapp, datetime(2026, 12, 1, 12, 0))
+        window.show_page(window._neo_page)
+        _pump(qapp, 3)
+        table = window._neo_table
+        assert _texts(table, 1) == ["2016 NV"]                              # 60 days
+        assert _texts(table, 2) == ["14,3 DL"]
+        assert _texts(table, 3) == ["284 à 634 m"]
+        assert _texts(table, 5) == ["15,0 · visible"]                       # Horizons, seen from Paris
+        details = _plain(window._neo_details)
+        assert "remarquable" in details and "14,25 fois la distance de la Lune" in details
+        assert "Magnitude 15,0 au plus près (JPL Horizons)" in details
+        assert "Visible du 08/12 18:00 au 09/12 00:00" in details and "Poissons" in details
+        assert "7 passages" in window._neo_status.text()                    # the sample's whole list
+        window._neo_days.setCurrentIndex(window._neo_days.findData(365))
+        _pump(qapp, 3)
+        assert prefs.get("neo_days") == 365
+        assert _texts(table, 1) == ["2016 NV", "506074 Svarog", "137108 (1999 AN10)", "2026 VP8"]
+        assert _texts(table, 3)[1] == "665 m"                               # measured
+        assert _texts(table, 5)[3] == "> 16"
+        window._neo_notable.setChecked(True)
+        _pump(qapp, 3)
+        assert _texts(table, 1) == ["2016 NV", "506074 Svarog", "137108 (1999 AN10)"]
+
+    def test_phone_rows(self, asteroids, qapp):
+        window = asteroids
+        _at(window, qapp, datetime(2026, 12, 1, 12, 0))
+        window.show_page(window._neo_page)
+        _pump(qapp, 3)
+        window.resize(360, 740)
+        _pump(qapp, 5)
+        table = window._neo_table
+        shown = [c for c in range(table.columnCount()) if not table.isColumnHidden(c)]
+        assert shown == [0, 1]
+        assert _texts(table, 0) == ["08/12 18:41"]
+        assert _texts(table, 1) == ["2016 NV · 14,3 DL · 15,0 · visible"]
+        window.resize(1350, 820)
+        _pump(qapp, 5)
+        assert _texts(table, 0) == ["08/12/2026 18:41"] and not table.isColumnHidden(5)
+
+    def test_tonight(self, asteroids, qapp):
+        window = asteroids
+        _at(window, qapp, datetime(2026, 6, 6, 20, 0))
+        lines = [text for text, _tone in window._tonight_lines()]
+        assert any("Occultation à 23:22 : (954) Li cache une étoile de magnitude 10,4, la bande passe sur le lieu"
+                   in line for line in lines), lines
+        _at(window, qapp, datetime(2026, 12, 8, 17, 0))
+        lines = [text for text, _tone in window._tonight_lines()]
+        assert any("Astéroïde 2016 NV au plus près à 18:42, à 14,3 distances lunaires (284 à 634 m)" in line
+                   for line in lines), lines
+
+    def test_calendar_titles(self, asteroids, qapp):
+        import astro_calendar
+        window = asteroids
+        items = astro_calendar.collect(datetime(2026, 6, 1), datetime(2027, 1, 1), 48.85, 2.35,
+                                       categories=("neo", "occultations"))
+        titles = [(i["category"], window._calendar_title(i)) for i in items]
+        assert ("occultations", "(954) Li cache une étoile de magnitude 10,4") in titles
+        assert ("neo", "Astéroïde 2016 NV à 14,3 distances lunaires") in titles
+        li = next(i for i in items if i["category"] == "occultations")
+        assert any("La bande passe sur le lieu (2,0 s)" in line for line in window._calendar_details(li))
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Recent novae and supernovae (v4.21)
+# ──────────────────────────────────────────────────────────────────────
+
+@pytest.fixture
+def novae_lists(window, qapp, monkeypatch):
+    """The window at Paris on the night of 13 November 2026, the samples of both lists answering
+    the downloads, and the background work done at once."""
+    import gui
+    import transients
+    pages = {}
+    for url, name in ((transients.SUPERNOVAE_URL, "snactive_sample.html"), (transients.NOVAE_URL, "novae_sample.html")):
+        with open(os.path.join(_DATA, name), encoding="utf-8") as f:
+            pages[url] = f.read()
+    monkeypatch.setattr(transients, "_get", lambda url, timeout: pages[url])
+
+    def run_now(func, on_done, on_error):
+        try:
+            result = func()
+        except Exception as exc:  # noqa: BLE001
+            on_error(exc)
+        else:
+            on_done(result)
+    monkeypatch.setattr(gui.common, "_run_in_background", run_now)
+    window._set_place(48.85, 2.35, "Paris")
+    _at(window, qapp, datetime(2026, 11, 13, 21, 0))
+    return window
+
+
+class TestTransients:
+    def test_a_page_of_the_sky(self, window):
+        sky = window.tabs.widget(1)
+        assert [sky.tabText(i) for i in range(sky.count())] == ["Carte du ciel", "Trajectoires", "Novae et supernovae",
+                                                                "Constellations"]
+
+    def test_the_page(self, novae_lists, qapp):
+        import settings as prefs
+        window = novae_lists
+        window.show_page(window._transients_page)
+        _pump(qapp, 3)
+        table = window._tr_table
+        names = _texts(table, 0)
+        assert names[:3] == ["V488 Sge", "SN 2026ahvu", "AT 2026aina"]           # the brightest now first
+        assert set(names) == {"SN 2026ahvu", "AT 2026aina", "SN 2026sqf", "SN 2026ahvi", "V8056 Sgr",
+                              "TCP J17520680-2343207", "V488 Sge", "V1452 Tau"}
+        row = names.index("SN 2026sqf")
+        assert table.item(row, 1).text() == "Supernova Ia-CSM" and table.item(row, 2).text() == "NGC 3310"
+        assert table.item(row, 3).text() == "13,3" and table.item(row, 4).text() == "08/07/2026"
+        assert table.item(row, 5).text().endswith("°")                          # high before dawn
+        assert table.item(names.index("SN 2026ahvu"), 5).text() == "—"          # never up from Paris
+        assert table.item(names.index("TCP J17520680-2343207"), 3).text() == "max 11,3"   # faded since
+        assert "8 objets" in window._tr_status.text()
+        table.selectRow(row)
+        details = _plain(window._tr_details)
+        assert "SN 2026sqf · Supernova Ia-CSM" in details and "Dans la galaxie NGC 3310 (Grande Ourse)" in details
+        assert "Éclat maximal : magnitude 11,2 le 28/07/2026" in details
+        assert "Découverte le 08/07/2026 par Patrick Wiggins" in details and "millions d'années-lumière" in details
+        assert "Cette nuit, au plus haut dans le noir à" in details
+        window._tr_mag.setCurrentIndex(window._tr_mag.findData(13))
+        _pump(qapp, 3)
+        assert prefs.get("transients_mag") == 13 and "SN 2026sqf" not in _texts(table, 0)
+
+    def test_on_the_sky_map(self, novae_lists, qapp):
+        window = novae_lists
+        window.show_page(window._transients_page)
+        _pump(qapp, 3)
+        names = [o["name"] for o in window._sky_scene["transients"]]
+        assert "V488 Sge" in names and "SN 2026ahvu" not in names                # above the horizon only
+        assert all(o["kind"] == "transient" for o in window._sky_scene["transients"])
+        table = window._tr_table
+        table.selectRow(_texts(table, 0).index("V488 Sge"))
+        window._show_transient_on_map()
+        _pump(qapp, 3)
+        assert window.current_page() is window._sky_page
+        assert window._sky_found == ("transient", "V488 Sge")
+        assert window._chart_hints["sky"].text().startswith("V488 Sge : hauteur")
+        found = window._resolve_target(("transient", "V488 Sge"))
+        title, rows = window._object_details(found)
+        assert title == "V488 Sge" and ("Type", "Nova") in rows
+        window._tr_on_map.setChecked(False)
+        _pump(qapp, 3)
+        assert window._sky_scene["transients"] == []
+
+    def test_found_by_name(self, novae_lists, qapp):
+        window = novae_lists
+        window.show_page(window._transients_page)
+        _pump(qapp, 3)
+        window.show_page(window._sky_page)
+        _pump(qapp, 3)
+        assert window._find_targets("2026sqf")[0] == ("SN 2026sqf", ("transient", "SN 2026sqf"))
+
+    def test_tonight(self, novae_lists, qapp):
+        """A nova found three weeks before, high in the evening: in Tonight."""
+        window = novae_lists
+        window.show_page(window._transients_page)            # the lists on disk
+        _pump(qapp, 3)
+        _at(window, qapp, datetime(2026, 9, 15, 20, 0))
+        lines = [text for text, _tone in window._tonight_lines()]
+        assert any(line.startswith("★︎ V488 Sge (Nova), magnitude max 7,1, au plus haut à") for line in lines), lines
+
+
+
+# ──────────────────────────────────────────────────────────────────────
+# The constellation charts (v4.24)
+# ──────────────────────────────────────────────────────────────────────
+
+class TestConstellations:
+    """Ciel › Constellations: the chart of the one chosen, its facts, its sheet."""
+
+    @staticmethod
+    def _page(window, qapp):
+        window.show_page(window._constellation_page)
+        _pump(qapp, 3)
+        return window._co_combo
+
+    def test_orion_by_default(self, window, qapp):
+        combo = self._page(window, qapp)
+        assert combo.count() == 88 and combo.currentData() == "Ori"
+        assert window.fig_co.axes and window._co_scene["key"] == "Ori"
+        facts = window._co_facts.text()
+        assert "Orion" in facts and "594 degrés carrés" in facts and "janvier" in facts and "Rigel" in facts
+
+    def test_alphabetical_without_accents(self, window, qapp):
+        combo = self._page(window, qapp)
+        names = [combo.itemText(i) for i in range(combo.count())]
+        assert names.index("Écu de Sobieski (Sct)") < names.index("Eridan (Eri)") < names.index("Flèche (Sge)")
+
+    def test_another_one_is_kept(self, window, qapp):
+        import settings as prefs
+        combo = self._page(window, qapp)
+        combo.setCurrentIndex(combo.findData("Cru"))
+        _pump(qapp)
+        assert window._co_scene["key"] == "Cru" and prefs.get("constellation") == "Cru"
+        assert "jamais visible depuis votre lieu" in window._co_facts.text()      # from Cherbourg
+
+    def test_on_a_phone(self, window, qapp):
+        """The chart as tall as the phone is wide, the page scrolling to the facts; the labels measured
+        again at the phone's size, none on another."""
+        combo = self._page(window, qapp)
+        combo.setCurrentIndex(combo.findData("Vir"))
+        window.resize(360, 740)
+        _pump(qapp, 5)
+        canvas = window.canvas_co
+        assert canvas.height() >= 300 and abs(canvas.height() - canvas.width()) <= 2       # square
+        assert window._constellation_page.verticalScrollBar().maximum() > 0
+        ax = window.fig_co.axes[0]
+        shown = [t.get_window_extent() for t in ax._celeste_labels if t.get_visible()]
+        assert shown and not any(a.overlaps(b) for i, a in enumerate(shown) for b in shown[i + 1:])
+        window.resize(1350, 820)
+        _pump(qapp, 5)
+        assert canvas.minimumHeight() == 0 and canvas.height() > 400
+
+    def test_the_sheet(self, window, qapp, tmp_path):
+        self._page(window, qapp)
+        path = window._save_constellation_sheet(str(tmp_path / "orion.pdf"))
+        assert path and open(path, "rb").read(5) == b"%PDF-"
+        assert "orion.pdf" in window.statusBar().currentMessage()

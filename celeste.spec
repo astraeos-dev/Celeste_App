@@ -23,13 +23,23 @@ datas = [
 ]
 for package in ("skyfield", "timezonefinder", "timezonefinder_data", "tzdata"):
     datas += collect_data_files(package)
+# Qt's own texts in the four languages (standard buttons, dialogs): ui.common.install_qt_translation
+import PySide6  # noqa: E402
+_translations = os.path.join(os.path.dirname(PySide6.__file__), "Qt", "translations")
+for _lang in ("fr", "es", "de"):
+    _qm = os.path.join(_translations, f"qtbase_{_lang}.qm")
+    if os.path.isfile(_qm):
+        datas.append((_qm, os.path.join("PySide6", "Qt", "translations")))
 
 a = Analysis(
     ["main.py"],
     pathex=["."],
     datas=datas,
-    hiddenimports=["PyQt6.QtPositioning", "PyQt6.QtSvg", "matplotlib.backends.backend_pdf"],
-    excludes=["tkinter", "pytest", "pandas"],          # pandas: an optional import of Skyfield
+    # qt.py imports the binding's modules by name: PyInstaller does not see them
+    hiddenimports=["qt", "PySide6.QtCore", "PySide6.QtGui", "PySide6.QtWidgets", "PySide6.QtSvg",
+                   "PySide6.QtNetwork", "PySide6.QtPositioning",
+                   "matplotlib.backends.backend_qtagg", "matplotlib.backends.backend_pdf"],
+    excludes=["tkinter", "pytest", "pandas", "PyQt6"],    # pandas: an optional import of Skyfield
 )
 pyz = PYZ(a.pure)
 exe = EXE(

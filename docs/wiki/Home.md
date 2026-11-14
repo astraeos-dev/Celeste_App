@@ -1,6 +1,6 @@
 # Céleste — wiki
 
-Céleste est une application de bureau (Python, PyQt6) qui calcule les positions du Soleil, de la Lune, des
+Céleste est une application de bureau (Python, Qt avec PySide6) qui calcule les positions du Soleil, de la Lune, des
 planètes et des planètes mineures avec les éphémérides **JPL DE440** et **JPL Horizons**. Ce wiki rassemble des
 **fiches pratiques** pour modifier l'application : chacune dit quels fichiers toucher, dans quel ordre, et
 comment vérifier le résultat.

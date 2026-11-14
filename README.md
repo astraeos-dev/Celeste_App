@@ -9,7 +9,7 @@
 [![GitHub repository](https://img.shields.io/github/stars/astraeos-dev/Celeste_App?style=social&label=Repository)](https://github.com/astraeos-dev/Celeste_App)
 [![Wiki](https://img.shields.io/badge/Wiki-how--to%20guides-1f2a3b)](https://github.com/astraeos-dev/Celeste_App/wiki)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python)
-![PyQt6](https://img.shields.io/badge/UI-PyQt6-blueviolet)
+![PySide6](https://img.shields.io/badge/UI-PySide6-blueviolet)
 
 <a href="https://buymeacoffee.com/gregorychau"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me a Coffee" height="40"></a>
 
@@ -24,16 +24,28 @@ An idea, a problem, a body to add? [Open a request](https://github.com/astraeos-
 
 ## Overview
 
+The window has five spaces: **Tonight** (the ephemeris of the chosen date), **Sky** (sky map, trajectories), **Bodies**
+(planets, Solar System, coordinates), **Calendar** (events, eclipses, satellite passes, calendars) and **Observe** (the
+night's targets); Settings sit behind the gear icon. The Workshop opens from the side panel.
+
 Céleste computes in real time — or for any date — the positions of the Sun, the Moon, the planets (Mercury to
 Neptune) and the minor planets, the events of the day (rise, set, twilights), the phases of the Moon, the eclipses
 (seen from the chosen place) and the events of the year: conjunctions, oppositions, close approaches of the Moon,
-seasons. The results show in a PyQt6 interface with the Astræos design (Nuit, Jour and Observation themes), with
+seasons. The results show in a Qt interface (PySide6) with the Astræos design (Nuit, Jour and Observation themes), with
 interactive charts and a sky map.
 
 The interface is translated into French, English, Spanish and German.
 
 **Main features:**
 
+- **Quality of the night** — in Tonight: a rating from excellent to bad and the best window, from how dark the sky
+  gets, the Moon and, when turned on (cloud button), the clouds and the damp air forecast by
+  [Open-Meteo](https://open-meteo.com) (CC BY 4.0); the hours of the night in colour; the light pollution of the
+  place on the Bortle scale (Settings › Observing site) with its naked-eye limiting magnitude; the next seven
+  nights side by side (calendar button)
+- **Observation log** — Observer › Log: an entry per observation (date, place, target, instrument, seeing and
+  transparency from 1 to 5, notes, the quality of the night computed by Céleste), added from the Targets list too
+  (right click), kept in `~/.celeste/journal.json`, exported as CSV
 - **Tonight** — at the top of the ephemeris: the dark night, the Moon, the visible planets (and comets) with their best
   moment, the finest deep-sky objects, the satellite passes and the next three events visible from here
 - **Instant positions** — right ascension, declination, altitude, azimuth, distance
@@ -48,13 +60,18 @@ The interface is translated into French, English, Spanish and German.
 - **Geolocation** — position of the device from the system's location service (GPS, Wi-Fi), name of the town from
   OpenStreetMap; otherwise its last known position, then the approximate position of the IP address (ip-api.com),
   flagged as such: a window then says why (access denied by Windows, service turned off, timeout) and opens the
-  location settings
+  location settings. On a phone (4.22), the GPS at startup, once Android's permission is given; refused, no position
+  is looked for, not even by the IP address
 - **24-hour paths** — altitude curves over a background coloured by the time of day (day, twilights, night), over the
   local day (local time below, UT above), tooltip on hover
-- **Polar sky map** — zenith at the centre, north up and east on the left as in the sky, 8,404 stars down to magnitude 6.5
+- **Polar sky map** — zoom up to ×12 (wheel on the pointer, buttons; drag to move around), zenith at the centre, north up and east on the left as in the sky, 8,404 stars down to magnitude 6.5
   (Yale Bright Star Catalogue, brought to the
   date: proper motion, precession, nutation, aberration) sized by magnitude, the figures of the 88 constellations, planets; tooltip on hover
-  and detailed card on click (constellation, magnitude, coordinates)
+  and detailed card on click (constellation, magnitude, coordinates); a time bar under the map runs through the night,
+  sunset to sunrise, and ▶ plays it (the sky turns ten minutes a frame; the calculation keeps its date). On a phone
+  (4.22), the compass button makes the map follow the phone held up to the sky: turned and moved to the sky behind it,
+  the sky above it up on the screen, a ring where the phone points, the true north from the magnetic one (World
+  Magnetic Model 2025)
 - **Planets** — Mercury, Venus, Mars, Jupiter, Saturn, Uranus and Neptune: coordinates, altitude and azimuth,
   distance, elongation, magnitude, times of rise, culmination and set (name dimmed below the horizon); all the bodies
   or one group, "Visible only", sort by clicking a header
@@ -76,7 +93,7 @@ The interface is translated into French, English, Spanish and German.
   a legend whose lines show, hide or bring out each target; export as a text report, JSON or PNG
 - **Astronomical calendar** — in the Events tab: every event Céleste computes (Moon phases, eclipses,
   conjunctions, oppositions and elongations, minor planets, comets, the Moon's events, seasons, meteor showers,
-  satellite passes) over a period, a year by default, in a month grid; filters by kind; the day's details; the
+  minima of Algol, near-Earth asteroids, occultations, satellite passes) over a period, a year by default, in a month grid; filters by kind; the day's details; the
   .ics export of what the filters let through
 - **Moons of the planets** — in the data windows: Jupiter's Galilean moons, and Phobos, Deimos, eight moons of
   Saturn, five of Uranus, Triton and Charon from JPL Horizons (2020 to 2040, within 0.1″), drawn as in a telescope
@@ -120,6 +137,30 @@ The interface is translated into French, English, Spanish and German.
   per step
 - **Deep sky** — the 110 Messier objects on the sky map (atlas symbols, card on click) and the finest of the night in
   "Tonight"
+- **Month's sheet** — from the Tonight card or the month shown in the astronomical calendar: one A4 page to print for
+  the place (PDF, dark ink on white): the sky map on the 15th at 22:00 and when the same sky shows at the start and
+  the end of the month, the Moon day by day, the planets, the month's events
+- **Variable stars** — the minima of Algol you can watch from your place (the star at least 15° high in a dark sky),
+  in "Tonight" and in the calendar, to within half an hour: an ephemeris fitted to the CCD minima of the BAV's
+  Lichtenknecker Database, the light time across the Earth's orbit included
+- **Near-Earth asteroids** — in Bodies: the close approaches within 0.05 au (19.5 lunar distances) listed by CNEOS
+  (NASA/JPL) for the coming days, with the distance, the size from the absolute magnitude and the speed; the notable
+  ones (140 m and more, or nearer than the Moon) in "Tonight" and the calendar; for those that could get brighter
+  than magnitude 16, their magnitude from JPL Horizons and when they are high in a dark sky from the place (Céleste
+  moves the geocentric positions to the place itself: the place is not sent)
+- **Asteroid occultations** — in Observe: the stars hidden for a few seconds by an asteroid whose shadow passes within
+  a chosen distance of the place in the coming months (IOTA predictions, made with Occult): where the band passes and
+  how wide it is on the ground, how long the star disappears, the star, the drop in brightness, the Moon; in
+  "Tonight" and the calendar; OccultWatcher Cloud for the updated paths
+- **Novae and supernovae** — in Sky: the supernovae of nearby galaxies and the novae of ours and of its neighbours
+  bright enough for the magnitude you choose, from David Bishop's list of active supernovae and Koji Mukai's list of
+  recent galactic novae: latest magnitude (or peak), type, host galaxy, discovery, distance from the redshift, and
+  when each is highest in a dark sky tonight from the place; drawn on the sky map (a red four-pointed star) and found
+  by its search; the bright ones in "Tonight"
+- **Constellation charts** — in Sky: each of the 88 constellations on its own chart, as in the sky atlases: its
+  official outline (IAU), its figure, its stars to magnitude 6.5 with their Greek letters, its clusters, nebulae and
+  galaxies, its neighbours; its area, the month it is highest at 10 pm, whether it rises from the place, its brightest
+  stars and finest objects; a sheet to print (PDF, A4)
 - **Satellite passes** — International Space Station, Tiangong and Hubble over 10 days: time of appearance, highest
   point, entry into the Earth's shadow; CelesTrak orbits (AMSAT as a fallback) refreshed every two days
 - **Visibility from here** — for each event, the night to see it (evening, morning or all night), with the altitude,
@@ -143,7 +184,7 @@ The interface is translated into French, English, Spanish and German.
 
 ## Installation
 
-Requirements: Python 3.10 or newer, and pip. PyQt6 bundles Qt; on a minimal Linux, Qt also needs a few system
+Requirements: Python 3.10 or newer, and pip. PySide6 bundles Qt; on a minimal Linux, Qt also needs a few system
 libraries (`sudo apt install libegl1 libxkbcommon0` on Debian or Ubuntu).
 
 ```bash
@@ -238,6 +279,8 @@ A satellite pass is counted when the satellite rises at least 10° above the hor
   see the sky lying on your back with your head to the north; the slider sets the limiting magnitude of the stars
   (up to 6.5)
 - Hover over a body of the map to identify it, click to show its card
+- Move the bar under the map to see the sky at another hour of the night, or press ▶ to watch it turn; the time shows
+  in gold while the map is not at the calculation's time
 - Type a name in "Find an object…" to circle it on the map; emptying the field removes the circle
 
 ---
@@ -251,6 +294,8 @@ The interface and the charts follow the Astræos design system:
   `or`, `lune`, `signal-ok`, `signal-alerte`), defined once in `config.py` and shared by Qt and matplotlib.
 - **Typography** — IBM Plex Sans for the text, IBM Plex Mono for the figures, Astraeos Symboles for the astronomical
   symbols (☉ ☽ ♀ ♂ ♃ ♄ ⊕ ♈ ☌ ☍). The fonts are provided in `fonts/`, for the same rendering on every machine.
+- **Logo** — the C of Céleste, open like an orbit, and its star: the letter in `encre`, the star in `or`, drawn by
+  `scripts/make_logo.py` (`assets/celeste-icone.svg`, `assets/celeste-symbole.svg`).
 - **Components** — buttons (primary, secondary, quiet, danger), input fields with label, unit and error message, data
   cards, status badges, gauge, tabs and theme selector.
 - **Rules** — no emoji (Material Design Icons instead); a single gold area per screen, the Calculate button;
@@ -274,17 +319,33 @@ The project follows the **MVC (model-view-controller)** pattern:
 Celeste_App/
 ├── main.py              # Entry point — --lang / --theme options, Qt window
 ├── engine.py            # Model — pure astronomical calculations (AstroEngine)
-├── gui.py               # View + controller — PyQt6 interface and application logic
+├── qt.py                # The Qt binding: PySide6 (PyQt6 as a fallback)
+├── gui.py               # View + controller — the main window (side panel, place, date, calculation)
+├── ui/                  # One module per space: tonight, sky, transients_tab, constellations_tab, bodies, neo_tab,
+│                        #   calendar_tab, observe, occultations_tab, journal_tab, settings_tab; touch.py: the finger on
+│                        #   a touch screen;
+│                        #   phone.py: the phone's location permission and rotation sensor;
+│                        #   common.py: Astræos components, formats, shared widgets
 ├── charts.py            # matplotlib charts — paths, sky map, Solar System
 ├── utils.py             # Utilities — HMS/DMS formats, phase names
 ├── config.py            # Astræos design — colours of the Nuit, Jour and Observation themes, spacing, text styles
-├── icons.py             # Material Design icons (SVG) and the Astræos symbol in the theme's colours
+├── icons.py             # Material Design icons (SVG) and Céleste's logo in the theme's colours
 ├── i18n.py              # Internationalisation — translations by key, with fallback
 ├── updater.py           # Updates: latest GitHub Release, checked download, installation
 ├── settings.py          # Persistent preferences (~/.celeste/settings.json)
 ├── places.py            # Offline place search (GeoNames cities)
 ├── history.py           # The last calculations (~/.celeste/history.json)
 ├── astro_calendar.py    # The astronomical calendar: every event of a period, by category
+├── journal.py           # Observation log: entries in ~/.celeste/journal.json, CSV export
+├── night_quality.py     # Quality of the night: darkness, Moon, clouds (Open-Meteo), Bortle class
+├── variables.py         # Variable stars: the minima of Algol seen from the place
+├── month_sheet.py       # The month's sheet to print: sky map, Moon, planets, events (PDF)
+├── neo.py               # Near-Earth asteroids: close approaches (CNEOS), positions from JPL Horizons
+├── occultations.py      # Stars hidden by asteroids: IOTA predictions, the band seen from the place
+├── transients.py        # Recent novae and supernovae: the two lists, merged; when to see them tonight
+├── constellation_chart.py # The chart of a constellation: IAU outline, figure, stars, deep sky; its sheet (PDF)
+├── orientation.py       # Where the phone looks, from its rotation sensor, and how the sky map turns with it
+├── geomag.py            # The magnetic declination of the place (World Magnetic Model 2025)
 ├── planner.py           # Night planner: targets of the night under the observer's constraints
 ├── mpc.py               # Comet elements of the Minor Planet Center (~/.celeste/CometEls.txt)
 ├── instruments.py       # Geometry of the instruments to make: planisphere, sundials, astrolabe (no Qt)
@@ -295,7 +356,8 @@ Celeste_App/
 ├── favorites_default.json # Preloaded places (36 cities, their names in each language), until a favourite is saved
 ├── locales/             # Translations (fr.json is the reference)
 ├── fonts/               # IBM Plex Sans, IBM Plex Mono and Astraeos Symboles fonts (OFL licence)
-├── assets/              # Astræos symbol and icon (SVG), land, minor planets, comets, cities, Messier objects
+├── assets/              # Céleste's logo and icon (SVG), land, minor planets, comets, cities, Messier objects
+├── android/             # The Android build's entry point (pyside6-android-deploy)
 ├── scripts/             # Application build, star catalogue, data tables, release notes
 ├── celeste.spec         # PyInstaller recipe of Celeste.exe (Windows)
 ├── installer/           # Inno Setup installer (celeste.iss)
@@ -393,11 +455,24 @@ only the chart of the shown tab is redrawn; the others are when they are opened.
   activity, solar longitude at the peak, radiant, velocity, ZHR
 - **GeoNames** (www.geonames.org), cities of more than 15,000 inhabitants, CC BY 4.0 licence — place search
 - **OpenNGC** (M. Verga, CC BY-SA 4.0 licence) and the **SEDS** Messier database — Messier objects
-- **d3-celestial** (O. Frohn, BSD 3-Clause licence) — figures of the 88 constellations and their names
+- **d3-celestial** (O. Frohn, BSD 3-Clause licence) — figures of the 88 constellations and their names; their
+  boundaries (E. Delporte, *Délimitation scientifique des constellations*, IAU, 1930, brought to J2000)
 - **CelesTrak** and **AMSAT** — orbital elements (TLE) of the space stations and of Hubble
 - **JPL Small-Body Database** — magnitude parameters M1, K1 of the comets; **JPL Horizons** — their positions
 - **E. Bowell et al.** (1989), *Application of photometric models to asteroids*, Asteroids II — H, G magnitudes of
   the minor planets (parameters from the JPL Small-Body Database)
+- **Lichtenknecker Database of the BAV** (Bundesdeutsche Arbeitsgemeinschaft für Veränderliche Sterne) — the minima of
+  Algol the ephemeris is fitted to; **J. M. Kreiner** (2004), *Up-to-date linear elements of close binaries*, Acta
+  Astron. 54, 207, and the BAV's elements of 2017 — its check
+- **CNEOS** (Center for Near-Earth Object Studies, NASA/JPL), *SBDB Close-Approach Data API* — the approaches of the
+  near-Earth asteroids; **JPL Horizons** — their positions and magnitudes around an approach
+- **International Occultation Timing Association** (IOTA): the predictions of Steve Preston (asteroidoccultation.com),
+  computed with **Occult** (David Herald) from Gaia DR3 and the JPL orbits — the asteroid occultations
+- **David Bishop**, *Latest Supernovae* (rochesterastronomy.org), list of the active objects — the supernovae and the
+  novae of other galaxies; **Koji Mukai**, *List of Recent Galactic Novae* (NASA Goddard) — the galactic novae
+- **A. Chulliat et al.**, *The US/UK World Magnetic Model for 2025–2030*, NOAA NCEI and British Geological Survey
+  (public domain) — the magnetic declination by which the sky map that follows the phone corrects its compass; checked
+  against the model's 100 test values
 
 ---
 
@@ -429,7 +504,7 @@ pip install pyinstaller
 python scripts/build_exe.py
 ```
 
-The script puts the ephemeris in `~/.celeste` for the start-up check, draws the icon from `assets/astraeos-icone.svg`,
+The script puts the ephemeris in `~/.celeste` for the start-up check, draws the icon from `assets/celeste-icone.svg`,
 runs PyInstaller (`celeste.spec`), checks that the ephemeris is not in the application and that the application starts
 (`--self-test`), and creates the archive in `dist/`. When [Inno Setup 6](https://jrsoftware.org/isinfo.php) is
 installed, it also builds the installer (`installer/celeste.iss`, with Céleste's icon). Neither is signed: at the first
@@ -444,7 +519,7 @@ launch, SmartScreen shows "Windows protected your PC" (*More info*, then *Run an
 
 | Package | Min. version | Role |
 |---------|-------------|------|
-| [PyQt6](https://www.riverbankcomputing.com/software/pyqt/) | 6.5 | Graphical interface (Qt 6) |
+| [PySide6](https://doc.qt.io/qtforpython-6/) | 6.8 | Graphical interface (Qt 6, Qt for Python); PyQt6 also works (`CELESTE_QT=pyqt6`, see `qt.py`) |
 | [matplotlib](https://matplotlib.org/) | 3.10.8 | Interactive astronomical charts |
 | [Skyfield](https://rhodesmill.org/skyfield/) | 1.47 | JPL DE440 ephemeris, time (UT1, ΔT), rises and sets, satellites (installs NumPy) |
 | [timezonefinder](https://github.com/jannikmi/timezonefinder) | 6.5 | IANA time zone of a place, offline ("Automatic" mode) |
@@ -474,6 +549,10 @@ launch, SmartScreen shows "Windows protected your PC" (*More info*, then *Run an
 - [x] **Deep sky** — the Messier catalogue
 - [x] **Satellites** — visible passes of the ISS, Tiangong and Hubble
 - [x] **Jupiter and Saturn** — the four Galilean moons, the tilt of the rings
+- [x] **Variable stars** — the minima of Algol
+- [x] **Near-Earth asteroids and occultations** — close approaches (CNEOS, JPL Horizons), stars hidden by asteroids
+  (IOTA predictions)
+- [x] **Novae and supernovae** — the bright ones of the moment, on the sky map and in "Tonight"
 
 ### Interface and visualisation
 
@@ -483,6 +562,9 @@ launch, SmartScreen shows "Windows protected your PC" (*More info*, then *Run an
 - [x] **Twilight colours** — background of the path chart coloured by the time of day
 - [x] **Interactive sky map** — full card of a star on click
 - [x] **Search on the sky map** — a star, a planet, a Messier object or a constellation by its name
+- [x] **Animated sky map** — the night on a time bar, played with ▶
+- [x] **Month's sheet** — the sky of the month on one page to print
+- [x] **Constellation charts** (4.24) — a chart for each of the 88, as in the sky atlases, and its sheet to print
 - [x] **Astræos design** — Nuit, Jour and Observation themes without restarting, IBM Plex fonts, vector icons
 
 ### Ease of use
@@ -499,7 +581,7 @@ launch, SmartScreen shows "Windows protected your PC" (*More info*, then *Run an
 ### Engineering and quality
 
 - [x] **Unit tests** — pytest on the engine, the charts, the interface (off screen), the themes, the updates,
-  `utils.py` and `i18n.py` (16 files, ~790 cases)
+  `utils.py` and `i18n.py` (30 files, ~1,170 cases)
 - [x] **Windows executable** — standalone `Celeste.exe` (PyInstaller), ephemeris downloaded at the first launch
 
 ### Workshop: instruments to make
@@ -509,15 +591,62 @@ launch, SmartScreen shows "Windows protected your PC" (*More info*, then *Run an
   place, with assembly, use and astronomy sheets in four languages
 - [x] **Workshop 2** (4.12) — the complete planispheric astrolabe and the nocturnal; the window's own place, zone
   and date
+- [x] **A planisphere like those of the shops** (4.23) — the star wheel with the dates on its rim, in a holder
+  folded in two: the window of the horizon with the directions around it, the night's hours along its rounded edge
 - [ ] **Workshop 3** — the horary quadrant, a declining wall dial and a noon mark. The design:
   [docs/INSTRUMENTS.md](docs/INSTRUMENTS.md)
 
 ### Version 5: Android
 
-- [ ] **PySide6** (4.13) — Qt for Python, whose official tool builds Android apps; a first APK in GitHub Actions
-- [ ] **Compact layout** (4.14) — the same Qt interface below 600 pixels of width: drawer, bottom bar, touch targets
-- [ ] **Android app** (5.0) — the same code as the desktop, with the phone's location and a sky map following the
-  phone. The plan: [docs/ANDROID.md](docs/ANDROID.md)
+- [x] **Five spaces** (4.13) — `gui.py` split into one module per space (`ui/`); Tonight, Sky, Bodies, Calendar,
+  Observe
+- [x] **PySide6** (4.14) — Qt for Python (`qt.py`), whose official tool builds Android apps; a first APK in GitHub
+  Actions (`android/`)
+- [x] **Compact layout** (4.15) — the same Qt interface below 900 pixels of width: drawer, bottom bar, touch targets;
+  on a touch screen (4.19, `ui/touch.py`): scrolling with the finger, windows over the whole screen, Back, pinch to zoom
+- [x] **The phone's place and a sky map following the phone** (4.22) — the GPS once Android allows it
+  (`ui/phone.py`); the rotation sensor turns and moves the sky map (`orientation.py`), north corrected by the
+  magnetic declination (`geomag.py`, World Magnetic Model 2025)
+- [ ] **Android app** (5.0) — the same code as the desktop, on Google Play. The plan:
+  [docs/ANDROID.md](docs/ANDROID.md)
+
+### On the web
+
+- [ ] **Céleste in a browser** — the ways to do it (Qt for WebAssembly, Python in the page with Pyodide, a JavaScript
+  engine, pages computed in advance) and the order proposed, the Ganymède website first:
+  [docs/WEB.md](docs/WEB.md)
+
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by
+[SignPath Foundation](https://signpath.org) (once the project is accepted: until then the Windows installer is
+unsigned).
+
+- Committers and reviewers: [the maintainers of this repository](https://github.com/astraeos-dev/Celeste_App/graphs/contributors);
+  changes from other contributors are reviewed in a pull request before they are merged
+- Approvers: [astraeos-dev](https://github.com/astraeos-dev), who approves each release before it is signed
+- What is signed: the Windows installer `Celeste-<version>-Setup.exe`, built from this repository's source by the
+  *Build* workflow of GitHub Actions; nothing built elsewhere is signed
+
+## Privacy
+
+Céleste has no account, no analytics and no advertising, and keeps its settings, favourites, history and
+observation log in `~/.celeste` on your computer. It connects to the following services, and to no other:
+
+| Service | When | What it receives |
+|---|---|---|
+| NASA JPL (naif.jpl.nasa.gov) | first launch: the DE440 ephemeris | an ordinary download request |
+| GitHub (api.github.com, github.com) | at startup, to look for a new version (Settings › About; can be turned off) | an ordinary request with Céleste's version |
+| Minor Planet Center, CelesTrak, AMSAT | when the comets' or the satellites' orbits are out of date | an ordinary download request |
+| NASA JPL (ssd-api.jpl.nasa.gov, ssd.jpl.nasa.gov) | when you open the near-Earth asteroids page: the list of approaches (twice a day at most), and the positions of the few that could be bright (once a day) | the asteroid's name; not the place |
+| asteroidoccultation.com | when you open the occultations page: the year's IOTA predictions (once a month at most) | an ordinary download request |
+| rochesterastronomy.org, asd.gsfc.nasa.gov | when you open the novae and supernovae page: the two lists (twice a day at most) | an ordinary download request |
+| Open-Meteo (api.open-meteo.com) | only when you turn on the cloud forecast (cloud button of Tonight), at most once an hour | the place's latitude and longitude |
+| OpenStreetMap (tile.openstreetmap.org, nominatim.openstreetmap.org) | only when you open the place map, or ask for your position (the button) | the area of the map shown; the point you pick or your position, to the hundredth of a degree (about a kilometre), to name the town |
+| ipwho.is, ipapi.co, ip-api.com | only when you ask for your position and the system cannot give it | your IP address, which they turn into an approximate place |
+
+Every request goes straight to these services: Céleste sends nothing to its authors. On a phone, the position Céleste
+finds at startup (with Android's permission) stays on the phone: the town is named from the list of cities it carries.
 
 ---
 

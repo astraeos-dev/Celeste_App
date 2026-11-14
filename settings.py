@@ -23,6 +23,8 @@ Public API
 import json
 import os
 
+import mobile
+
 # Folder of the user's data, shared with the ephemeris (engine.py)
 USER_DIR = os.environ.get("CELESTE_DATA") or os.path.join(os.path.expanduser("~"), ".celeste")
 
@@ -44,7 +46,7 @@ _DEFAULTS = {
     "default_lon":    -1.6167,      # default longitude
     "default_tz":     "auto",       # IANA time zone (Europe/Paris…) or auto (from the place)
     "default_elevation": 0,         # observer's elevation, m
-    "auto_geoloc":    False,        # geolocation at launch
+    "auto_geoloc":    mobile.is_android(),   # geolocation at launch: on a phone, its own place
 
     # Units
     "temp_unit":      "C",          # C | F
@@ -54,6 +56,7 @@ _DEFAULTS = {
     "live_interval":  2000,         # ms between real-time refreshes
     "mag_limit":      6.0,          # limiting magnitude of the stars
     "show_messier":   True,         # sky map: the Messier objects
+    "constellation":  "Ori",        # Sky › Constellations: the one shown (IAU abbreviation)
 
     # Coordinates
     "angle_format":   "dms",        # dms (dd° mm′ ss″) | dm (dd° mm,mm′) | dd (dd,ddddd°)
@@ -68,12 +71,22 @@ _DEFAULTS = {
     "env_temperature": 10.0,        # °C, for the refraction
     "env_pressure":   1010.0,       # hPa; 0: no refraction
     "horizon_points": [],           # horizon mask: [[azimuth, altitude], ...] degrees
+    "bortle":         0,            # light pollution of the place, Bortle class 1–9; 0: not given
+    "weather_forecast": False,      # quality of the night: the clouds forecast by Open-Meteo
+    "journal_instrument": "",       # observation log: the instrument of the last entry
     "planner_constraints": {},      # the user's values of planner.DEFAULTS
     "planner_bucket": [],           # targets always shown
     "planner_done":   [],           # targets never shown
     "planner_custom": [],           # the user's own targets (planner.custom_target keywords)
     "planner_mpc":    True,         # every comet of the Minor Planet Center, not only Céleste's
     "satellites_visual": False,     # passes of the ~150 naked-eye satellites too (CelesTrak "visual")
+    "occultation_km": 100,          # occultations whose band passes this near the place (km)
+    "occultation_months": 6,        # …in the coming months
+    "neo_days": 60,                 # near-Earth asteroids: the approaches of the coming days
+    "neo_notable_only": False,      # …only the notable ones (140 m and more, or nearer than the Moon)
+    "transients_mag": 15,           # novae and supernovae: brighter than this magnitude
+    "transients_months": 12,        # …the galactic novae found in these last months
+    "show_transients": True,        # …drawn on the sky map
     "plan_split": [40, 60],         # Targets tab: share of the height for the tables and the chart
     "plan_map_east_right": False,   # the map of the night with the east on the right (as uptonight)
     # Updates (updater.py)

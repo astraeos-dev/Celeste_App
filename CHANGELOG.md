@@ -7,6 +7,104 @@ Write for them: short sentences, as dashes, no bold or code (the window of versi
 markup as it is), about 800 characters at most (the window cuts the rest, GitHub does not). See the wiki page
 "Publier une version".
 
+## 4.24
+
+- The first stable version since 4.12, with everything since. New in Sky: a chart for each of the 88
+  constellations, as in the sky atlases, with its sheet to print; the novae and supernovae of the moment.
+- Tonight: how good the night is (the Moon, and the clouds when you ask for the forecast), the minima of Algol,
+  and the month's sky on a sheet to print.
+- Observe: an observation log, and the stars hidden by asteroids. Bodies: the asteroids passing near the Earth.
+- The sky map zooms and plays the night on a time bar. The Workshop's planisphere becomes a real one, its wheel
+  turning in a folded holder.
+- Five spaces instead of nine tabs, and Céleste's own logo.
+
+## 4.23
+
+- Workshop: the rotating chart becomes a real planisphere, like those of the shops: a star wheel with the dates on
+  its rim, turning in a holder folded in two whose window is your horizon, with the directions around it, the hours
+  of the night along its rounded edge facing the dates, and how to use it printed on the front.
+- The fold, the glue strips and the pin are marked, and the assembly sheet follows the new pieces.
+
+## 4.22
+
+- On a phone, the sky map follows the phone: tap the compass, hold the phone up to the sky, and the map turns and
+  moves to show the stars behind it, the sky above them up on the screen, a ring where the phone points. North is
+  the true north: Céleste corrects the compass by the magnetic declination of your place (World Magnetic Model
+  2025).
+- On a phone, Céleste finds your place by the phone's GPS when it starts, after asking your permission; refused,
+  the place stays as it is.
+
+## 4.21
+
+- New page in Sky, novae and supernovae: the new stars of the moment bright enough for your telescope, from David
+  Bishop's list of supernovae and Koji Mukai's list of novae, with their latest magnitude, where they are and when
+  to see them tonight from your place.
+- On the sky map they show as a red four-pointed star with their name, and the search finds them.
+- Tonight tells you when a bright one is up.
+- Céleste has a logo of its own: the C of Céleste, open like an orbit, and its star.
+
+## 4.20
+
+- New page in Bodies, near-Earth asteroids: those passing close to the Earth in the coming days, how near, how big
+  and how fast (CNEOS, NASA/JPL); for those you could catch in a telescope, their brightness and when to look from
+  your place.
+- New page in Observe, occultations: the stars hidden for a few seconds by an asteroid whose shadow passes near your
+  place (IOTA predictions), with where the band passes, how long the star disappears and the Moon.
+- Both in Tonight and in the calendar (two new filters).
+
+## 4.19
+
+- New month's sheet: one A4 page to print for your place, from the Tonight card or the month shown in the calendar,
+  with the sky map of the month (and when it shows), the Moon day by day and its phases, the planets and the
+  month's events, the minima of Algol included.
+- On a phone, the Calendar space's buttons fit in two columns.
+- Android (test version): pages and lists scroll with the finger, every window fits the screen and closes with
+  Back, the sky map zooms with two fingers, and no page runs off the screen any more.
+
+## 4.18
+
+- Sky map: a time bar under the map runs through the night, from sunset to sunrise; press play to watch the sky
+  turn, ten minutes a frame. Only the map moves; a button brings it back to your time.
+- Variable stars: the minima of Algol, the Demon Star, that you can watch from your place, in Tonight and in the
+  calendar (new filter), to within half an hour.
+- On a narrow window or a phone, the sky map's tools fit in three rows.
+- Android: the whole of Céleste now starts on Android, as a test version.
+
+## 4.17
+
+- New observation log, in Observer: what you saw, when and where, with your instrument, the seeing, the
+  transparency, your notes and the quality of the night computed by Céleste; export as a spreadsheet (CSV).
+- Log a target straight from the Targets list (right click).
+- Tonight: the quality of the next seven nights, to choose your night (calendar button); Targets shows tonight's.
+- Qt's own buttons and dialogs (Save, Cancel, Close…) now speak your language.
+
+## 4.16
+
+- Tonight: the quality of the night, from excellent to bad, with its best window and its hours in colour: how dark
+  it gets, the Moon and, if you turn it on, the clouds forecast by Open-Meteo.
+- Settings: the light pollution of your place on the Bortle scale, with the naked-eye limiting magnitude it means.
+
+## 4.15
+
+- On a narrow window, and soon on phones: a compact layout, with the date and the place in a drawer, the five spaces in
+  a bar at the bottom and larger touch targets.
+- Sky map: zoom with the wheel or the buttons, drag to move around, double-click for the whole sky.
+- Targets: on a narrow screen, the constraints have a page of their own.
+- Also since 4.12: the five spaces (Tonight, Sky, Bodies, Calendar, Observe), Céleste's icon in the taskbar, and Qt
+  for Python (PySide6) under the hood.
+
+## 4.14
+
+- Céleste now runs on Qt for Python (PySide6), the road to the Android version.
+- A first Android build, for testing.
+
+## 4.13
+
+- The interface in five spaces: Tonight, Sky, Bodies, Calendar and Observe; the pages of a space under a second row
+  of tabs.
+- The taskbar shows Céleste's icon while it runs.
+- Ready for a signed installer, so that Windows names its publisher.
+
 ## 4.12
 
 - Workshop: a complete astrolabe and a nocturnal, with their own place, time zone and date.

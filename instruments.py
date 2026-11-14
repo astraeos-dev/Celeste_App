@@ -338,7 +338,8 @@ def planisphere(lat, lon, std_offset, year, r_edge, stars, figures, margin=8.0):
         curves, ra_ticks [(hour, angle)], date_ticks [(month, day, angle)]
         (angles in hours of RA on the disc's own frame), horizon (x, y) of
         the window, almucantars {30: (x, y), 60: (x, y)}, cardinals
-        [(azimuth, x, y)], zenith (x, y), hours [(hour, x, y on r = 1)].
+        [(azimuth, x, y)] just outside the window, zenith (x, y), hours
+        [(hour, x, y on r = 1)].
     """
     s = _side(lat)
     phi = abs(lat)
@@ -384,8 +385,8 @@ def planisphere(lat, lon, std_offset, year, r_edge, stars, figures, margin=8.0):
     out["horizon"] = local(0.0)
     out["almucantars"] = {30: local(30.0), 60: local(60.0)}
     cards = []
-    for a in range(0, 360, 45):
-        dec, h = equatorial(np.array([3.0]), np.array([float(a)]), lat)
+    for a in range(0, 360, 45):                     # just below the horizon: on the holder, around the window
+        dec, h = equatorial(np.array([-4.0]), np.array([float(a)]), lat)
         x, y = planisphere_xy(-h / 15.0, dec, 0.0, lat, r_edge, dec_edge)
         cards.append((a, float(x[0]), float(y[0])))
     out["cardinals"] = cards

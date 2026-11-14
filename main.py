@@ -1,5 +1,5 @@
 """
-main.py — Entry point of the Céleste application (PyQt6)
+main.py — Entry point of the Céleste application (Qt: PySide6, see qt.py)
 =========================================================
 Usage:
     python main.py
@@ -16,12 +16,16 @@ restart.
 import argparse
 import sys
 
-from PyQt6.QtCore import QLocale, QTimer
-from PyQt6.QtWidgets import QApplication
+import mobile
 
-import settings as prefs
-from config import Config
-from i18n import resolve_lang, switch_lang, t
+ON_ANDROID = mobile.setup()          # before the settings: the user folder of the phone
+
+from qt.QtCore import QLocale, QTimer  # noqa: E402
+from qt.QtWidgets import QApplication
+
+import settings as prefs  # noqa: E402
+from config import Config  # noqa: E402
+from i18n import resolve_lang, switch_lang, t  # noqa: E402
 
 
 def parse_args(argv):
@@ -46,11 +50,12 @@ def ensure_ephemeris():
     """
     import os
     import threading
-    from PyQt6.QtWidgets import QMessageBox, QProgressDialog
+    from qt.QtWidgets import QMessageBox, QProgressDialog
     import engine
 
     def fail(exc):
         folder = os.path.dirname(engine.user_ephemeris_path())
+        mobile.log(f"ephemeris FAILED: {exc}")
         QMessageBox.critical(None, "Céleste", t("startup.ephemeris_error").format(error=exc, folder=folder))
         return False
 
@@ -77,6 +82,7 @@ def ensure_ephemeris():
             worker.join(0.05)
         dialog.close()
         if isinstance(state["error"], engine.DownloadCancelled):
+            mobile.log("ephemeris FAILED: the download was cancelled")
             return False
         if state["error"] is not None:
             return fail(state["error"])
@@ -84,6 +90,7 @@ def ensure_ephemeris():
         engine.load_ephemeris()
     except engine.EphemerisUnavailable as exc:
         return fail(exc)
+    mobile.log(f"ephemeris ready: {engine.ephemeris_path()}")
     return True
 
 
@@ -105,19 +112,27 @@ def main(argv=None):
     Config.apply_theme(args.theme or prefs.get("theme"))
     switch_lang(resolve_lang(args.lang or prefs.get("lang"), QLocale.system().name()))
 
-    from gui import AstroApp, init_style
+    from gui import AstroApp, init_style, install_qt_translation
+    from i18n import get_lang
     init_style(app)
+    install_qt_translation(get_lang())
     if not ensure_ephemeris():
         return 1
     window = AstroApp()
+    from ui import touch
+    touch.install(app, window)               # Android (or CELESTE_TOUCH=1): scrolling, windows, Back
     window.show()
     if args.self_test:
         window._calculate_quietly()                       # stays out of the user's history
         from engine import AstroEngine
         from config import APP_VERSION
         AstroEngine.find_eclipses(window._dte, num_months=1)
-        from PyQt6.QtPositioning import QGeoPositionInfoSource
+        from qt.QtPositioning import QGeoPositionInfoSource
         sources = ", ".join(QGeoPositionInfoSource.availableSources()) or "none"
+        sizes = window.windowIcon().availableSizes()
+        if not sizes or window.windowIcon().pixmap(32, 32).isNull():
+            print("self-test: the window has no icon")
+            return 1
         print(f"Céleste {APP_VERSION} self-test OK: {window.tz_menu.currentText()}, "
               f"{len(window.visible_stars)} stars, {len(window.minor_planets)} minor planets, "
               f"location sources: {sources}")
@@ -127,11 +142,36 @@ def main(argv=None):
     if prefs.get("auto_geoloc"):
         QTimer.singleShot(800, lambda: window.geolocate(interactive=False))
 
-    # Update: is a newer version published? (Settings › About)
-    if prefs.get("update_check"):
+    # Update: is a newer version published? (Settings › About; a Windows installer: not on a phone)
+    if prefs.get("update_check") and not ON_ANDROID:
         QTimer.singleShot(4000, lambda: window.check_updates(interactive=False))
 
-    return app.exec()
+    if ON_ANDROID:                   # the line the Android workflow looks for (logcat)
+        QTimer.singleShot(1500, lambda: report_android(window))
+
+    code = app.exec()
+    mobile.log(f"the event loop ended ({code})")
+    return code
+
+
+def report_android(window):
+    """
+    The line the Android workflow looks for (logcat): the window started, and
+    whether it and a form opened over it (the observation log's) fit the screen.
+    """
+    from config import APP_RELEASE
+    from ui import touch
+    screen = window.screen().availableGeometry()
+    dialog = window._journal_dialog()
+    dialog.open()
+    QApplication.processEvents()
+    fits = window.minimumSizeHint().width() <= screen.width()
+    dialog_fits = dialog.geometry().width() <= screen.width() and dialog.minimumSizeHint().width() <= screen.width()
+    dialog.reject()
+    print(f"Céleste {APP_RELEASE} android window OK: {len(window.visible_stars)} stars, "
+          f"{window.tabs.count()} spaces, compact {window.is_compact()}, touch {touch.touch_mode()}, "
+          f"fits {fits} (window {window.minimumSizeHint().width()} of {screen.width()} px), "
+          f"dialog fits {dialog_fits}, rotation sensor {window._sky_phone().available()}", flush=True)
 
 
 if __name__ == "__main__":

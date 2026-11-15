@@ -19,7 +19,7 @@
 [Releases](https://github.com/astraeos-dev/Celeste_App/releases/latest) page; Céleste then updates itself.
 An idea, a problem, a body to add? [Open a request](https://github.com/astraeos-dev/Celeste_App/issues/new/choose).
 
-**Active project** · one of the Astraeos projects: [website](https://astraeos-dev.github.io/personnal-site/#/celeste) ·
+**Active project** · one of the Astraeos projects: [website](https://astraeos-dev.github.io/Gaia/#/celeste) ·
 [Ganymede](https://github.com/astraeos-dev/Ganymede) · [Céleste for Home Assistant](https://github.com/astraeos-dev/Celeste_HA) ·
 [Helios](https://github.com/astraeos-dev/Helios)
 

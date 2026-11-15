@@ -91,7 +91,7 @@ _HISTORY_DELAY_MS = 3000      # a calculation enters the history once the user h
 _ALL_POSITIONING_METHODS = QGeoPositionInfoSource.PositioningMethod.AllPositioningMethods
 
 # Links: website, source code, support; requests on GitHub (forms of .github/ISSUE_TEMPLATE)
-_URL_SITE = "https://astraeos-dev.github.io/personnal-site/"
+_URL_SITE = "https://astraeos-dev.github.io/Gaia/"
 _URL_REPO = "https://github.com/astraeos-dev/Celeste_App"
 _URL_COFFEE = "https://buymeacoffee.com/gregorychau"
 

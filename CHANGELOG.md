@@ -7,6 +7,11 @@ Write for them: short sentences, as dashes, no bold or code (the window of versi
 markup as it is), about 800 characters at most (the window cuts the rest, GitHub does not). See the wiki page
 "Publier une version".
 
+## 4.24.1
+
+- The Website link of Settings › About opens the site of the Astraeos projects at its new address: the old one
+  no longer answers.
+
 ## 4.24
 
 - The first stable version since 4.12, with everything since. New in Sky: a chart for each of the 88

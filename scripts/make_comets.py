@@ -33,6 +33,8 @@ COMETS = {
     "Tsuchinshan": ("DES=C/2026 C1;", "C/2026 C1", "C/2026 C1 (Tsuchinshan)", "C/2026 C1"),
     "Borrelly": ("DES=19P;CAP;NOFRAG;", "19P", "19P/Borrelly", "19P/Borrelly"),
     "Lemmon": ("DES=C/2025 A6;", "C/2025 A6", "C/2025 A6 (Lemmon)", "C/2025 A6"),
+    "29P Schwassmann-Wachmann": ("DES=29P;CAP;NOFRAG;", "29P", "29P/Schwassmann-Wachmann 1", "29P/SW1"),
+    "C/2026 A2 Bok": ("DES=C/2026 A2;", "C/2026 A2", "C/2026 A2 (Bok)", "C/2026 A2"),
 }
 START, STOP, STEP = "2025-01-01", "2031-12-31", 2
 OUT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "comets.npz")

@@ -147,12 +147,12 @@ def _asset(name):
         return f.read()
 
 
-def symbol_pixmap(height, encre, star):
+def symbol_pixmap(height, encre, dot):
     """
-    Céleste's symbol (the C open like an orbit and its star, scripts/make_logo.py)
-    at *height* pixels, ink in *encre* and star in *star* (the theme's encre and or).
+    Céleste's symbol (the C open like an orbit and its gold dot, scripts/make_logo.py)
+    at *height* pixels, ink in *encre* and dot in *dot* (the theme's encre and or).
     """
-    svg = _asset("celeste-symbole.svg").replace(_FILE_ENCRE, encre).replace(_FILE_OR, star)
+    svg = _asset("celeste-symbole.svg").replace(_FILE_ENCRE, encre).replace(_FILE_OR, dot)
     renderer = QSvgRenderer(QByteArray(svg.encode("utf-8")))
     box = renderer.viewBoxF()
     return _render(svg, height * box.width() / box.height(), height)

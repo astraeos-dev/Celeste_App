@@ -2,15 +2,16 @@
 
 ## Céleste's logo
 
-The C of Céleste, open like an orbit, and its star, drawn for Céleste in the language of the Astræos design system
-(the letter in its ink, the star in its gold) by `scripts/make_logo.py`, which writes:
+The C of Céleste, open like an orbit, and its dot, drawn for Céleste in the language of the Astræos design system
+(the letter in its ink, the dot in its gold, as on the logos of the other Astraeos projects) by
+`scripts/make_logo.py`, which writes:
 
 | File | Use in Céleste |
 |---|---|
 | `celeste-icone.svg` | Icon of the window, the taskbar, the installer (`scripts/build_exe.py`) and the Android launcher (`android/make_images.py`) |
-| `celeste-symbole.svg` | Symbol of the header; `icons.py` replaces, when drawing it, the ink `#e8ecf2` and the star `#f2b84b` with the `encre` and `or` colours of the active theme |
+| `celeste-symbole.svg` | Symbol of the header; `icons.py` replaces, when drawing it, the ink `#e8ecf2` and the dot `#f2b84b` with the `encre` and `or` colours of the active theme |
 
-Rules of the design system: the star stays `or` and in its place, never a shadow, outline, gradient or distortion;
+Rules of the design system: the dot stays `or` and in its place, never a shadow, outline, gradient or distortion;
 the symbol is at least 20 px high.
 
 ## Icons

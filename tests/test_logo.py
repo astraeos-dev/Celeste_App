@@ -3,7 +3,7 @@ tests/test_logo.py — Céleste's logo (scripts/make_logo.py, v4.21)
 
 The SVG files of assets/ are the script's; they use only the design system's
 ink and gold, which the interface replaces with the active theme's; the
-symbol and the icon are drawn at every size, the star in the theme's gold.
+symbol and the icon are drawn at every size, the dot in the theme's gold.
 """
 import importlib.util
 import os
@@ -63,7 +63,7 @@ def test_the_symbol_in_every_theme(qt, theme):
         found = {(c.red(), c.green(), c.blue()) for c in
                  (image.pixelColor(x, y) for x in range(0, image.width(), 2) for y in range(0, image.height(), 2))
                  if c.alpha() == 255}
-        assert (gold.red(), gold.green(), gold.blue()) in found               # the star, in the theme's gold
+        assert (gold.red(), gold.green(), gold.blue()) in found               # the dot, in the theme's gold
         ink = QColor(Config.ENCRE)
         assert (ink.red(), ink.green(), ink.blue()) in found                  # the letter, in its ink
         box = _script().SYMBOL_BOX                                            # drawn without distortion

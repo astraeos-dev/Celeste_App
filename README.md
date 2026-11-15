@@ -1,4 +1,6 @@
-# ✨ Céleste — astronomical observatory
+<p align="center"><img src="assets/celeste-icone.svg" width="128" height="128" alt="Céleste"></p>
+
+# Céleste — astronomical observatory
 
 > A desktop application that computes and shows the positions of the Sun, the Moon and the planets, from the JPL DE440 ephemeris (through Skyfield).
 
@@ -17,8 +19,9 @@
 [Releases](https://github.com/astraeos-dev/Celeste_App/releases/latest) page; Céleste then updates itself.
 An idea, a problem, a body to add? [Open a request](https://github.com/astraeos-dev/Celeste_App/issues/new/choose).
 
-**Active project** · part of the Ganymede family: [website](https://astraeos-dev.github.io/personnal-site/) ·
-[Android app](https://github.com/astraeos-dev/Ganymede) · [Céleste for Home Assistant](https://github.com/astraeos-dev/Celeste_HA)
+**Active project** · one of the Astraeos projects: [website](https://astraeos-dev.github.io/personnal-site/#/celeste) ·
+[Ganymede](https://github.com/astraeos-dev/Ganymede) · [Céleste for Home Assistant](https://github.com/astraeos-dev/Celeste_HA) ·
+[Helios](https://github.com/astraeos-dev/Helios)
 
 ---
 
@@ -294,8 +297,9 @@ The interface and the charts follow the Astræos design system:
   `or`, `lune`, `signal-ok`, `signal-alerte`), defined once in `config.py` and shared by Qt and matplotlib.
 - **Typography** — IBM Plex Sans for the text, IBM Plex Mono for the figures, Astraeos Symboles for the astronomical
   symbols (☉ ☽ ♀ ♂ ♃ ♄ ⊕ ♈ ☌ ☍). The fonts are provided in `fonts/`, for the same rendering on every machine.
-- **Logo** — the C of Céleste, open like an orbit, and its star: the letter in `encre`, the star in `or`, drawn by
-  `scripts/make_logo.py` (`assets/celeste-icone.svg`, `assets/celeste-symbole.svg`).
+- **Logo** — the C of Céleste, open like an orbit, and its dot: the letter in `encre`, the dot in `or`, drawn by
+  `scripts/make_logo.py` (`assets/celeste-icone.svg`, `assets/celeste-symbole.svg`), like the logos of the other
+  Astraeos projects.
 - **Components** — buttons (primary, secondary, quiet, danger), input fields with label, unit and error message, data
   cards, status badges, gauge, tabs and theme selector.
 - **Rules** — no emoji (Material Design Icons instead); a single gold area per screen, the Calculate button;
